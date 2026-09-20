@@ -1,0 +1,136 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ecom_agent
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./.docker-data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ecom_agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./.docker-data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ecom_agent_orders
+      MYSQL_USER: ecom
+      MYSQL_PASSWORD: ecom_dev_password
+      MYSQL_ROOT_PASSWORD: root_dev_password
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./.docker-data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -proot_dev_password"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  order-init:
+    image: ecom-customer-service-backend:latest
+    env_file:
+      - .env
+    environment:
+      ORDER_DB_DSN: mysql://ecom:ecom_dev_password@mysql:3306/ecom_agent_orders
+    command: ["python", "scripts/init_order_db.py"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./.docker-data/app:/app/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      API_SESSION_STORAGE_BACKEND: postgres
+      API_SESSION_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/ecom_agent
+      MEMORY_STORAGE_BACKEND: postgres
+      MEMORY_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/ecom_agent
+      MEMORY_REDIS_URL: redis://redis:6379/0
+      ORDER_DB_DSN: mysql://ecom:ecom_dev_password@mysql:3306/ecom_agent_orders
+      ORDER_CACHE_REDIS_URL: redis://redis:6379/0
+      API_CONCURRENCY_REDIS_URL: redis://redis:6379/0
+      API_CHAT_EXECUTION_MODE: async
+      API_CHAT_WORKER_ENABLED: "false"
+      INTENT_MODEL_ENABLED: "false"
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    ports:
+      - "8010:8010"
+    volumes:
+      - ./.docker-data/app:/app/data
+      - ./.docker-data/logs:/app/logs
+      - ${INTENT_MODEL_DIR:-./model}:/app/model:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      order-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    image: ecom-customer-service-backend:latest
+    env_file:
+      - .env
+    environment:
+      API_SESSION_STORAGE_BACKEND: postgres
+      API_SESSION_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/ecom_agent
+      MEMORY_STORAGE_BACKEND: postgres
+      MEMORY_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/ecom_agent
+      MEMORY_REDIS_URL: redis://redis:6379/0
+      ORDER_DB_DSN: mysql://ecom:ecom_dev_password@mysql:3306/ecom_agent_orders
+      ORDER_CACHE_REDIS_URL: redis://redis:6379/0
+      API_CONCURRENCY_REDIS_URL: redis://redis:6379/0
+      INTENT_MODEL_ENABLED: "false"
+    command: ["python", "-m", "scripts.chat_worker"]
+    volumes:
+      - ./.docker-data/app:/app/data
+      - ./.docker-data/logs:/app/logs
+      - ${INTENT_MODEL_DIR:-./model}:/app/model:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8010
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy

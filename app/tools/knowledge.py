@@ -1,0 +1,154 @@
+"""知识库检索工具：通过向量检索回答 FAQ、政策类问题。
+
+与查订单/查物流这类「结构化数据查询」工具不同，
+search_knowledge 面向非结构化文本（退换货政策、配送说明、FAQ 等），
+返回 Top-K 命中片段及其来源，由 LLM 引用回答。
+
+向量后端固定为 Chroma：嵌入式向量数据库，使用 HNSW 索引。
+
+为避免每次进程启动都重建索引，单例缓存 Retriever。
+"""
+
+from pathlib import Path
+from typing import Optional
+
+from app.config.settings import settings
+from app.rag.backends import create_backend
+from app.rag.embedder import Embedder
+from app.rag.retriever import KnowledgeRetriever
+from app.reliability.failure_policy import FailureCategory
+
+_retriever: Optional[KnowledgeRetriever] = None
+
+
+def _create_backend_from_settings():
+    """根据 settings 创建 Chroma 后端实例。"""
+    name = settings.rag_backend.lower()
+    if name == "chroma":
+        return create_backend(
+            "chroma",
+            persist_dir=Path(settings.chroma_persist_dir),
+            collection_name=settings.chroma_collection,
+        )
+    raise ValueError(
+        f"未知的 RAG 后端: {settings.rag_backend}（仅支持 chroma）"
+    )
+
+
+def _get_retriever() -> KnowledgeRetriever:
+    """初始化和获取检索器"""
+    global _retriever
+    if _retriever is None:
+        embedder = Embedder(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+            model=settings.embedding_model,
+            provider=settings.embedding_provider,
+            local_model_path=settings.local_embedding_model_path,
+        )
+        backend = _create_backend_from_settings()
+        _retriever = KnowledgeRetriever(embedder=embedder, backend=backend)
+        _retriever.load()
+    return _retriever
+
+
+def reset_retriever() -> None:
+    """清空单例缓存（测试或切换后端时使用）。"""
+    global _retriever
+    _retriever = None
+
+
+def search_knowledge(query: str, top_k: int = 3) -> dict:
+    """检索退换货政策、配送说明、会员权益、FAQ 等知识库内容。
+
+    Returns:
+        {
+          "success": bool,
+          "backend": "chroma",
+          "query": str,
+          "results": [
+            {"doc": "...", "section": "...", "score": 0.83, "text": "..."},
+            ...
+          ],
+          "error": "..."  # 仅失败时存在
+        }
+    """
+    if not query or not query.strip():
+        return {
+            "success": False,
+            "error": "query 不能为空",
+            "error_code": FailureCategory.VALIDATION_ERROR.value,
+            "query": query,
+            "results": [],
+        }
+
+    try:
+        retriever = _get_retriever()
+    except FileNotFoundError as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "error_code": FailureCategory.TRANSIENT_FAILURE.value,
+            "backend": settings.rag_backend,
+            "query": query,
+            "results": [],
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"知识库初始化失败: {e}",
+            "error_code": FailureCategory.TRANSIENT_FAILURE.value,
+            "backend": settings.rag_backend,
+            "query": query,
+            "results": [],
+        }
+
+    try:
+        top_k = max(1, min(int(top_k or 3), 5))
+    except (TypeError, ValueError):
+        return {
+            "success": False,
+            "error": "top_k 必须是整数",
+            "error_code": FailureCategory.VALIDATION_ERROR.value,
+            "backend": settings.rag_backend,
+            "query": query,
+            "results": [],
+        }
+    try:
+        hits = retriever.search(query, top_k=top_k)
+    except FileNotFoundError as e:
+        reset_retriever()
+        return {
+            "success": False,
+            "error": str(e),
+            "error_code": FailureCategory.EVIDENCE_UNAVAILABLE.value,
+            "backend": settings.rag_backend,
+            "query": query,
+            "results": [],
+        }
+    except Exception as e:
+        # Embedding、Chroma 查询或索引损坏都必须 fail-closed，不能把异常
+        # 泄漏到 ReAct 循环，更不能让模型把检索失败当成“没有政策限制”。
+        return {
+            "success": False,
+            "error": f"知识库检索失败: {type(e).__name__}",
+            "error_code": FailureCategory.TRANSIENT_FAILURE.value,
+            "backend": settings.rag_backend,
+            "query": query,
+            "results": [],
+        }
+
+    return {
+        "success": True,
+        "backend": settings.rag_backend,
+        "query": query,
+        "results": [
+            {
+                "doc": h.chunk.doc,
+                "section": h.chunk.section,
+                "score": round(h.score, 4),
+                "text": h.chunk.text,
+            }
+            for h in hits
+        ],
+    }

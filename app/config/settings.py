@@ -1,0 +1,257 @@
+from pydantic import AliasChoices, Field
+from pydantic_settings import BaseSettings
+
+
+_PLACEHOLDER_MARKERS = (
+    "your-",
+    "your_",
+    "replace-with",
+    "replace_with",
+    "changeme",
+    "change-me",
+    "placeholder",
+    "secret-here",
+    "example",
+    "<",
+    ">",
+)
+
+
+class Settings(BaseSettings):
+    """项目配置，从 .env 文件读取"""
+
+    # 兼容旧代码中的 openai_* 字段，但优先读取项目实际使用的
+    # DEEPSEEK_* 配置。仅靠 default_factory + os.getenv 无法读取
+    # pydantic-settings 加载的 .env 文件，必须显式声明环境变量别名。
+    openai_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("DEEPSEEK_API_KEY", "OPENAI_API_KEY"),
+    )
+    openai_base_url: str = Field(
+        default="https://api.deepseek.com",
+        validation_alias=AliasChoices("DEEPSEEK_BASE_URL", "OPENAI_BASE_URL"),
+    )
+    model_name: str = Field(
+        default="deepseek-v4-flash",
+        validation_alias=AliasChoices("DEEPSEEK_MODEL_NAME", "MODEL_NAME"),
+    )
+    # 业务 Agent、会话摘要、长期记忆与离线评估共用 DeepSeek 主模型。
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model_name: str = "deepseek-v4-flash"
+    # 路由是独立的低成本调用，使用阿里百炼的 Qwen Flash。
+    router_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("DASHSCOPE_API_KEY", "ROUTER_API_KEY"),
+    )
+    router_base_url: str = Field(
+        default="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        validation_alias=AliasChoices("ROUTER_BASE_URL", "DASHSCOPE_BASE_URL"),
+    )
+    router_model_name: str = Field(
+        default="qwen-flash",
+        validation_alias=AliasChoices("ROUTER_MODEL_NAME", "DASHSCOPE_MODEL_NAME"),
+    )
+    temperature: float = 0.7
+
+    # ReAct 循环
+    max_react_steps: int = 5
+    compact_react_enabled: bool = True
+
+    # MCP 配置
+    mcp_enabled: bool = False
+    mcp_server_url: str = "http://127.0.0.1:9123/mcp"
+    # MCP 服务间认证 + 短时用户上下文；两者均不可由模型或前端伪造。
+    mcp_service_token: str = ""
+    mcp_context_jwt_secret: str = ""
+    mcp_context_jwt_algorithm: str = "HS256"
+    mcp_context_token_ttl_seconds: int = 300
+
+    # RAG 配置（第5期）
+    embedding_provider: str = "local"  # local / openai
+    embedding_model: str = "text-embedding-3-small"  # openai provider 时使用
+    local_embedding_model_path: str = "model/bge-small-zh-v1.5"
+    kb_dir: str = "app/rag/knowledge"
+    # Chroma 是唯一的知识库向量存储后端。
+    rag_backend: str = "chroma"
+    # 内容哈希清单与 Chroma 持久化目录分离，便于增量同步。
+    kb_manifest_path: str = "data/rag/kb_manifest.json"
+    # ChromaBackend 的持久化目录与 collection 名
+    chroma_persist_dir: str = "data/rag/chroma"
+    chroma_collection: str = "ecom_kb"
+
+    # Memory 配置（第7期）
+    memory_enabled: bool = True
+    memory_dir: str = "data/sessions/memory"
+    # Case 是跨会话的业务事项；与用户画像记忆分开保存，保留审计事件。
+    case_dir: str = "data/sessions/cases"
+    memory_user_id: str = "default"
+    max_ltm_facts: int = 50
+    preference_memory_ttl_days: int = 90
+    memory_retrieval_enabled: bool = True
+    memory_retrieval_top_k: int = 4  # 兼容旧配置，作为语义记忆默认预算。
+    semantic_memory_retrieval_top_k: int = 2
+    memory_retrieval_min_score: float = 0.35
+    # PostgreSQL 是长期记忆的权威主存储；json 仅用于本地离线测试。
+    memory_storage_backend: str = "json"
+    memory_postgres_dsn: str = "postgresql://postgres:postgres@127.0.0.1:5432/ecom_agent"
+    # Redis 作为 cache-aside 高速访问层；留空则只使用主存储。
+    memory_redis_url: str = "redis://127.0.0.1:6379/0"
+    memory_cache_ttl_seconds: int = 1800
+    memory_cache_key_prefix: str = "ecom:ltm"
+
+    # FastAPI 服务与认证配置
+    api_jwt_secret: str = ""
+    api_jwt_algorithm: str = "HS256"
+    # 登录用户表：逗号分隔的 username:pbkdf2_sha256$iterations$salt$hex 条目。
+    # 用 scripts/hash_password.py 生成哈希；留空则 /api/v1/auth/login 返回 503。
+    api_auth_users: str = ""
+    # 登录签发的 JWT 有效期（秒）。
+    api_auth_token_ttl_seconds: int = 86400
+    # 浏览器登录态使用 HttpOnly Cookie；CSRF Cookie 只用于生成请求头令牌。
+    auth_cookie_name: str = "ecom_agent_session"
+    csrf_cookie_name: str = "ecom_agent_csrf"
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "lax"
+    # 订单业务数据源（第15期）：mysql://user:pass@host:port/db。
+    # 留空 = 显式本地模式，订单查询走内置 mock 数据（fail-safe，标注 source=mock）；
+    # 配置后 MySQL 为权威数据源，查询异常 fail-closed（TRANSIENT_FAILURE），
+    # 绝不静默回退 mock，防止演示数据冒充真实订单。
+    order_db_dsn: str = ""
+    order_db_pool_size: int = 10
+    order_db_pool_timeout: float = 5.0
+    # 订单查询缓存：留空跳过缓存（Redis 不可用自动降级为 no-op，不阻塞读）。
+    order_cache_redis_url: str = "redis://127.0.0.1:6379/0"
+    order_cache_ttl_seconds: int = 300
+    # 平台白名单（逗号分隔）：platform_code 只允许在列出的值内，防任意字符串路由。
+    order_platform_codes: str = "pdd"
+    # API 对话按消息行写入 PostgreSQL；json 仅保留给 CLI 与离线兼容测试。
+    api_session_storage_backend: str = "postgres"
+    api_session_postgres_dsn: str = "postgresql://postgres:postgres@127.0.0.1:5432/ecom_agent"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    # 并发与连接池（工程优化）
+    # LLM/API 调用并发上限：用信号量限制同时进行的慢调用，避免打爆上游并
+    # 防止 FastAPI 线程池被长时间占满导致健康检查等轻请求排队。
+    api_max_concurrent_llm: int = 8
+    # OpenAI 兼容客户端的单次请求硬超时，避免上游慢请求长期占用并发槽位。
+    llm_timeout_seconds: float = 60.0
+    # PostgreSQL 连接池：min 预热、max 上限、取连接与建连超时（秒）。
+    api_pg_pool_min_size: int = 1
+    api_pg_pool_max_size: int = 10
+    api_pg_pool_timeout: float = 5.0
+    api_pg_connect_timeout: float = 5.0
+    # RAG 向量检索并发上限：SentenceTransformer 编码为 CPU 密集操作，
+    # 且 Chroma 内部有锁，过高的并发反而互相争抢；2 足够覆盖客服场景。
+    api_rag_search_concurrency: int = 2
+    # API/Worker 之间共享的 Redis 并发基础设施。生产环境必须配置为高可用 Redis。
+    api_concurrency_redis_url: str = ""
+    api_distributed_lease_seconds: float = Field(default=90.0, ge=6)
+    api_queue_wait_seconds: float = Field(default=30.0, ge=0)
+    # async：API 入队后由 Agent Worker 执行；sync 仅用于本地兼容调试。
+    api_chat_execution_mode: str = "async"
+    api_chat_worker_enabled: bool = False
+    api_chat_worker_concurrency: int = Field(default=2, ge=1)
+    api_chat_queue_prefix: str = "ecom:chat"
+    api_chat_queue_max_depth: int = Field(default=1000, ge=1)
+    api_chat_job_ttl_seconds: int = Field(default=3600, ge=60)
+    api_chat_queue_timeout_seconds: int = Field(default=120, ge=1)
+    api_chat_run_timeout_seconds: int = Field(default=600, ge=1)
+
+    # Skill 配置（第8期）
+    skills_enabled: bool = True
+    skills_dir: str = "app/skills/definitions"
+
+    # 可选的本地意图分类器。模型权重不随仓库分发；缺失或关闭时使用规则回退。
+    intent_model_enabled: bool = False
+    intent_base_model_path: str = "model/Qwen2.5-0.5B-Instruct"
+    intent_adapter_path: str = "model/train_2026-08-15-18-54-17"
+    intent_max_new_tokens: int = 32
+    intent_model_device: str = ""  # 留空自动选择 cuda / cpu
+    # 送入分类器的最大上下文轮数（用户设计：最近 5 轮足够，更多历史是噪音）。
+    intent_max_context_turns: int = 5
+
+    # 业务链日志监控（第11期）：线上 chat 请求全链路观测轨迹。
+    # 每条请求一个 JSON 对象（事件流 + LLM 调用 + 工具步骤），按天追加写 JSONL。
+    observability_enabled: bool = True
+    observability_log_dir: str = "logs/traces"
+
+    # 可观测性埋点（第12期）：Trace/Span + Prometheus 指标 + 审计日志。
+    # 审计：异常 100% 写 agent_audit_log（PostgreSQL），正常流量按抽样率；
+    # 完整报文 JSONL 落 audit_log_dir（Loki/ELK 的本地等价物，可换 HTTP sink）。
+    observability_trace_enabled: bool = True
+    audit_enabled: bool = True
+    audit_sample_rate: float = 0.1
+    # 空串表示复用 api_session_postgres_dsn（与业务库同库，免额外配置）
+    audit_postgres_dsn: str = ""
+    audit_log_dir: str = "logs/audit"
+    # 统一工具客户端：瞬时失败自动重试次数（默认 0，ReAct 层负责重试策略）
+    tool_retries: int = 0
+
+    # Evaluation 配置（第9期，离线评估工具，无聊天开关）
+    eval_dataset_path: str = "app/evaluation/cases.json"
+    # 评估报告默认落在测试产物目录，便于比较回归结果。
+    eval_output_path: str = "data/evaluation/eval_report.json"
+    eval_use_judge: bool = True  # 是否启用 LLM-as-judge（质量/幻觉/过程合理性）
+    eval_pass_threshold: float = 0.6  # 单维度通过阈值（judge 归一化到 0-1 后比较）
+
+    # 多轮对话管理：应用层不会把模型的理论上下文窗口用满。
+    session_path: str = "data/sessions/session.json"
+    context_input_budget_tokens: int = 192_000
+    context_compaction_trigger_ratio: float = 0.70
+    context_compaction_retain_ratio: float = 0.40
+
+    model_config = {"env_file": ".env"}
+
+    def validate_runtime_configuration(self) -> None:
+        """拒绝把示例占位符带入运行环境。
+
+        本地规则模式可以不配置模型 API key，但认证密钥必须存在；启用 MCP
+        时则要求服务间认证和上下文签名密钥同时配置。把校验放在 lifespan
+        启动阶段，避免服务启动后才在第一次请求时暴露配置错误。
+        """
+        errors: list[str] = []
+        if self.api_chat_execution_mode not in {"sync", "async"}:
+            errors.append("API_CHAT_EXECUTION_MODE 只支持 sync/async")
+        if self.api_chat_execution_mode == "async" and not self.api_concurrency_redis_url:
+            errors.append("异步任务必须配置 API_CONCURRENCY_REDIS_URL")
+        if self.api_max_concurrent_llm < 1:
+            errors.append("API_MAX_CONCURRENT_LLM 必须大于 0")
+
+        def check(name: str, label: str, *, required: bool = False) -> None:
+            value = str(getattr(self, name, "") or "").strip()
+            lowered = value.lower()
+            if required and not value:
+                errors.append(f"{label} 未配置")
+            elif value and any(marker in lowered for marker in _PLACEHOLDER_MARKERS):
+                errors.append(f"{label} 仍是示例占位符")
+
+        check("api_jwt_secret", "API_JWT_SECRET", required=True)
+        check("openai_api_key", "DEEPSEEK_API_KEY")
+        check("router_api_key", "DASHSCOPE_API_KEY")
+        if self.mcp_enabled:
+            check("mcp_service_token", "MCP_SERVICE_TOKEN", required=True)
+            check("mcp_context_jwt_secret", "MCP_CONTEXT_JWT_SECRET", required=True)
+        if errors:
+            joined = "；".join(errors)
+            raise RuntimeError(f"启动配置校验失败：{joined}。请配置真实密钥")
+
+    @property
+    def is_deepseek(self) -> bool:
+        return "api.deepseek.com" in self.openai_base_url
+
+    @property
+    def chat_completion_options(self) -> dict:
+        """提供商特定的 Chat Completions 参数。"""
+        if self.is_deepseek:
+            # ReAct 当前不持久化 reasoning_content，关闭思考模式以保证工具循环兼容。
+            return {"extra_body": {"thinking": {"type": "disabled"}}}
+        return {}
+
+    @property
+    def router_chat_completion_options(self) -> dict:
+        """Qwen 路由调用不附带 DeepSeek 专有的 thinking 参数。"""
+        return {}
+
+
+settings = Settings()

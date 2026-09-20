@@ -1,0 +1,6 @@
+# Optional local intent classifier (Qwen2.5 + LoRA adapter).
+# The main service remains usable without these packages and falls back to rules.
+torch>=2.0.0
+transformers>=4.40.0
+peft>=0.10.0
+accelerate>=0.28.0
