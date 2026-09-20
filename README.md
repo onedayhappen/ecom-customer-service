@@ -159,14 +159,6 @@ Set-Location frontend
 npm run build
 ~~~
 
-测试数据和业务 mock 均为合成数据。评测运行产物、会话、向量索引和日志写入 data/ 或 logs/，这些目录已被忽略。
-
-## 发布前检查
-
-~~~powershell
-git status --short
-git diff --check
-git grep -n -I -E "(sk-[A-Za-z0-9]{20,}|-----BEGIN (RSA|OPENSSH|EC|PRIVATE) KEY-----|AKIA[0-9A-Z]{16}|D:\\\\|C:\\\\Users\\\\)" -- . ':(exclude).git' || $true
 ~~~
 
 发布前确认以下内容不存在于提交中：.env、API Key、JWT/MCP 密钥、模型权重、日志、会话/记忆、数据库文件、个人路径和真实客户数据。如果曾经把密钥提交过，请先撤销并重新生成，再整理 Git 历史。
