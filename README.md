@@ -10,6 +10,8 @@
 - FastAPI API、JWT/HttpOnly Cookie 登录、PostgreSQL 会话、Redis 队列与独立 Worker。
 - MySQL 订单数据访问层、Chroma RAG、MCP 工具服务和 React 客服工作台。
 
+业务扩充方案见 [电商客服业务场景扩充评审稿](docs/BUSINESS_SCENARIOS_REVIEW.md)：规划优惠、比价、凑单等 29 类目标意图和 48 个代表性场景，包含论文依据、槽位、执行流程及验收标准；当前为设计提案。
+
 ## 架构
 
 ~~~text
