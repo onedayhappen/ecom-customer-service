@@ -24,6 +24,16 @@
 @media (max-width: 1040px) { .workspace-body { grid-template-columns: minmax(0, 1fr); } .insights-panel { display: none; } }
 @media (max-width: 720px) { .app-shell { display: block; } .sidebar { display: none; } .workspace { min-height: 100svh; grid-template-rows: 58px minmax(0, 1fr); } .workspace-header { padding: 0 16px; } .mobile-brand { display: flex; } .breadcrumbs { display: none; } .header-status { padding: 6px 8px; } .icon-button { display: none; } .workspace-body { min-height: calc(100svh - 58px); padding: 10px; } .chat-panel { border-radius: 14px; } .conversation-head { padding: 21px 17px 17px; } .conversation-head h1 { font-size: 18px; } .conversation-head p { font-size: 11px; } .secure-label { font-size: 9px; } .conversation { padding: 20px 15px; } .suggestions { grid-template-columns: 1fr; margin-top: 21px; } .suggestion { min-height: auto; } .message-row { max-width: 92%; } .handoff, .notice { margin-left: 15px; margin-right: 15px; } .composer-wrap { padding: 11px 15px 13px; } .auth-page { padding: 13px; } .auth-shell { display: block; border-radius: 20px; } .auth-showcase { min-height: auto; padding: 27px 25px 25px; } .showcase-copy { margin-top: 47px; } .showcase-copy h1 { font-size: 29px; } .showcase-features { display: none; } .showcase-footer { margin-top: 30px; } .auth-card { padding: 30px 25px 25px; } .auth-card-heading { margin-bottom: 20px; } }
 /* Human support console */
+.task-panel { display: grid; gap: 10px; border-top: 1px solid #dde9e4; padding-top: 14px; }
+.task-panel > header, .task-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.task-panel small, .task-heading span { color: #68828f; font-size: 12px; }
+.task-item { border: 1px solid #dbe8e4; border-radius: 10px; padding: 13px; display: grid; gap: 9px; overflow-wrap: anywhere; }
+.task-item p { margin: 0; font-size: 13px; white-space: pre-wrap; }
+.task-completed, .task-cancelled { opacity: .65; background: #f6f8f7; }
+.task-question { display: grid; gap: 12px; padding: 13px; border-radius: 8px; background: #edf8f3; }
+.task-question strong { white-space: pre-wrap; font-size: 14px; }
+.task-question form { display: flex; flex-wrap: wrap; gap: 8px; }
+.task-question input { min-width: 0; flex: 1; }
 .support-shell { max-width: 1440px; margin: 0 auto; padding: 28px; color: #203b50; min-height: 100vh; }
 .support-top, .support-detail > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 20px; }
 .support-top h1 { font-size: 26px; margin: 5px 0; } .support-top small { color: #148b76; letter-spacing: .12em; }

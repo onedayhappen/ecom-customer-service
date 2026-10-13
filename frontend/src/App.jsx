@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUpRight, Bot, CircleAlert, Headphones, ShieldCheck, Sparkles, UserRound, Zap } from 'lucide-react'
 import SupportConsole from './SupportConsole'
+import TaskPanel from './TaskPanel'
 import { labels, post, request, Transcript, useConversation } from './supportClient'
 
 const SESSION_KEY = 'ecom-agent-session-id'
@@ -27,16 +28,21 @@ export default function App() {
   const [busy, setBusy] = useState(false), [confirmation, setConfirmation] = useState(''), [retry, setRetry] = useState(null)
   const conversation = useConversation(authenticated ? sessionId : null)
   const control = useRef(null), activeSession = useRef(sessionId)
+  const sendVersion = useRef(0)
   activeSession.current = sessionId; control.current = conversation.state
-  useEffect(() => { if (conversation.state && conversation.state.mode !== 'bot') { setConfirmation(''); setBusy(false) } }, [conversation.state?.mode, conversation.state?.control_version])
+  useEffect(() => {
+    if (conversation.state && (conversation.state.mode !== 'bot' || confirmation?.controlVersion < conversation.state.control_version)) setConfirmation('')
+    if (conversation.state && conversation.state.mode !== 'bot') setBusy(false)
+  }, [conversation.state?.mode, conversation.state?.control_version, confirmation?.controlVersion])
   async function loadIdentity() {
     try { const me = await request('/api/v1/support/me'); setIdentity(me); setAuthenticated(true) }
     catch { setAuthenticated(false); setIdentity(null) }
   }
   useEffect(() => { loadIdentity() }, [])
   function ensureId() { const sid = sessionId || crypto.randomUUID(); activeSession.current = sid; localStorage.setItem(SESSION_KEY, sid); setSessionId(sid); return sid }
-  function startNew() { localStorage.removeItem(SESSION_KEY); setSessionId(''); setConfirmation(''); setInput(''); setNotice(''); setRetry(null); setBusy(false) }
+  function startNew() { sendVersion.current++; localStorage.removeItem(SESSION_KEY); setSessionId(''); setConfirmation(''); setInput(''); setNotice(''); setRetry(null); setBusy(false) }
   async function handoff() {
+    sendVersion.current++
     const sid = ensureId()
     try { const state = await post(`/api/v1/sessions/${sid}/handoff`); if (activeSession.current === sid) { conversation.setState(state); setConfirmation(''); setBusy(false); setNotice('已进入人工队列，可以继续补充信息。') } }
     catch (e) { setNotice(e.message) }
@@ -45,21 +51,25 @@ export default function App() {
     try { conversation.setState(await post(`/api/v1/sessions/${sessionId}/resume-bot`)); setConfirmation(''); setNotice('已返回机器人，之前的业务操作不会自动重试。') }
     catch (e) { setNotice(e.message) }
   }
-  async function send(e, confirmed = false) {
+  async function send(e, confirmed = false, suppliedMessage = '', taskInput = {}) {
     e?.preventDefault()
-    const message = confirmed ? '确认' : input.trim()
-    if (!message || busy) return
+    const message = suppliedMessage || (confirmed ? '确认' : input.trim())
+    if (!message) return
+    const generation = ++sendVersion.current
     const sid = ensureId(), version = control.current?.control_version ?? 0
-    const payload = retry?.message === message && retry?.session_id === sid ? retry : { message, session_id: sid, request_id: crypto.randomUUID(), ...(confirmed && confirmation ? { confirmation_token: confirmation } : {}) }
+    const candidate = { message, session_id: sid, ...taskInput, ...(confirmed && confirmation ? { confirmation_token: confirmation.token } : {}) }
+    const { request_id: previousId, ...previous } = retry || {}
+    const payload = JSON.stringify(previous) === JSON.stringify(candidate) ? retry : { ...candidate, request_id: crypto.randomUUID() }
     setRetry(payload); setBusy(true); setNotice(''); setConfirmation('')
     try {
       let data = await post('/api/v1/chat', payload)
-      if (activeSession.current !== sid) return
-      setInput(''); setRetry(null)
+      if (activeSession.current !== sid || generation !== sendVersion.current) return
+      setInput(previous => previous.trim() === message ? '' : previous); setRetry(null)
+      const expectedVersion = data.control_version ?? version
       if (data.job_id) {
         const deadline = Date.now() + 730000
         while (Date.now() < deadline) {
-          if (activeSession.current !== sid || (control.current && (control.current.mode !== 'bot' || control.current.control_version !== version))) return
+          if (activeSession.current !== sid || generation !== sendVersion.current || (control.current && (control.current.mode !== 'bot' || control.current.control_version > expectedVersion))) return
           const status = await request(`/api/v1/chat/${data.job_id}`)
           if (status.status === 'completed') { data = status.result; break }
           if (['failed', 'expired', 'interrupted'].includes(status.status)) throw new Error(status.error || '任务未完成，可转人工核实')
@@ -67,11 +77,11 @@ export default function App() {
         }
         if (data.job_id) throw new Error('等待任务超时，可转人工核实处理结果')
       }
-      if (activeSession.current !== sid) return
+      if (activeSession.current !== sid || generation !== sendVersion.current) return
       if (data.support) conversation.setState(data.support)
-      if (!data.suppressed && data.confirmation_token && (!control.current || control.current.control_version === version) && control.current?.mode === 'bot') setConfirmation(data.confirmation_token)
-    } catch (e) { if (activeSession.current === sid) setNotice(e.message) }
-    finally { if (activeSession.current === sid) setBusy(false) }
+      if (!data.suppressed && data.confirmation_token && (!control.current || control.current.control_version <= expectedVersion) && control.current?.mode === 'bot') setConfirmation({ token: data.confirmation_token, controlVersion: expectedVersion })
+    } catch (e) { if (activeSession.current === sid && generation === sendVersion.current) setNotice(e.message) }
+    finally { if (activeSession.current === sid && generation === sendVersion.current) setBusy(false) }
   }
   async function logout() { try { await post('/api/v1/auth/logout') } finally { startNew(); setIdentity(null); setAuthenticated(false); setStaffView(false) } }
   if (!authenticated) return <AuthScreen onSave={loadIdentity} />
@@ -82,8 +92,9 @@ export default function App() {
       {state?.ticket && <div className="support-banner"><strong>工单 #{state.ticket.ticket_id.slice(0, 8)} · {labels[state.ticket.status]}</strong><span>{state.ticket.assignee ? `客服：${state.ticket.assignee}` : '消息已保存，等待客服领取。你可以继续补充信息。'}</span></div>}
       {(notice || conversation.error) && <div role="alert" className="support-alert">{notice || conversation.error}</div>}
       <Transcript messages={conversation.messages} />
+      <TaskPanel tasks={conversation.tasks} question={conversation.taskQuestion} mode={state?.mode} busy={busy} onSend={(message, data) => send(null, false, message, data)} />
       <div className="support-toolbar">{(!state || state.mode === 'bot') ? <button onClick={handoff}>转人工客服</button> : <button onClick={resume}>{state.mode === 'handoff_pending' ? '取消排队，返回机器人' : '结束人工服务，返回机器人'}</button>}{busy && <span>正在处理… 可随时转人工</span>}</div>
       {confirmation && <div className="support-banner"><span>请核对上方操作内容，只有点击确认才会提交。</span><button onClick={e => send(e, true)} disabled={busy}>确认执行</button><button onClick={() => setConfirmation('')}>暂不执行</button></div>}
-      <form className="support-compose" onSubmit={send}><textarea aria-label="咨询内容" maxLength={4000} value={input} onChange={e => setInput(e.target.value)} placeholder={state?.mode === 'bot' || !state ? '输入订单、物流或售后问题' : '向人工客服补充信息'} /><button disabled={busy || !input.trim()}>{retry ? '重试发送' : '发送消息'}</button></form>
+      <form className="support-compose" onSubmit={send}><textarea aria-label="咨询内容" maxLength={4000} value={input} onChange={e => setInput(e.target.value)} placeholder={state?.mode === 'bot' || !state ? '输入问题，也可以随时改口、暂停或取消任务' : '向人工客服补充信息'} /><button disabled={!input.trim()}>{retry ? '重试发送' : '发送消息'}</button></form>
     </section></main>
 }

@@ -171,13 +171,14 @@ def _run_order_mutation(spec: OrderMutation) -> Handler:
     ) -> ExecutionResult:
         order_id = _extract_order_id(user_input)
         if not order_id:
-            return _result(plan.intent, spec.missing_order_reply)
+            return _question(plan.intent, spec.missing_order_reply, 'order_id')
 
         out = _result(plan.intent, "")
         order_result = runner.run("query_order", {"order_id": order_id})
         out.add_step("query_order", {"order_id": order_id}, order_result)
         if not order_result.get("success"):
             out.reply = f"没有查到订单 {order_id}，请您核对一下订单号是否正确。"
+            out.question = {'field': 'order_id', 'prompt': out.reply, 'options': []}
             return out
 
         status = order_result["order"].get("status", "")
@@ -190,6 +191,7 @@ def _run_order_mutation(spec: OrderMutation) -> Handler:
         arguments = spec.arguments(user_input, order_id)
         if arguments is None:
             out.reply = f"请把新的收货地址告诉我（订单 {order_id}）。"
+            out.question = {'field': 'new_address', 'prompt': out.reply, 'options': []}
             return out
         if not runner.is_available(spec.tool_name):
             out.blocked = True
@@ -301,6 +303,12 @@ def _result(intent: Intent, reply: str) -> ExecutionResult:
     return ExecutionResult(intent=intent, execution=Execution.WORKFLOW, reply=reply)
 
 
+def _question(intent: Intent, reply: str, field: str) -> ExecutionResult:
+    out = _result(intent, reply)
+    out.question = {'field': field, 'prompt': reply, 'options': []}
+    return out
+
+
 # ---------------------------------------------------------------------------
 # 订单查询
 # ---------------------------------------------------------------------------
@@ -403,6 +411,8 @@ def _logistics_inquiry(
             # 写入 CaseManager，下一轮的“第二个/第 2 个/订单号”才能恢复原物流任务。
             if len(orders) > 1:
                 out.selection_candidates = orders[:5]
+        out.question = {'field': 'order_id', 'prompt': out.reply,
+                        'options': [{'value': o['order_id'], 'label': f"{o['order_id']}：{o.get('items_summary', '')}"} for o in orders[:5]]}
         return out
 
     order_result = runner.run("query_order", {"order_id": order_id})
@@ -410,6 +420,7 @@ def _logistics_inquiry(
     out.add_step("query_order", {"order_id": order_id}, order_result)
     if not order_result.get("success"):
         out.reply = f"没有查到订单 {order_id}，请您核对一下订单号是否正确。"
+        out.question = {'field': 'order_id', 'prompt': out.reply, 'options': []}
         return out
 
     order = order_result["order"]
@@ -460,7 +471,7 @@ def _refund_status(
 ) -> ExecutionResult:
     order_id = _extract_order_id(user_input)
     if not order_id:
-        return _result(plan.intent, "请提供订单号，我帮您查退款进度。")
+        return _question(plan.intent, "请提供订单号，我帮您查退款进度。", 'order_id')
 
     out = _result(plan.intent, "")
     if runner.is_available("query_refund"):
@@ -514,11 +525,11 @@ def _invoice(
 
     order_id = _extract_order_id(user_input)
     if not order_id:
-        return _result(plan.intent, "请提供订单号，我帮您开具发票。")
+        return _question(plan.intent, "请提供订单号，我帮您开具发票。", 'order_id')
     invoice_type = "company" if any(t in user_input for t in ("公司", "企业", "税号")) else "personal"
     title = user_input.split("抬头", 1)[-1].strip() if "抬头" in user_input else ""
     if not title:
-        return _result(plan.intent, "请提供发票抬头（个人姓名或公司名称）。")
+        return _question(plan.intent, "请提供发票抬头（个人姓名或公司名称）。", 'title')
     if not confirmed:
         out = _result(plan.intent, "")
         out.needs_confirmation = True
@@ -551,13 +562,14 @@ def _after_sale_request(
 ) -> ExecutionResult:
     order_id = _extract_order_id(user_input)
     if not order_id:
-        return _result(plan.intent, "请提供订单号，我帮您办理售后申请。")
+        return _question(plan.intent, "请提供订单号，我帮您办理售后申请。", 'order_id')
 
     order_result = runner.run("query_order", {"order_id": order_id})
     out = _result(plan.intent, "")
     out.add_step("query_order", {"order_id": order_id}, order_result)
     if not order_result.get("success"):
         out.reply = f"没有查到订单 {order_id}，请您核对一下订单号是否正确。"
+        out.question = {'field': 'order_id', 'prompt': out.reply, 'options': []}
         return out
 
     sale_type = _sale_type(user_input)
@@ -631,6 +643,7 @@ def _product_inquiry(
 
     if not parts:
         out.reply = "抱歉，没有查到相关信息，请您补充一下具体想咨询的商品或政策。"
+        out.question = {'field': 'details', 'prompt': out.reply, 'options': []}
     else:
         fallback = "\n\n".join(parts)
         out.reply = _compose_reply(plan, out, user_input, reply_generator, fallback)

@@ -97,6 +97,11 @@ def state(session_id: UUID, request: Request):
     return ensure_session(str(session_id), identity(request))
 
 
+@router.get("/sessions/{session_id}/tasks")
+def tasks(session_id: UUID, request: Request):
+    return get_store().tasks.list(str(session_id), identity(request))
+
+
 @router.post("/sessions/{session_id}/resume-bot")
 def resume(session_id: UUID, request: Request):
     return get_store().resume(str(session_id), identity(request))

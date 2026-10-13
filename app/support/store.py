@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
+from app.tasks.service import SCHEMA as TASK_SCHEMA, TaskService
 
 
 class SupportError(Exception):
@@ -23,7 +24,7 @@ class SupportError(Exception):
 
 class BotInterrupted(SupportError):
     def __init__(self):
-        super().__init__("会话已由人工接管，旧 AI 任务已停止")
+        super().__init__("会话控制状态已变化，旧 AI 任务已停止")
 
 
 def now():
@@ -63,7 +64,7 @@ SCHEMA = (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, response TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS support_bot_runs (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
-)
+) + TASK_SCHEMA
 
 
 class Tx:
@@ -87,6 +88,7 @@ class SupportStore:
         self.postgres = not dsn.startswith("sqlite:///")
         self._initialized = False
         self._schema_lock = threading.Lock()
+        self.tasks = TaskService(self)
 
     @contextmanager
     def _connection(self):
@@ -218,6 +220,7 @@ class SupportStore:
         tx.execute("""UPDATE support_conversations SET mode='handoff_pending',
             control_version=control_version+1,ticket_id=?,bot_job_id=NULL WHERE session_id=?""", (tid, c["session_id"]))
         c.update(mode="handoff_pending", ticket_id=tid, control_version=c["control_version"] + 1)
+        self.tasks.freeze(tx, c, actor)
         self._event(tx, c, "support_state", actor,
                     {"mode": c["mode"], "ticket_id": tid, "status": "queued", "reason": reason})
         return self._ticket(tx, c)
@@ -256,7 +259,7 @@ class SupportStore:
                         key=f"ticket-closed:{ticket['ticket_id']}")
             return self._state(tx, c)
 
-    def receive(self, sid, user, content, message_id, *, explicit_handoff=False, request_fingerprint=None):
+    def receive(self, sid, user, content, message_id, *, explicit_handoff=False, request_fingerprint=None, task_input=None):
         """Append once; return routing version. Delivery to the bot queue is separate."""
         with self.transaction() as tx:
             c = self._control(tx, sid, user)
@@ -276,15 +279,25 @@ class SupportStore:
                             raise SupportError("该任务此前已启动但未返回结果，请转人工核实")
                         tx.execute("UPDATE support_conversations SET bot_job_id=? WHERE session_id=?", (message_id, sid))
                 return {**self._state(tx, c), "route_version": data["route_version"], "duplicate": True}
-            if c["mode"] == "bot" and c["bot_job_id"] and not explicit_handoff:
+            task_route = {}
+            if task_input is not None and not explicit_handoff:
+                task_route = self.tasks.receive(tx, c, content, user, message_id, task_input)
+            if c["mode"] == "bot" and c["bot_job_id"] and not explicit_handoff and not task_route.get('background_control'):
                 raise SupportError("该会话已有 AI 任务，请等待完成或转人工")
             self._event(tx, c, "message", user,
                         {"role": "user", "content": content, "route_version": c["control_version"],
-                         "request_fingerprint": request_fingerprint}, key=f"user:{message_id}")
+                         "request_fingerprint": request_fingerprint, 'task_id': task_route.get('task_id')}, key=f"user:{message_id}")
             if explicit_handoff:
                 self._handoff(tx, c, "customer_requested", user)
-            elif c["mode"] == "bot":
+            elif c["mode"] == "bot" and not task_route.get('background_control'):
                 tx.execute("UPDATE support_conversations SET bot_job_id=? WHERE session_id=?", (message_id, sid))
+            if task_route.get('background_control'):
+                result = {'session_id': sid, 'reply': task_route['reply'], 'intent': 'answer_question',
+                          'confidence': 1, 'requires_human': False, 'follow_up_question': None,
+                          'control_version': c['control_version']}
+                self._event(tx, c, 'message', 'bot', {'role': 'assistant', 'content': result['reply'],
+                            'task_id': task_route.get('control_task_id')}, key=f'bot:{message_id}')
+                tx.execute('INSERT INTO support_bot_results VALUES (?,?,?)', (message_id, sid, json.dumps(result, ensure_ascii=False)))
             ticket = self._ticket(tx, c)
             if ticket and c["mode"] == "human" and ticket["status"] in {"waiting_customer", "resolved"}:
                 enabled = ticket["assignee"] and self._role(tx, ticket["assignee"]) != "customer"
@@ -372,6 +385,7 @@ class SupportStore:
                                 (c["session_id"], closed_at or now()))
             evidence = tx.all("SELECT payload,created_at FROM support_events WHERE session_id=? AND sequence<=? AND kind='tool_evidence' ORDER BY sequence DESC LIMIT 20", (c["session_id"], ceiling))
             return {"ticket": ticket, "state": state, "operations": operations,
+                    "tasks": self.tasks.snapshot(tx, c, ceiling)["tasks"],
                     "evidence": [{**json.loads(e["payload"]), "created_at": e["created_at"]} for e in evidence]}
 
     def change(self, tid, actor, version, action, assignee=None):
@@ -445,7 +459,10 @@ class SupportStore:
     def publish_bot(self, sid, user, version, job_id, content, response=None):
         with self.transaction() as tx:
             c = self._check(tx, sid, user, version)
-            self._event(tx, c, "message", "bot", {"role": "assistant", "content": content}, key=f"bot:{job_id}")
+            if response is not None:
+                self.tasks.finish(tx, c, job_id, response)
+            self._event(tx, c, "message", "bot", {"role": "assistant", "content": content,
+                        'task_id': self.tasks.message_task_id(tx, job_id)}, key=f"bot:{job_id}")
             if response is not None:
                 tx.execute("INSERT INTO support_bot_results VALUES (?,?,?) ON CONFLICT(job_id) DO NOTHING",
                            (job_id, sid, json.dumps(response, ensure_ascii=False)))
@@ -461,10 +478,13 @@ class SupportStore:
             if not inserted:
                 raise SupportError("该任务已启动过，请查看会话结果或转人工核实，不能重复执行")
             tx.execute("UPDATE support_conversations SET bot_job_id=? WHERE session_id=?", (job_id, sid))
+            self.tasks.started(tx, c, job_id)
 
     def release_bot(self, sid, user, job_id):
         with self.transaction() as tx:
-            self._control(tx, sid, user)
+            c = self._control(tx, sid, user)
+            if c['bot_job_id'] == job_id:
+                self.tasks.failed(tx, c, job_id)
             tx.execute("UPDATE support_conversations SET bot_job_id=NULL WHERE session_id=? AND bot_job_id=?", (sid, job_id))
 
     def release_admission(self, sid, user, job_id):
@@ -481,6 +501,8 @@ class SupportStore:
                 return
             if interrupted:
                 self._handoff(tx, c, "business_result_unknown", "system")
+            else:
+                self.tasks.failed(tx, c, job_id)
             tx.execute("UPDATE support_conversations SET bot_job_id=NULL WHERE session_id=?", (sid,))
 
     def evidence(self, sid, user, tool, arguments, result):

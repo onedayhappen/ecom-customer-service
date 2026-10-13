@@ -235,6 +235,18 @@ class ReactExecutor:
         # 工具 schema 只是给模型的提示，不能当作授权边界：模型可能返回
         # 未在 schema 中声明的函数名。真正的白名单来自静态 DataPlan。
         allowed_tool_names = set(plan.prompt_tool_names)
+        from app.support.runtime import current_scope
+        if current_scope():
+            # This is a conversation control tool, not a business capability.
+            tools = [*tools, {'type': 'function', 'function': {
+                'name': 'ask_user', 'description': '缺少必要信息时向用户提问并暂停当前任务。回答不会授权退款等写操作。',
+                'parameters': {'type': 'object', 'properties': {
+                    'prompt': {'type': 'string', 'minLength': 1, 'maxLength': 1000},
+                    'options': {'type': 'array', 'maxItems': 5, 'items': {'type': 'string', 'minLength': 1, 'maxLength': 200}},
+                }, 'required': ['prompt'], 'additionalProperties': False},
+            }}]
+            allowed_tool_names.add('ask_user')
+            system_prompt += '\n缺少必要信息时调用 ask_user 提问并暂停，支持选项和自由回答。不可将回答问题视为写操作确认。'
         policy = ReActPolicy(mutating_tools=frozenset(MUTATING_CAPABILITIES))
 
         working: list[dict] = [{"role": "system", "content": system_prompt}, *messages]
@@ -303,6 +315,27 @@ class ReactExecutor:
                         needs_human=True,
                         blocked=True,
                     )
+
+                if name == 'ask_user':
+                    prompt, options = args.get('prompt'), args.get('options', [])
+                    if (not isinstance(prompt, str) or not 0 < len(prompt.strip()) <= 1000
+                            or not isinstance(options, list) or len(options) > 5
+                            or any(not isinstance(o, str) or not 0 < len(o.strip()) <= 200 for o in options)):
+                        return make_result('提问信息不完整，需要人工协助核实。', needs_human=True)
+                    from app.tasks.routing import ORDER
+                    known_orders = set()
+                    for step in steps:
+                        if step.success:
+                            if step.name == 'query_order':
+                                known_orders.add(str((step.result.get('order') or {}).get('order_id', '')).upper())
+                            if step.name == 'list_user_orders':
+                                known_orders.update(str(o.get('order_id', '')).upper() for o in step.result.get('orders', []))
+                    options = [option for option in dict.fromkeys(options)
+                               if all(order.upper() in known_orders for order in ORDER.findall(option))]
+                    result = make_result(prompt)
+                    result.question = {'field': 'details', 'prompt': result.reply,
+                                       'options': [{'value': option, 'label': option} for option in options]}
+                    return result
 
                 # 第13期：收敛检测（规则3 工具调用指纹）——相同工具+参数连续重复
                 if self.convergence_detector is not None:

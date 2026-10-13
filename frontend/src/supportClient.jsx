@@ -19,8 +19,9 @@ export function useConversation(sessionId, staff = false, ticketId = '') {
   const [messages, setMessages] = useState([])
   const [state, setState] = useState(null)
   const [error, setError] = useState('')
+  const [tasks, setTasks] = useState([]), [taskQuestion, setTaskQuestion] = useState(null)
   useEffect(() => {
-    setMessages([]); setState(null); setError('')
+    setMessages([]); setState(null); setError(''); setTasks([]); setTaskQuestion(null)
     if (!sessionId) return
     let cancelled = false, source, cursor = 0
     const scope = `staff=${staff}${ticketId ? `&ticket_id=${ticketId}` : ''}`
@@ -28,6 +29,12 @@ export function useConversation(sessionId, staff = false, ticketId = '') {
       if (cancelled) return
       cursor = data.cursor
       setState(data.state)
+      setTasks(previous => {
+        const merged = new Map(previous.map(t => [t.task_id, t]))
+        data.events.filter(e => e.kind === 'task_state').forEach(e => merged.set(e.payload.task.task_id, e.payload.task))
+        return [...merged.values()]
+      })
+      data.events.filter(e => e.kind === 'task_choice').forEach(e => setTaskQuestion(e.payload.question))
       setMessages(previous => {
         const merged = new Map(previous.map(m => [m.sequence, m]))
         data.events.filter(e => e.kind === 'message').forEach(e => merged.set(e.sequence, { ...e.payload, sequence: e.sequence, actor: e.actor, at: e.created_at }))
@@ -45,7 +52,7 @@ export function useConversation(sessionId, staff = false, ticketId = '') {
         if (cancelled) return
         source = new EventSource(`${API_BASE}/api/v1/sessions/${sessionId}/support-events?after=${cursor}&${scope}`, { withCredentials: true })
         source.addEventListener('update', e => { apply(JSON.parse(e.data)); setError('') })
-        source.addEventListener('revoked', () => { source.close(); setMessages([]); setError('会话权限已变更，请返回列表刷新') })
+        source.addEventListener('revoked', () => { source.close(); setMessages([]); setTasks([]); setTaskQuestion(null); setError('会话权限已变更，请返回列表刷新') })
         source.onerror = () => { if (!cancelled) setError('连接中断，正在恢复消息…') }
         source.onopen = () => { if (!cancelled) setError('') }
       } catch (e) { if (!cancelled) setError(e.message) }
@@ -53,7 +60,7 @@ export function useConversation(sessionId, staff = false, ticketId = '') {
     start()
     return () => { cancelled = true; source?.close() }
   }, [sessionId, staff, ticketId])
-  return { messages, state, error, setState }
+  return { messages, state, error, setState, tasks, taskQuestion }
 }
 
 export function Transcript({ messages }) {

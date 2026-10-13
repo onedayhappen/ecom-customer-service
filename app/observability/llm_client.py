@@ -78,7 +78,7 @@ class LLMCallResult:
 
     __slots__ = (
         "content", "model", "prompt_tokens", "completion_tokens",
-        "total_tokens", "latency_ms", "scene", "status", "error",
+        "total_tokens", "latency_ms", "scene", "status", "error", "_choices",
     )
 
     def __init__(
@@ -92,6 +92,7 @@ class LLMCallResult:
         scene: str = SCENE_MAIN,
         status: str = "ok",
         error: str | None = None,
+        choices: list | None = None,
     ):
         self.content = content
         self.model = model
@@ -102,10 +103,11 @@ class LLMCallResult:
         self.scene = scene
         self.status = status
         self.error = error
+        self._choices = choices
 
     @property
     def choices(self) -> list[_FakeChoice]:
-        return [_FakeChoice(self.content)]
+        return self._choices if self._choices is not None else [_FakeChoice(self.content)]
 
     @property
     def usage(self) -> _FakeUsage:
@@ -412,9 +414,12 @@ class LlmClient:
     ) -> LLMCallResult:
         latency_ms = (time.perf_counter() - start) * 1000.0
         content = ""
+        choices = None
         prompt_tokens = completion_tokens = 0
         try:
             content = response.choices[0].message.content or ""
+            if getattr(response.choices[0].message, 'tool_calls', None):
+                choices = response.choices
             usage = getattr(response, "usage", None)
             prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
             completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
@@ -425,6 +430,7 @@ class LlmClient:
             content, model=model, prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens, latency_ms=latency_ms,
             scene=scene, status=status, error=error,
+            choices=choices,
         )
 
 

@@ -9,7 +9,7 @@ from hashlib import sha256
 from contextlib import asynccontextmanager, contextmanager, nullcontext
 from datetime import datetime
 from dataclasses import replace
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
 
 import jwt
@@ -149,6 +149,10 @@ class ChatRequest(BaseModel):
     request_id: UUID | None = None
     # 高风险写操作第二步必须回传上一轮返回的确认令牌。
     confirmation_token: str | None = Field(default=None, min_length=20, max_length=256)
+    task_action: Literal['answer', 'resume', 'pause', 'cancel', 'amend'] | None = None
+    task_id: UUID | None = None
+    task_version: int | None = Field(default=None, ge=1)
+    question_id: UUID | None = None
 
 
 class ChatResponse(BaseModel):
@@ -161,6 +165,9 @@ class ChatResponse(BaseModel):
     confirmation_token: str | None = None
     support: dict | None = None
     suppressed: bool = False
+    question: dict | None = None
+    task_outcome: Literal['completed', 'paused', 'needs_human'] | None = None
+    control_version: int | None = None
 
 
 class ChatAcceptedResponse(BaseModel):
@@ -169,6 +176,7 @@ class ChatAcceptedResponse(BaseModel):
     status: str = "queued"
     status_url: str
     events_url: str
+    control_version: int | None = None
 
 
 class ChatJobStatusResponse(BaseModel):
@@ -486,6 +494,7 @@ def _run_chat_job(job: ChatJob) -> dict:
         session_id=job.session_id,
         confirmation_token=job.confirmation_token,
     )
+    task_route = get_store().tasks.turn(job.session_id, job.user_id, job.job_id) if job.control_version is not None else {}
     # Jobs queued before this rollout belong only to the original bot epoch.
     # Never grant an old job the current epoch after a human takeover.
     if job.control_version is None:
@@ -501,10 +510,21 @@ def _run_chat_job(job: ChatJob) -> dict:
                     return cached
             get_store().start_bot(job.session_id, job.user_id, job.control_version, job.job_id)
             started = True
+            if task_route.get('reply'):
+                result = ChatResponse(session_id=job.session_id, reply=task_route['reply'], intent='answer_question',
+                                      confidence=1, requires_human=False, follow_up_question=None, control_version=job.control_version)
+                get_store().publish_bot(job.session_id, job.user_id, job.control_version, job.job_id, result.reply, result.model_dump())
+                return result.model_dump()
+            if task_route.get('task_id'):
+                request.task_id = UUID(task_route['task_id'])
+                request.task_version = task_route['task_version']
+                if not task_route.get('confirmation'):
+                    request.message = task_route['message']
             with _llm_lease.slot(settings.api_queue_wait_seconds) as acquired:
                 if not acquired:
                     raise TimeoutError("Agent 全局并发配额暂时耗尽")
                 result = _handle_chat(request, job.user_id)
+                result.control_version = job.control_version
                 if job.control_version is not None:
                     check_bot()
                     if result.requires_human:
@@ -527,7 +547,7 @@ def _run_chat_job(job: ChatJob) -> dict:
 def _support_response(state: dict) -> ChatResponse:
     return ChatResponse(session_id=state["session_id"], reply="", intent="human_handoff",
                         confidence=1, requires_human=state["mode"] != "bot",
-                        follow_up_question=None, support=state)
+                        follow_up_question=None, support=state, control_version=state['control_version'])
 
 
 def _ensure_chat_worker() -> None:
@@ -581,10 +601,14 @@ async def chat(
     normalized_session_id = _normalise_session_id(
         request.session_id or str(uuid5(NAMESPACE_URL, "session:" + job_id)))
     request.session_id = normalized_session_id
+    # Preserve idempotent replay of requests made before task fields were added.
+    has_task_input = any((request.task_action, request.task_id, request.task_version, request.question_id))
+    fingerprint_input = json.dumps(request.model_dump(mode='json', exclude={'request_id','session_id','message'}), sort_keys=True) if has_task_input else (request.confirmation_token or '')
     await asyncio.to_thread(ensure_session, normalized_session_id, current_user.user_id)
     routing = await asyncio.to_thread(get_store().receive, normalized_session_id, current_user.user_id,
                                      request.message, job_id, explicit_handoff=explicit_handoff(request.message),
-                                     request_fingerprint=sha256((request.confirmation_token or "").encode()).hexdigest())
+                                     request_fingerprint=sha256(fingerprint_input.encode()).hexdigest(),
+                                     task_input=request.model_dump(mode='json'))
     if routing["mode"] != "bot" or routing["route_version"] != routing["control_version"]:
         return _support_response(routing)
     cached = await asyncio.to_thread(get_store().bot_result, normalized_session_id, current_user.user_id, job_id)
@@ -600,7 +624,8 @@ async def chat(
         confirmation_token=request.confirmation_token,
         control_version=routing["route_version"],
     )
-    if settings.api_chat_execution_mode != "async":
+    task_route = await asyncio.to_thread(get_store().tasks.turn, normalized_session_id, current_user.user_id, job_id)
+    if settings.api_chat_execution_mode != "async" or task_route.get('reply'):
         return ChatResponse.model_validate(await asyncio.to_thread(_run_chat_job, job))
     try:
         await asyncio.to_thread(_chat_queue.submit, job)
@@ -623,6 +648,7 @@ async def chat(
         status="queued",
         status_url=f"/api/v1/chat/{job.job_id}",
         events_url=f"/api/v1/chat/{job.job_id}/events",
+        control_version=routing['control_version'],
     )
 
 
@@ -765,6 +791,10 @@ def _handle_chat_inner_impl(
 ) -> ChatResponse:
     """原 _handle_chat 主体；tracer 为 None 时埋点全部跳过，行为与旧版一致。"""
     session_id, history = _build_engine(user_id, request.session_id)
+    if request.task_id:
+        history = get_store().tasks.context(session_id, user_id, str(request.task_id))
+        if history and history[-1]['role'] == 'user':
+            history = history[:-1]
 
     from app.agents.engine import AgentEngine
     from app.data_plan.enums import Intent
@@ -777,7 +807,7 @@ def _handle_chat_inner_impl(
 
     # 若上一轮在多订单中要求选择，本轮只接受明确序号或候选订单号。
     # 选中后恢复原始请求并注入订单号，不让“第 2 个”交给模型猜测。
-    selection = case_manager.consume_order_selection(session_id, request.message)
+    selection = case_manager.consume_order_selection(session_id, request.message) if not request.task_id else None
     if selection and selection.get("invalid"):
         lines = ["请回复候选序号或完整订单号，例如“2”："]
         lines.extend(
@@ -791,6 +821,12 @@ def _handle_chat_inner_impl(
         )
     effective_message = request.message
     selected_intent = None
+    if request.task_id:
+        task = get_store().tasks.get(session_id, user_id, str(request.task_id))
+        selected_intent = task['intent']
+        if request.confirmation_token:
+            from app.tasks.routing import effective_text
+            effective_message = effective_text(task)
     if selection and selection.get("order_id"):
         effective_message = f"{selection['message']} {selection['order_id']}"
         selected_intent = selection["intent"]
@@ -799,6 +835,11 @@ def _handle_chat_inner_impl(
     context = [*history, {"role": "user", "content": effective_message}]
     observer.enter("INTENT")
     intent = Intent(selected_intent) if selected_intent else recognize(effective_message, messages=context)
+    if not request.task_id and current_scope():
+        scope = current_scope()
+        task = get_store().tasks.adopt(session_id, user_id, scope[3], intent.value, effective_message)
+        if task:
+            request.task_id = UUID(task['task_id'])
     observer.leave("INTENT", to_state="REWRITE", intent=intent.value)
     if tracer is not None:
         tracer.record(
@@ -848,7 +889,7 @@ def _handle_chat_inner_impl(
         )
     if rewritten.clarification:
         observer.leave("REWRITE", to_state="RESPONSE", clarification=True)
-        if rewritten.order_candidates:
+        if rewritten.order_candidates and not request.task_id:
             case_manager.request_order_selection(
                 session_id, effective_message, intent.value, list(rewritten.order_candidates),
             )
@@ -866,6 +907,8 @@ def _handle_chat_inner_impl(
             confidence=1.0,
             requires_human=False,
             follow_up_question=None,
+            question={'field': 'order_id' if rewritten.order_candidates else 'details', 'prompt': rewritten.clarification,
+                      'options': [{'value': item['order_id'], 'label': f"{item['order_id']}：{item.get('items_summary', '')}"} for item in rewritten.order_candidates]},
         )
 
     observer.leave("REWRITE", to_state="PLAN", source=getattr(rewritten, "source", "none"))
@@ -889,6 +932,7 @@ def _handle_chat_inner_impl(
         return ChatResponse(
             session_id=session_id, reply="确认令牌无效、已过期或已使用，请重新发起操作。",
             intent=intent.value, confidence=1.0, requires_human=False, follow_up_question=None,
+            task_outcome='paused',
         )
     if pending is not None:
         # 确认轮不重新依赖模型规划：直接回到已审计的原动作和原参数。
@@ -941,7 +985,7 @@ def _handle_chat_inner_impl(
         result.add_step(pending["action"], pending["arguments_dict"], outcome.result)
         observer.leave("EXECUTE", to_state="RESPONSE", replayed=outcome.replayed)
     else:
-        historical_evidence = case_manager.recent_tool_evidence(session_id)
+        historical_evidence = [] if request.task_id else case_manager.recent_tool_evidence(session_id)
         engine = AgentEngine(
             intent,
             # 回复（及 ReAct 规划）统一用 DeepSeek 主模型 deepseek-v4-flash；
@@ -968,7 +1012,7 @@ def _handle_chat_inner_impl(
             historical_evidence=historical_evidence,
         )
         observer.leave("EXECUTE", to_state="RESPONSE", execution=result.execution.value)
-    if result.selection_candidates:
+    if result.selection_candidates and not request.task_id:
         case_manager.request_order_selection(
             session_id, request.message, result.intent.value, result.selection_candidates,
         )
@@ -1014,6 +1058,8 @@ def _handle_chat_inner_impl(
         requires_human=result.needs_human,
         follow_up_question=follow_up,
         confirmation_token=result.confirmation_token,
+        question=result.question,
+        task_outcome='needs_human' if result.needs_human else ('paused' if result.blocked else None),
     )
 
 

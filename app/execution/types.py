@@ -58,6 +58,8 @@ class ExecutionResult:
     selection_candidates: list[dict[str, Any]] = field(default_factory=list)
     # needs_human 只表示需要人工介入；只有真实工单系统返回 ID 后才为 True。
     human_handoff_created: bool = False
+    # Explicit waiting state; never infer a pending task from punctuation in a reply.
+    question: dict[str, Any] | None = None
 
     def add_step(self, name: str, arguments: dict, result: dict, blocked: bool = False) -> "ExecutionResult":
         """链式追加一个工具步骤（保持调用方代码简洁）。"""
