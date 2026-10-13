@@ -149,6 +149,7 @@ class MySqlOrderDAO:
         conn = self._acquire()
         try:
             yield conn
+            conn.commit()
         finally:
             self._release(conn)
 

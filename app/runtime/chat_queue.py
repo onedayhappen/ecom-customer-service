@@ -35,6 +35,7 @@ class ChatJob:
     session_id: str
     message: str
     confirmation_token: str | None = None
+    control_version: int | None = None
 
     def to_dict(self):
         return asdict(self)
@@ -160,7 +161,8 @@ class ChatQueue:
         self.reap()
         payload = json.dumps(job.to_dict(), ensure_ascii=False, sort_keys=True)
         result = self._call('eval', self._SUBMIT, 4, self.queue_key,
-                            self.status_key(job.job_id), self.session_key(job.session_id),
+                            self.status_key(job.job_id), self.session_key(
+                                job.session_id if job.control_version is None else f'{job.session_id}:v{job.control_version}'),
                             self.deadlines_key, payload, sha256(payload.encode()).hexdigest(),
                             self.max_depth, job.job_id, job.user_id, job.session_id,
                             self.queue_timeout)

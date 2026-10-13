@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+from hashlib import sha256
 from contextlib import asynccontextmanager, contextmanager, nullcontext
 from datetime import datetime
+from dataclasses import replace
 from typing import Any
 from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
 
@@ -14,6 +16,7 @@ import jwt
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
@@ -24,6 +27,9 @@ from app.session.repository import load_session
 from app.session.lifecycle import compact_messages, context_messages
 from app.runtime.chat_queue import ChatJob, ChatQueue, ChatWorker, SessionBusy, RequestConflict
 from app.runtime.concurrency import DistributedLease, SessionLock, CoordinationUnavailable
+from app.support.runtime import get_store, bot_scope, current_scope, explicit_handoff, check_bot
+from app.support.store import SupportError, BotInterrupted
+from app.api.support import router as support_router, ensure_session
 
 auth_scheme = HTTPBearer(auto_error=False)
 
@@ -153,6 +159,8 @@ class ChatResponse(BaseModel):
     requires_human: bool
     follow_up_question: str | None
     confirmation_token: str | None = None
+    support: dict | None = None
+    suppressed: bool = False
 
 
 class ChatAcceptedResponse(BaseModel):
@@ -280,6 +288,12 @@ def _build_engine(user_id: str, session_id: str | None) -> tuple[str, list[dict]
     构造多轮上下文（末轮由调用方追加当前 user 消息）；引擎本身不持有会话状态。
     """
     normalized_session_id = _normalise_session_id(session_id)
+    if current_scope():
+        history = get_store().context(normalized_session_id, user_id)
+        # Incoming user message is already durable; execution appends it to its prompt.
+        if history and history[-1]["role"] == "user":
+            history = history[:-1]
+        return normalized_session_id, history
 
     if session_id is not None:
         # 显式 session_id 仅表示客户端继续当前聊天线程；不再有空闲恢复窗口。
@@ -306,6 +320,10 @@ def _persist_session_turn(
     PostgreSQL 使用 state_version 乐观锁；JSON 后端用跨进程文件锁包住完整的
     读改写事务。即使多个实例同时收到同一个 session 的消息，也不会互相覆盖。
     """
+    if current_scope():
+        # The outer job transaction publishes the reply only if ownership is current.
+        check_bot()
+        return
     from app.session.repository import default_session_metadata, save_session
     from app.session.summarizer import summarize
 
@@ -361,19 +379,24 @@ def _persist_session_turn(
 
 
 app = FastAPI(title="Ecom Customer Service API", version="1.0.0", lifespan=lifespan)
+# CORS must wrap auth so rejected/expired requests are readable by the UI.
+app.add_middleware(AuthMiddleware)
 app.add_middleware(
     CORSMiddleware,     # CORSMiddleware = 跨域中间件，解决前端网页和后端跨域请求浏览器拦截问题。
     allow_origins=[origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "Last-Event-ID"],
 )
-# 登录鉴权中间件：白名单（/health、/metrics、/api/v1/auth/login、OPTIONS）之外
-# 的所有请求必须携带有效 Bearer JWT；与端点级 get_current_user 依赖双保险。
-app.add_middleware(AuthMiddleware)
 
 # 登录认证路由（POST /api/v1/auth/login：用户名密码 → JWT）。
 app.include_router(auth_router)
+app.include_router(support_router)
+
+
+@app.exception_handler(SupportError)
+async def support_error_handler(request: Request, exc: SupportError):
+    return JSONResponse(status_code=exc.status, content={"detail": str(exc)})
 
 # 注册一个 GET 请求接口，访问路径：http://你的服务地址/health
 @app.get("/health")
@@ -431,6 +454,14 @@ async def get_session_history(
 def _load_session_history(session_id: str, user_id: str) -> SessionHistoryResponse:
     """同步读取会话历史（DB IO 放线程池，避免阻塞事件循环）。"""
     normalized_session_id = _normalise_session_id(session_id)
+    try:
+        get_store().state(normalized_session_id, user_id)
+    except SupportError as exc:
+        if exc.status != 404:
+            raise
+    else:
+        return SessionHistoryResponse(session_id=normalized_session_id, status="active",
+            messages=[SessionHistoryMessage(**m) for m in get_store().public_history(normalized_session_id, user_id)])
     loaded = load_session(
         normalized_session_id,
         settings.api_session_storage_backend,
@@ -455,10 +486,48 @@ def _run_chat_job(job: ChatJob) -> dict:
         session_id=job.session_id,
         confirmation_token=job.confirmation_token,
     )
-    with _llm_lease.slot(settings.api_queue_wait_seconds) as acquired:
-        if not acquired:
-            raise TimeoutError("Agent 全局并发配额暂时耗尽")
-        return _handle_chat(request, job.user_id).model_dump()
+    # Jobs queued before this rollout belong only to the original bot epoch.
+    # Never grant an old job the current epoch after a human takeover.
+    if job.control_version is None:
+        ensure_session(job.session_id, job.user_id)
+        job = replace(job, control_version=0)
+    scope = bot_scope(get_store(), job.session_id, job.user_id, job.control_version)
+    started = False
+    try:
+        with scope:
+            if job.control_version is not None:
+                cached = get_store().bot_result(job.session_id, job.user_id, job.job_id)
+                if cached:
+                    return cached
+            get_store().start_bot(job.session_id, job.user_id, job.control_version, job.job_id)
+            started = True
+            with _llm_lease.slot(settings.api_queue_wait_seconds) as acquired:
+                if not acquired:
+                    raise TimeoutError("Agent 全局并发配额暂时耗尽")
+                result = _handle_chat(request, job.user_id)
+                if job.control_version is not None:
+                    check_bot()
+                    if result.requires_human:
+                        state = get_store().handoff(job.session_id, job.user_id, "agent_escalation")
+                        return _support_response(state).model_dump()
+                    get_store().publish_bot(job.session_id, job.user_id, job.control_version, job.job_id, result.reply, result.model_dump())
+                return result.model_dump()
+    except BotInterrupted:
+        result = _support_response(get_store().state(job.session_id, job.user_id))
+        result.suppressed = True
+        return result.model_dump()
+    except CoordinationUnavailable:
+        get_store().failed_job(job.session_id, job.user_id, job.job_id, interrupted=True)
+        raise
+    finally:
+        if started:
+            get_store().release_bot(job.session_id, job.user_id, job.job_id)
+
+
+def _support_response(state: dict) -> ChatResponse:
+    return ChatResponse(session_id=state["session_id"], reply="", intent="human_handoff",
+                        confidence=1, requires_human=state["mode"] != "bot",
+                        follow_up_question=None, support=state)
 
 
 def _ensure_chat_worker() -> None:
@@ -512,8 +581,16 @@ async def chat(
     normalized_session_id = _normalise_session_id(
         request.session_id or str(uuid5(NAMESPACE_URL, "session:" + job_id)))
     request.session_id = normalized_session_id
-    if settings.api_chat_execution_mode != "async":
-        return await asyncio.to_thread(_run_chat_sync, request, current_user.user_id)
+    await asyncio.to_thread(ensure_session, normalized_session_id, current_user.user_id)
+    routing = await asyncio.to_thread(get_store().receive, normalized_session_id, current_user.user_id,
+                                     request.message, job_id, explicit_handoff=explicit_handoff(request.message),
+                                     request_fingerprint=sha256((request.confirmation_token or "").encode()).hexdigest())
+    if routing["mode"] != "bot" or routing["route_version"] != routing["control_version"]:
+        return _support_response(routing)
+    cached = await asyncio.to_thread(get_store().bot_result, normalized_session_id, current_user.user_id, job_id)
+    if cached:
+        await asyncio.to_thread(get_store().release_bot, normalized_session_id, current_user.user_id, job_id)
+        return ChatResponse.model_validate(cached)
 
     job = ChatJob(
         job_id=job_id,
@@ -521,16 +598,23 @@ async def chat(
         session_id=normalized_session_id,
         message=request.message,
         confirmation_token=request.confirmation_token,
+        control_version=routing["route_version"],
     )
+    if settings.api_chat_execution_mode != "async":
+        return ChatResponse.model_validate(await asyncio.to_thread(_run_chat_job, job))
     try:
         await asyncio.to_thread(_chat_queue.submit, job)
     except OverflowError as exc:
+        await asyncio.to_thread(get_store().release_admission, job.session_id, job.user_id, job.job_id)
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except SessionBusy as exc:
+        await asyncio.to_thread(get_store().release_admission, job.session_id, job.user_id, job.job_id)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except RequestConflict as exc:
+        await asyncio.to_thread(get_store().release_admission, job.session_id, job.user_id, job.job_id)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except CoordinationUnavailable as exc:
+        await asyncio.to_thread(get_store().release_admission, job.session_id, job.user_id, job.job_id)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     response.status_code = 202
     return ChatAcceptedResponse(
@@ -546,6 +630,9 @@ def _job_status_for_user(job_id: str, user_id: str) -> dict:
     status_data = _chat_queue.get(job_id)
     if not status_data or status_data.get("user_id") != user_id:
         raise HTTPException(status_code=404, detail="任务不存在")
+    if status_data.get("status") in {"expired", "failed", "interrupted"}:
+        sid = status_data["session_id"]
+        get_store().failed_job(sid, user_id, job_id, status_data["status"] == "interrupted")
     return status_data
 
 
@@ -787,6 +874,9 @@ def _handle_chat_inner_impl(
     # 令牌具体绑定工具名与参数，错误意图或参数变化都会被 MutationGuard 拒绝。
     guard = MutationGuard(case_manager, session_id)
     pending = guard.peek_confirmation(request.confirmation_token) if request.confirmation_token else None
+    if pending and request.message.strip().strip("。！! ") not in {"确认", "确认执行", "是", "是的", "同意"}:
+        pending = None
+        request.confirmation_token = None
     resolution = case_manager.resolve(rewritten.message)
     turn_id = case_manager.begin_turn(session_id, rewritten.message, resolution)
     if request.confirmation_token and pending is None:
@@ -939,6 +1029,13 @@ async def reset_session(
 
 
 def _handle_reset_session(session_id: str, user_id: str) -> SessionResponse:
+    try:
+        get_store().state(_normalise_session_id(session_id), user_id)
+    except SupportError as exc:
+        if exc.status != 404:
+            raise
+    else:
+        raise SupportError("会话记录用于工单追溯，请使用新建咨询；返回机器人请使用对应按钮")
     from app.session.repository import delete_session
 
     normalized_session_id, _ = _build_engine(user_id, session_id)
@@ -976,6 +1073,14 @@ async def close_session(
 
 
 def _handle_close_session(session_id: str, user_id: str) -> SessionResponse:
+    try:
+        state = get_store().state(_normalise_session_id(session_id), user_id)
+    except SupportError as exc:
+        if exc.status != 404:
+            raise
+    else:
+        if state["mode"] != "bot":
+            raise SupportError("人工处理中，请先明确结束人工服务")
     from app.session.repository import update_session_metadata
 
     normalized_session_id, _ = _build_engine(user_id, session_id)

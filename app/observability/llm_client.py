@@ -327,6 +327,8 @@ class LlmClient:
     # -- 底层调用（绕开 patch_client，避免双重采集） -----------------------
 
     def _raw_create(self, **kwargs: Any) -> Any:
+        from app.support.runtime import check_bot
+        check_bot()
         from app.observability.tracer import suspend_active_tracer
         from app.config.settings import settings
 
@@ -342,6 +344,8 @@ class LlmClient:
             return raw.chat.completions.create(**kwargs)
 
     async def _raw_acreate(self, **kwargs: Any) -> Any:
+        from app.support.runtime import check_bot
+        await asyncio.to_thread(check_bot)
         from app.observability.tracer import suspend_active_tracer
         from app.config.settings import settings
 

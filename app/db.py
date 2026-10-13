@@ -199,6 +199,7 @@ class _PooledConnection:
                     conn.rollback()
         except Exception:
             healthy = False
+            raise
         finally:
             self._pool._release(conn, healthy=healthy)
         return False

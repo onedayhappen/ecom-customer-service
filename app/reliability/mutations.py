@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from app.memory.case_manager import CaseManager
+from app.support.runtime import control_binding, valid_binding
 
 _LOCK = threading.RLock()
 _TTL = timedelta(minutes=10)
@@ -57,6 +58,7 @@ class MutationGuard:
             with self.case_manager.transaction():
                 case = self.case_manager.open_case_for_mutation(intent, order_id)
                 pending = {
+                    **control_binding(),
                     "intent": intent,
                     "token_hash": token_hash,
                     "action": action,
@@ -86,6 +88,7 @@ class MutationGuard:
                         secrets.compare_digest(str(pending.get("token_hash", "")), token_hash)
                         and not pending.get("used")
                         and valid_time
+                        and valid_binding(pending)
                     ):
                         return {"case_id": case.case_id, **pending, "arguments_dict": json.loads(pending["arguments"])}
         return None
@@ -133,6 +136,8 @@ class MutationGuard:
                 except (TypeError, ValueError):
                     not_expired = False
                 valid = (
+                    valid_binding(pending)
+                    and
                     confirmation_token
                     and secrets.compare_digest(
                         str(pending.get("token_hash", "")),

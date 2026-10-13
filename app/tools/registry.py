@@ -13,8 +13,11 @@ from app.tools.memory_tool import recall_user_memory
 from app.tools.skill_tool import load_skill
 from app.tools.text2sql import text_to_sql
 from app.reliability.failure_policy import FailureCategory
+from app.support.runtime import call_tool as controlled_tool_call
+from app.support.runtime import escalate_to_human
 
 _TOOL_MAP: dict[str, Callable] = {
+    "escalate_to_human": escalate_to_human,
     "query_order": query_order,
     "query_product": query_product,
     "query_logistics": query_logistics,
@@ -29,6 +32,10 @@ _TOOL_MAP: dict[str, Callable] = {
 # 同一份 schema 同时作为模型可调用工具清单和本地分发白名单，避免两处配置漂移。
 
 TOOL_DEFINITIONS: list[dict] = [
+    {"type": "function", "function": {
+        "name": "escalate_to_human", "description": "为当前会话创建人工工单并暂停机器人。适用于明确请求人工或需要升级处理。",
+        "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+    }},
     {
         "type": "function",
         "function": {
@@ -248,7 +255,7 @@ def execute_tool(name: str, arguments: dict) -> str:
             "error_code": FailureCategory.VALIDATION_ERROR.value,
         }, ensure_ascii=False)
     try:
-        result = func(**arguments)
+        result = controlled_tool_call(name, arguments, func)
     except Exception as e:
         result = {
             "success": False,

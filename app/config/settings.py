@@ -106,6 +106,8 @@ class Settings(BaseSettings):
     # 登录用户表：逗号分隔的 username:pbkdf2_sha256$iterations$salt$hex 条目。
     # 用 scripts/hash_password.py 生成哈希；留空则 /api/v1/auth/login 返回 503。
     api_auth_users: str = ""
+    # Empty reuses the shared PostgreSQL session DB. SQLite is explicit local/test mode.
+    support_database_url: str = ""
     # 登录签发的 JWT 有效期（秒）。
     api_auth_token_ttl_seconds: int = 86400
     # 浏览器登录态使用 HttpOnly Cookie；CSRF Cookie 只用于生成请求头令牌。

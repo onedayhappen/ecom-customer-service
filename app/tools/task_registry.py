@@ -26,6 +26,7 @@ DOMAIN_TOOL_GROUPS: dict[str, frozenset[str]] = {
         "recall_user_memory",
     }),
     "complaint": frozenset({
+        "escalate_to_human",
         "query_order",
         "search_knowledge",
         "recall_user_memory",
@@ -42,7 +43,7 @@ TASK_TOOL_GROUPS: dict[str, frozenset[str]] = {
     "list_orders": frozenset({"list_user_orders"}),
     "refund": frozenset({"query_order", "apply_refund", "search_knowledge", "list_user_orders"}),
     "product_consult": frozenset({"query_product", "recall_user_memory", "search_knowledge"}),
-    "complaint": frozenset({"query_order", "search_knowledge", "recall_user_memory"}),
+    "complaint": frozenset({"query_order", "search_knowledge", "recall_user_memory", "escalate_to_human"}),
     "general": frozenset(),
 }
 

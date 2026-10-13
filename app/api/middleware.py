@@ -86,6 +86,7 @@ class AuthMiddleware:
         state = dict(scope.get("state") or {})
         state["user_id"] = user_id
         state["auth_via_cookie"] = auth_via_cookie
+        state["token_expires_at"] = claims["exp"]
         scope["state"] = state
         await self.app(scope, receive, send)
 

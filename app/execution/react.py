@@ -252,6 +252,8 @@ class ReactExecutor:
             )
 
         for _ in range(max_steps):
+            from app.support.runtime import check_bot
+            await call_sync(check_bot)
             # 第13期：收敛检测（规则1 最大轮次阈值）——每轮「思考+工具」计一步
             if self.convergence_detector is not None:
                 report = self.convergence_detector.record_agent_step()

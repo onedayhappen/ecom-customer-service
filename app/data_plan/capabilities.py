@@ -58,7 +58,7 @@ _CANCEL_ORDER = ToolCapability("cancel_order", _BUSINESS, True, False, "取消�
 _EXPEDITE_LOGISTICS = ToolCapability("expedite_logistics", _BUSINESS, True, False, "催发货/加急物流")
 _APPLY_EXCHANGE = ToolCapability("apply_exchange", _BUSINESS, True, False, "为订单申请换货")
 _APPLY_PRICE_PROTECT = ToolCapability("apply_price_protect", _BUSINESS, True, False, "为订单申请价保退差价")
-_ESCALATE_TO_HUMAN = ToolCapability("escalate_to_human", _BUSINESS, False, False, "转人工/创建升级工单")
+_ESCALATE_TO_HUMAN = ToolCapability("escalate_to_human", _BUSINESS, True, True, "转人工/创建升级工单")
 
 # 记忆域（2）
 _READ_CASE_MEMORY = ToolCapability("read_case_memory", _MEMORY, False, False, "读取当前/历史 Case 业务事实")
@@ -100,7 +100,9 @@ IMPLEMENTED_CAPABILITIES: frozenset[str] = frozenset(
 
 # 写操作能力（执行前须用户确认）
 MUTATING_CAPABILITIES: frozenset[str] = frozenset(
-    name for name, c in CAPABILITIES.items() if c.side_effect
+    # Conversation-control writes have their own authorization/transaction path,
+    # and do not require an order ID or a second refund-style confirmation.
+    name for name, c in CAPABILITIES.items() if c.side_effect and name != "escalate_to_human"
 )
 
 

@@ -1,56 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  ArrowUpRight, Bot, Check, CheckCircle2, ChevronDown, CircleAlert,
-  Headphones, LifeBuoy, LogOut, MessageSquarePlus, Paperclip, RotateCcw,
-  SendHorizontal, Settings2, ShieldCheck, Sparkles, UserRound, Zap,
-} from 'lucide-react'
+import { ArrowUpRight, Bot, CircleAlert, Headphones, ShieldCheck, Sparkles, UserRound, Zap } from 'lucide-react'
+import SupportConsole from './SupportConsole'
+import { labels, post, request, Transcript, useConversation } from './supportClient'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 const SESSION_KEY = 'ecom-agent-session-id'
-const suggestedQuestions = [
-  { title: '订单进度', text: '帮我查一下最近一笔订单的物流进度', icon: '01' },
-  { title: '售后服务', text: '商品有问题，想申请退换货', icon: '02' },
-  { title: '优惠活动', text: '最近有什么优惠券可以使用？', icon: '03' },
-]
-
-function csrfToken() {
-  const item = document.cookie.split('; ').find((entry) => entry.startsWith('ecom_agent_csrf='))
-  return item ? decodeURIComponent(item.slice('ecom_agent_csrf='.length)) : ''
-}
-
-function request(path, options = {}) {
-  const method = (options.method || 'GET').toUpperCase()
-  const csrf = !['GET', 'HEAD', 'OPTIONS'].includes(method) ? csrfToken() : ''
-  return fetch(`${API_BASE}${path}`, {
-    ...options, credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-Token': csrf } : {}), ...(options.headers || {}) },
-  }).then(async (response) => {
-    const body = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(body.detail || '请求失败，请稍后重试')
-    return body
-  })
-}
-
-function wait(ms) { return new Promise((resolve) => setTimeout(resolve, ms)) }
-async function waitForChatJob(jobId) {
-  const deadline = Date.now() + 120000
-  while (Date.now() < deadline) {
-    const data = await request(`/api/v1/chat/${jobId}`)
-    if (data.status === 'completed') return data.result
-    if (data.status === 'failed') throw new Error(data.error || '客服任务执行失败')
-    await wait(250)
-  }
-  throw new Error('客服任务等待超时，请稍后查看会话')
-}
-
-function Message({ item }) {
-  const isUser = item.role === 'user'
-  return <div className={`message-row ${isUser ? 'message-user' : 'message-agent'}`}>
-    <div className="avatar" aria-hidden="true">{isUser ? <UserRound size={17} /> : <Bot size={18} />}</div>
-    <div className="message-content"><div className="message-meta"><strong>{isUser ? '你' : '小夕'}</strong><span>{isUser ? '刚刚' : '智能客服 · 在线'}</span></div><div className="message-bubble">{item.content}</div></div>
-  </div>
-}
-
 function AuthScreen({ onSave }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -68,38 +21,69 @@ function AuthScreen({ onSave }) {
 }
 
 export default function App() {
-  const [authenticated, setAuthenticated] = useState(false)
+  const [identity, setIdentity] = useState(null), [authenticated, setAuthenticated] = useState(false)
   const [sessionId, setSessionId] = useState(() => localStorage.getItem(SESSION_KEY) || '')
-  const [messages, setMessages] = useState([])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [notice, setNotice] = useState('')
-  const [handoff, setHandoff] = useState(false)
-  const [confirmationToken, setConfirmationToken] = useState('')
-  const endRef = useRef(null)
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
-  useEffect(() => { let cancelled = false; request('/api/v1/me').then(() => { if (!cancelled) setAuthenticated(true) }).catch(() => { if (!cancelled) { localStorage.removeItem(SESSION_KEY); setAuthenticated(false); setSessionId('') } }); return () => { cancelled = true } }, [])
-  useEffect(() => { if (!authenticated || !sessionId) return; request(`/api/v1/sessions/${sessionId}`).then((data) => setMessages(data.messages || [])).catch(() => localStorage.removeItem(SESSION_KEY)) }, [authenticated, sessionId])
-  function startNew() { localStorage.removeItem(SESSION_KEY); setSessionId(''); setMessages([]); setHandoff(false); setConfirmationToken(''); setNotice('已创建新的咨询上下文。') }
-  async function send() {
-    const message = input.trim(); if (!message || loading) return
-    const activeSessionId = sessionId || crypto.randomUUID()
-    if (!sessionId) { localStorage.setItem(SESSION_KEY, activeSessionId); setSessionId(activeSessionId) }
-    setInput(''); setLoading(true); setNotice(''); setMessages((current) => [...current, { role: 'user', content: message }])
-    try {
-      const accepted = await request('/api/v1/chat', { method: 'POST', body: JSON.stringify({ message, session_id: activeSessionId, request_id: crypto.randomUUID(), ...(confirmationToken ? { confirmation_token: confirmationToken } : {}) }) })
-      const data = accepted.job_id ? await waitForChatJob(accepted.job_id) : accepted
-      localStorage.setItem(SESSION_KEY, data.session_id); setSessionId(data.session_id); setHandoff(Boolean(data.requires_human)); setConfirmationToken(data.confirmation_token || '')
-      if (data.confirmation_token) setNotice('请核对客服列出的操作内容；回复“确认”后才会执行。')
-      setMessages((current) => [...current, { role: 'assistant', content: data.reply }])
-    } catch (err) { setMessages((current) => current.slice(0, -1)); setNotice(err.message) } finally { setLoading(false) }
+  const [staffView, setStaffView] = useState(false), [input, setInput] = useState(''), [notice, setNotice] = useState('')
+  const [busy, setBusy] = useState(false), [confirmation, setConfirmation] = useState(''), [retry, setRetry] = useState(null)
+  const conversation = useConversation(authenticated ? sessionId : null)
+  const control = useRef(null), activeSession = useRef(sessionId)
+  activeSession.current = sessionId; control.current = conversation.state
+  useEffect(() => { if (conversation.state && conversation.state.mode !== 'bot') { setConfirmation(''); setBusy(false) } }, [conversation.state?.mode, conversation.state?.control_version])
+  async function loadIdentity() {
+    try { const me = await request('/api/v1/support/me'); setIdentity(me); setAuthenticated(true) }
+    catch { setAuthenticated(false); setIdentity(null) }
   }
-  async function reset() { if (!sessionId) return startNew(); try { await request(`/api/v1/sessions/${sessionId}/reset`, { method: 'POST' }); startNew() } catch (err) { setNotice(err.message) } }
-  async function logout() { try { await request('/api/v1/auth/logout', { method: 'POST' }) } catch { /* 本地状态仍需清理 */ } localStorage.removeItem(SESSION_KEY); setAuthenticated(false); setSessionId(''); setMessages([]); setConfirmationToken('') }
-  function useSuggestion(text) { setInput(text); window.setTimeout(() => document.querySelector('.composer textarea')?.focus(), 0) }
-  if (!authenticated) return <AuthScreen onSave={() => setAuthenticated(true)} />
-  return <main className="app-shell">
-    <aside className="sidebar"><div className="sidebar-top"><div className="sidebar-brand"><span className="brand-mark small"><Bot size={18} /></span><span>小夕客服</span><span className="brand-beta">PRO</span></div><button className="new-chat" onClick={startNew}><MessageSquarePlus size={17} />新建咨询<span>⌘ K</span></button><div className="nav-label">工作台</div><div className="nav-item active"><span><MessageSquarePlus size={17} />当前会话</span><span className="nav-count">{messages.length ? messages.length : ''}</span></div><div className="nav-item"><span><LifeBuoy size={17} />服务指南</span><ArrowUpRight size={14} /></div></div><div className="sidebar-middle"><div className="nav-label">当前上下文</div><div className="session-card"><div className="session-card-title"><span className="session-pulse" />服务进行中 <ChevronDown size={14} /></div><strong>{sessionId ? `#${sessionId.slice(0, 8)}` : '等待新的咨询'}</strong><span className="session-caption">{messages.length ? `${messages.length} 条消息 · 刚刚更新` : '输入问题开始对话'}</span></div></div><div className="sidebar-bottom"><div className="workspace-tip"><Sparkles size={15} /><span><strong>小贴士</strong><small>描述得越具体，解决得越快</small></span></div><button className="side-action" onClick={reset}><RotateCcw size={16} />重置会话</button><button className="side-action" onClick={logout}><LogOut size={16} />退出工作台</button><div className="profile"><span className="profile-avatar">客</span><span><strong>客服用户</strong><small>已验证身份</small></span><Settings2 size={16} /></div></div></aside>
-    <section className="workspace"><header className="workspace-header"><div className="mobile-brand"><span className="brand-mark small"><Bot size={17} /></span><strong>小夕客服</strong></div><div className="breadcrumbs"><span>工作台</span><span>/</span><strong>智能咨询</strong></div><div className="header-actions"><div className="header-status"><span className="live-dot" />服务在线</div><button className="icon-button" title="服务指南"><LifeBuoy size={18} /></button></div></header><div className="workspace-body"><section className="chat-panel"><div className="conversation-head"><div><span className="eyebrow"><Sparkles size={13} /> AI 智能助手</span><h1>今天有什么可以帮你？</h1><p>小夕会理解你的问题，并给出清晰的处理方案。</p></div><div className="secure-label"><ShieldCheck size={15} />会话已加密</div></div><section className="conversation" aria-live="polite">{!messages.length && <div className="empty-state"><div className="empty-icon"><Bot size={30} /></div><h2>你好，我是小夕</h2><p>从下面选择一个常见问题，或直接告诉我你遇到的情况。</p><div className="suggestions">{suggestedQuestions.map((item) => <button key={item.title} className="suggestion" onClick={() => useSuggestion(item.text)}><span className="suggestion-index">{item.icon}</span><span><strong>{item.title}</strong><small>{item.text}</small></span><ArrowUpRight size={15} /></button>)}</div></div>}{messages.map((item, index) => <Message key={`${item.role}-${index}`} item={item} />)}{loading && <div className="typing-row"><div className="avatar"><Bot size={18} /></div><div className="typing"><span /><span /><span /><small>小夕正在思考…</small></div></div>}<div ref={endRef} /></section>{handoff && <div className="handoff"><CheckCircle2 size={17} /><span><strong>已为你安排人工跟进</strong><small>客服团队会在当前会话中继续处理</small></span></div>}{notice && <div className="notice"><CircleAlert size={17} /><span>{notice}</span><button onClick={() => setNotice('')} aria-label="关闭提示">×</button></div>}<footer className="composer-wrap"><div className="composer"><textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() } }} placeholder="描述你遇到的问题…" rows="1" /><div className="composer-actions"><button className="attach-button" title="添加附件"><Paperclip size={17} /></button><button className="send-button" onClick={send} disabled={!input.trim() || loading} title="发送消息"><SendHorizontal size={18} /></button></div></div><div className="composer-meta"><span>Enter 发送 · Shift + Enter 换行</span><span>{input.length}/2000</span></div></footer></section><aside className="insights-panel"><div className="insights-heading"><span>服务概览</span><button title="更多设置"><Settings2 size={16} /></button></div><div className="service-card"><div className="service-icon"><Headphones size={19} /></div><div><strong>智能客服</strong><span><i /> 正在为你服务</span></div><Check size={17} /></div><div className="insight-block"><span className="insight-label">当前会话</span><strong>{sessionId ? `#${sessionId.slice(0, 8)}` : '尚未开始'}</strong><span className="insight-muted">所有消息会自动保存</span></div><div className="insight-divider" /><div className="insight-block"><span className="insight-label">你可以这样问</span><ul><li>“我的订单什么时候送到？”</li><li>“商品尺寸不合适怎么办？”</li><li>“如何修改收货地址？”</li></ul></div><div className="insight-support"><LifeBuoy size={17} /><span><strong>需要更多帮助？</strong><small>随时可以请求人工客服</small></span><ArrowUpRight size={15} /></div></aside></div></section>
-  </main>
+  useEffect(() => { loadIdentity() }, [])
+  function ensureId() { const sid = sessionId || crypto.randomUUID(); activeSession.current = sid; localStorage.setItem(SESSION_KEY, sid); setSessionId(sid); return sid }
+  function startNew() { localStorage.removeItem(SESSION_KEY); setSessionId(''); setConfirmation(''); setInput(''); setNotice(''); setRetry(null); setBusy(false) }
+  async function handoff() {
+    const sid = ensureId()
+    try { const state = await post(`/api/v1/sessions/${sid}/handoff`); if (activeSession.current === sid) { conversation.setState(state); setConfirmation(''); setBusy(false); setNotice('已进入人工队列，可以继续补充信息。') } }
+    catch (e) { setNotice(e.message) }
+  }
+  async function resume() {
+    try { conversation.setState(await post(`/api/v1/sessions/${sessionId}/resume-bot`)); setConfirmation(''); setNotice('已返回机器人，之前的业务操作不会自动重试。') }
+    catch (e) { setNotice(e.message) }
+  }
+  async function send(e, confirmed = false) {
+    e?.preventDefault()
+    const message = confirmed ? '确认' : input.trim()
+    if (!message || busy) return
+    const sid = ensureId(), version = control.current?.control_version ?? 0
+    const payload = retry?.message === message && retry?.session_id === sid ? retry : { message, session_id: sid, request_id: crypto.randomUUID(), ...(confirmed && confirmation ? { confirmation_token: confirmation } : {}) }
+    setRetry(payload); setBusy(true); setNotice(''); setConfirmation('')
+    try {
+      let data = await post('/api/v1/chat', payload)
+      if (activeSession.current !== sid) return
+      setInput(''); setRetry(null)
+      if (data.job_id) {
+        const deadline = Date.now() + 730000
+        while (Date.now() < deadline) {
+          if (activeSession.current !== sid || (control.current && (control.current.mode !== 'bot' || control.current.control_version !== version))) return
+          const status = await request(`/api/v1/chat/${data.job_id}`)
+          if (status.status === 'completed') { data = status.result; break }
+          if (['failed', 'expired', 'interrupted'].includes(status.status)) throw new Error(status.error || '任务未完成，可转人工核实')
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+        if (data.job_id) throw new Error('等待任务超时，可转人工核实处理结果')
+      }
+      if (activeSession.current !== sid) return
+      if (data.support) conversation.setState(data.support)
+      if (!data.suppressed && data.confirmation_token && (!control.current || control.current.control_version === version) && control.current?.mode === 'bot') setConfirmation(data.confirmation_token)
+    } catch (e) { if (activeSession.current === sid) setNotice(e.message) }
+    finally { if (activeSession.current === sid) setBusy(false) }
+  }
+  async function logout() { try { await post('/api/v1/auth/logout') } finally { startNew(); setIdentity(null); setAuthenticated(false); setStaffView(false) } }
+  if (!authenticated) return <AuthScreen onSave={loadIdentity} />
+  if (staffView && identity?.role !== 'customer') return <SupportConsole role={identity.role} onBack={() => setStaffView(false)} />
+  const state = conversation.state
+  return <main className="support-shell customer-shell"><header className="support-top"><div><small>小夕客服</small><h1>{state?.mode === 'human' ? '人工客服' : state?.mode === 'handoff_pending' ? '等待人工接入' : '智能咨询'}</h1></div><div className="support-toolbar">{identity?.role !== 'customer' && <button onClick={() => setStaffView(true)}>客服工作台</button>}<button onClick={startNew}>新建咨询</button><button onClick={logout}>退出</button></div></header>
+    <section className="support-detail"><header><span>会话 {sessionId ? `#${sessionId.slice(0, 8)}` : '尚未开始'}</span><span>{identity?.user_id}</span></header>
+      {state?.ticket && <div className="support-banner"><strong>工单 #{state.ticket.ticket_id.slice(0, 8)} · {labels[state.ticket.status]}</strong><span>{state.ticket.assignee ? `客服：${state.ticket.assignee}` : '消息已保存，等待客服领取。你可以继续补充信息。'}</span></div>}
+      {(notice || conversation.error) && <div role="alert" className="support-alert">{notice || conversation.error}</div>}
+      <Transcript messages={conversation.messages} />
+      <div className="support-toolbar">{(!state || state.mode === 'bot') ? <button onClick={handoff}>转人工客服</button> : <button onClick={resume}>{state.mode === 'handoff_pending' ? '取消排队，返回机器人' : '结束人工服务，返回机器人'}</button>}{busy && <span>正在处理… 可随时转人工</span>}</div>
+      {confirmation && <div className="support-banner"><span>请核对上方操作内容，只有点击确认才会提交。</span><button onClick={e => send(e, true)} disabled={busy}>确认执行</button><button onClick={() => setConfirmation('')}>暂不执行</button></div>}
+      <form className="support-compose" onSubmit={send}><textarea aria-label="咨询内容" maxLength={4000} value={input} onChange={e => setInput(e.target.value)} placeholder={state?.mode === 'bot' || !state ? '输入订单、物流或售后问题' : '向人工客服补充信息'} /><button disabled={busy || !input.trim()}>{retry ? '重试发送' : '发送消息'}</button></form>
+    </section></main>
 }
