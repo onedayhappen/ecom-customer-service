@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Iterable
+import threading
 
 from openai import OpenAI
 from app.config.settings import settings
@@ -35,6 +36,7 @@ class Embedder:
         self._batch_size = batch_size
         self._local_model_path = Path(local_model_path).resolve() if local_model_path else None
         self._local_model = None
+        self._load_lock = threading.Lock()
         if self._provider == "local" and (
             self._local_model_path is None or not self._local_model_path.exists()
         ):
@@ -52,13 +54,17 @@ class Embedder:
         if not texts:
             return []
         if self._provider == "local":
-            return self._encode_local(texts)
+            from app.runtime.budgets import embedding_budget
+            with embedding_budget(self.model, texts, remote=False):
+                return self._encode_local(texts)
 
         out: list[list[float]] = []
         # 批处理兼顾接口吞吐和单次请求大小，输出顺序与输入文本严格一致。
         for i in range(0, len(texts), self._batch_size):
             batch = texts[i : i + self._batch_size]
-            resp = self._client.embeddings.create(model=self._model, input=batch)
+            from app.runtime.budgets import embedding_budget
+            with embedding_budget(self.model, batch):
+                resp = self._client.embeddings.create(model=self._model, input=batch)
             out.extend(item.embedding for item in resp.data)
         return out
 
@@ -66,15 +72,16 @@ class Embedder:
         return self.encode([text])[0]
 
     def _encode_local(self, texts: list[str]) -> list[list[float]]:
-        if self._local_model is None:
-            try:
-                from sentence_transformers import SentenceTransformer
-            except ImportError as error:
-                raise ImportError(
-                    "本地 Embedding 需要 sentence-transformers。"
-                    "请在当前环境安装 `sentence-transformers` 和兼容的 torch。"
-                ) from error
-            self._local_model = SentenceTransformer(str(self._local_model_path))
+        with self._load_lock:
+            if self._local_model is None:
+                try:
+                    from sentence_transformers import SentenceTransformer
+                except ImportError as error:
+                    raise ImportError(
+                        "本地 Embedding 需要 sentence-transformers。"
+                        "请在当前环境安装 `sentence-transformers` 和兼容的 torch。"
+                    ) from error
+                self._local_model = SentenceTransformer(str(self._local_model_path))
 
         vectors = self._local_model.encode(
             texts,

@@ -19,7 +19,9 @@ from app.runtime.chat_queue import ChatWorker
 
 
 def main() -> None:
-    redis_url = settings.api_concurrency_redis_url or settings.memory_redis_url
+    from app.runtime.metrics import install
+    install(settings.runtime_metrics_port, settings.runtime_metrics_host)
+    redis_url = settings.api_concurrency_redis_url
     if not redis_url:
         raise RuntimeError("独立 Worker 必须配置 API_CONCURRENCY_REDIS_URL")
     worker = ChatWorker(
@@ -35,6 +37,8 @@ def main() -> None:
             time.sleep(1)
     finally:
         worker.stop()
+        from app.rag.remote import close_clients
+        close_clients()
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowUpRight, Bot, CircleAlert, Headphones, ShieldCheck, Sparkles, UserRound, Zap } from 'lucide-react'
 import SupportConsole from './SupportConsole'
 import TaskPanel from './TaskPanel'
-import { labels, post, request, Transcript, useConversation } from './supportClient'
+import { labels, post, request, Transcript, useConversation, nextConversationUpdate } from './supportClient'
 
 const SESSION_KEY = 'ecom-agent-session-id'
 function AuthScreen({ onSave }) {
@@ -70,10 +70,13 @@ export default function App() {
         const deadline = Date.now() + 730000
         while (Date.now() < deadline) {
           if (activeSession.current !== sid || generation !== sendVersion.current || (control.current && (control.current.mode !== 'bot' || control.current.control_version > expectedVersion))) return
-          const status = await request(`/api/v1/chat/${data.job_id}`)
-          if (status.status === 'completed') { data = status.result; break }
-          if (['failed', 'expired', 'interrupted'].includes(status.status)) throw new Error(status.error || '任务未完成，可转人工核实')
-          await new Promise(resolve => setTimeout(resolve, 1000))
+          const update = nextConversationUpdate(sid)
+          try {
+            const status = await request(`/api/v1/chat/${data.job_id}`)
+            if (status.status === 'completed') { data = status.result; break }
+            if (['failed', 'expired', 'interrupted', 'superseded'].includes(status.status)) throw new Error(status.error || '任务未完成，可转人工核实')
+            await update.promise
+          } finally { update.cancel() }
         }
         if (data.job_id) throw new Error('等待任务超时，可转人工核实处理结果')
       }
@@ -91,7 +94,7 @@ export default function App() {
     <section className="support-detail"><header><span>会话 {sessionId ? `#${sessionId.slice(0, 8)}` : '尚未开始'}</span><span>{identity?.user_id}</span></header>
       {state?.ticket && <div className="support-banner"><strong>工单 #{state.ticket.ticket_id.slice(0, 8)} · {labels[state.ticket.status]}</strong><span>{state.ticket.assignee ? `客服：${state.ticket.assignee}` : '消息已保存，等待客服领取。你可以继续补充信息。'}</span></div>}
       {(notice || conversation.error) && <div role="alert" className="support-alert">{notice || conversation.error}</div>}
-      <Transcript messages={conversation.messages} />
+      <Transcript {...conversation} />
       <TaskPanel tasks={conversation.tasks} question={conversation.taskQuestion} mode={state?.mode} busy={busy} onSend={(message, data) => send(null, false, message, data)} />
       <div className="support-toolbar">{(!state || state.mode === 'bot') ? <button onClick={handoff}>转人工客服</button> : <button onClick={resume}>{state.mode === 'handoff_pending' ? '取消排队，返回机器人' : '结束人工服务，返回机器人'}</button>}{busy && <span>正在处理… 可随时转人工</span>}</div>
       {confirmation && <div className="support-banner"><span>请核对上方操作内容，只有点击确认才会提交。</span><button onClick={e => send(e, true)} disabled={busy}>确认执行</button><button onClick={() => setConfirmation('')}>暂不执行</button></div>}

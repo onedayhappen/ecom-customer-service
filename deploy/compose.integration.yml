@@ -1,0 +1,24 @@
+# Isolated integration infrastructure. Never points to business databases.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ecom_concurrency_test
+      POSTGRES_USER: test_runner
+      POSTGRES_PASSWORD: isolated_test_only
+    ports: ["127.0.0.1:25432:5432"]
+    tmpfs: ["/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_runner -d ecom_concurrency_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:26379:6379"]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

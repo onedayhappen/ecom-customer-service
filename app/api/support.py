@@ -2,17 +2,25 @@
 import asyncio
 import json
 import time
+import random
 from uuid import UUID
 
-from fastapi import APIRouter, Request, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Request, Query, Depends
 from pydantic import BaseModel, Field
 from typing import Literal
 
 from app.support.runtime import get_store
 from app.support.store import SupportError
+from app.config.settings import settings
+from starlette.background import BackgroundTask
+from app.runtime.streaming import BoundedStreamingResponse, open_subscription
 
-router = APIRouter(prefix="/api/v1", tags=["support"])
+async def request_budget(request: Request):
+    from app.runtime.budgets import admit_request
+    await asyncio.to_thread(admit_request, identity(request), 'read' if request.method == 'GET' else 'control')
+
+
+router = APIRouter(prefix="/api/v1", tags=["support"], dependencies=[Depends(request_budget)])
 
 
 def identity(request):
@@ -102,6 +110,12 @@ def tasks(session_id: UUID, request: Request):
     return get_store().tasks.list(str(session_id), identity(request))
 
 
+@router.get('/sessions/{session_id}/tasks/history')
+def task_history(session_id: UUID, request: Request, before: int | None = Query(None, ge=1),
+                 limit: int = Query(30, ge=1, le=100)):
+    return get_store().tasks.history(str(session_id), identity(request), before, limit)
+
+
 @router.post("/sessions/{session_id}/resume-bot")
 def resume(session_id: UUID, request: Request):
     return get_store().resume(str(session_id), identity(request))
@@ -113,6 +127,13 @@ def messages(session_id: UUID, request: Request, after: int = Query(0, ge=0), st
                               ticket_id=str(ticket_id) if ticket_id else None)
 
 
+@router.get('/sessions/{session_id}/transcript')
+def transcript(session_id: UUID, request: Request, before: int | None = Query(None, ge=1),
+               limit: int = Query(50, ge=1, le=100), staff: bool = False, ticket_id: UUID | None = None):
+    return get_store().transcript(str(session_id), identity(request), before, limit, staff=staff,
+                                 ticket_id=str(ticket_id) if ticket_id else None)
+
+
 @router.get("/sessions/{session_id}/support-events")
 async def events(session_id: UUID, request: Request, after: int = Query(0, ge=0), staff: bool = False, ticket_id: UUID | None = None):
     sid, user = str(session_id), identity(request)
@@ -122,30 +143,40 @@ async def events(session_id: UUID, request: Request, after: int = Query(0, ge=0)
     except ValueError:
         raise SupportError("事件游标不合法", 422)
     await asyncio.to_thread(get_store().events, sid, user, after, staff=staff, ticket_id=tid)
+    wake, lost, cleanup = await open_subscription(user, sid)
 
     async def stream():
         cursor = after
-        # Durable catch-up also works during Redis outages. Bounded 2s polling,
-        # no queue reaper; only one connection per open conversation in the UI.
-        while not await request.is_disconnected():
-            if time.time() >= getattr(request.state, "token_expires_at", 0):
-                yield 'event: revoked\ndata: {}\n\n'
-                return
-            try:
-                data = await asyncio.to_thread(get_store().events, sid, user, cursor, staff=staff, ticket_id=tid)
-            except SupportError:
-                yield 'event: revoked\ndata: {}\n\n'
-                return
-            if data["cursor"] != cursor:
-                cursor = data["cursor"]
-                yield f"id: {cursor}\nevent: update\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-                if len(data["events"]) == 100:
-                    continue
-            else:
-                yield ": heartbeat\n\n"
-            await asyncio.sleep(2)
-    return StreamingResponse(stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+        try:
+            yield f'retry: {random.randint(2000, 5000)}\n\n'
+            while not await request.is_disconnected():
+                if lost.is_set():
+                    return
+                wake.clear()  # Before reading: events arriving during the query cannot be lost.
+                if time.time() >= getattr(request.state, "token_expires_at", 0):
+                    yield 'event: revoked\ndata: {}\n\n'
+                    return
+                try:
+                    data = await asyncio.to_thread(get_store().events, sid, user, cursor, staff=staff, ticket_id=tid)
+                except SupportError:
+                    yield 'event: revoked\ndata: {}\n\n'
+                    return
+                if data["cursor"] != cursor:
+                    cursor = data["cursor"]
+                    yield f"id: {cursor}\nevent: update\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+                    if len(data["events"]) == 100:
+                        continue
+                else:
+                    yield ": heartbeat\n\n"
+                try:
+                    await asyncio.wait_for(wake.wait(), timeout=min(settings.api_sse_catchup_seconds,
+                        max(.01, getattr(request.state, 'token_expires_at', 0) - time.time())))
+                except TimeoutError:
+                    pass
+        finally:
+            await cleanup()
+    return BoundedStreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}, background=BackgroundTask(cleanup))
 
 
 @router.get("/support/tickets")

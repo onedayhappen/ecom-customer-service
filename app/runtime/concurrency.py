@@ -5,12 +5,31 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
+from contextvars import ContextVar
 from hashlib import sha256
 from pathlib import Path
 
 
 class CoordinationUnavailable(RuntimeError):
     pass
+
+
+_execution_lease = ContextVar('execution_lease', default=None)
+
+
+@contextmanager
+def execution_lease_guard(lost):
+    token = _execution_lease.set(lost)
+    try:
+        yield
+    finally:
+        _execution_lease.reset(token)
+
+
+def check_execution_lease():
+    lost = _execution_lease.get()
+    if lost is not None and lost.is_set():
+        raise CoordinationUnavailable('执行租约已丢失，停止后续模型和业务调用')
 
 
 def redis_client(url):
@@ -90,9 +109,9 @@ class DistributedLease:
                 pass  # Expiry is the crash recovery path. Never release someone else's slot.
 
     @contextmanager
-    def slot(self, timeout=0.0):
+    def slot(self, timeout=0.0, *, lost_event=None):
         token = self.acquire(timeout)
-        stop, lost = threading.Event(), threading.Event()
+        stop, lost = threading.Event(), lost_event if lost_event is not None else threading.Event()
         def heartbeat():
             while not stop.wait(self.lease_seconds / 3):
                 try:

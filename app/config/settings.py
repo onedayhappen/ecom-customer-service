@@ -79,12 +79,23 @@ class Settings(BaseSettings):
     # ChromaBackend 的持久化目录与 collection 名
     chroma_persist_dir: str = "data/rag/chroma"
     chroma_collection: str = "ecom_kb"
+    retrieval_service_url: str = ''
+    retrieval_service_token: str = ''
+    retrieval_timeout_seconds: float = Field(default=15, gt=0)
+    retrieval_global_concurrency: int = Field(default=8, ge=1)
+    retrieval_local_wait_seconds: float = Field(default=.1, ge=0)
+    embedding_base_url: str = ''
+    embedding_api_key: str = ''
+    embedding_max_concurrency: int = Field(default=4, ge=1)
+    embedding_rpm: int = Field(default=120, ge=1)
+    embedding_token_budget_per_minute: int = Field(default=1000000, ge=1)
 
     # Memory 配置（第7期）
     memory_enabled: bool = True
     memory_dir: str = "data/sessions/memory"
     # Case 是跨会话的业务事项；与用户画像记忆分开保存，保留审计事件。
     case_dir: str = "data/sessions/cases"
+    case_storage_backend: str = 'json'
     memory_user_id: str = "default"
     max_ltm_facts: int = 50
     preference_memory_ttl_days: int = 90
@@ -159,6 +170,22 @@ class Settings(BaseSettings):
     api_chat_job_ttl_seconds: int = Field(default=3600, ge=60)
     api_chat_queue_timeout_seconds: int = Field(default=120, ge=1)
     api_chat_run_timeout_seconds: int = Field(default=600, ge=1)
+    api_sse_max_connections: int = Field(default=2000, ge=1)
+    api_sse_per_user: int = Field(default=5, ge=1)
+    api_sse_send_timeout_seconds: float = Field(default=10, gt=0)
+    api_sse_catchup_seconds: float = Field(default=15, ge=1, le=60)
+    runtime_metrics_port: int = Field(default=0, ge=0, le=65535)
+    runtime_metrics_host: str = '127.0.0.1'
+    api_user_tenants: dict[str, str] = Field(default_factory=dict)
+    api_global_rpm: int = Field(default=1200, ge=1)
+    api_tenant_rpm: int = Field(default=600, ge=1)
+    api_user_rpm: int = Field(default=60, ge=1)
+    api_tenant_agent_concurrency: int = Field(default=4, ge=1)
+    model_max_concurrency: int = Field(default=8, ge=1)
+    model_rpm: int = Field(default=120, ge=1)
+    model_token_budget_per_minute: int = Field(default=1000000, ge=1)
+    model_max_output_tokens: int = Field(default=2048, ge=1)
+    model_queue_wait_seconds: float = Field(default=3, ge=0)
 
     # Skill 配置（第8期）
     skills_enabled: bool = True

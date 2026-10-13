@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import time
 import threading
+import os
+from uuid import uuid4
 
 import pytest
 
@@ -37,18 +39,24 @@ def test_session_lock_serializes_local_workers():
     assert result == [True]
 
 
-def test_chat_queue_worker_persists_result():
-    redis_url = "redis://127.0.0.1:6399/15"
-    queue_backend = ChatQueue(redis_url, prefix="test:ecom:chat", max_depth=4)
-    try:
-        queue_backend.ping()
-    except Exception:
-        pytest.skip("local Redis is not running")
+@pytest.fixture
+def isolated_queue():
+    if os.getenv('ECOM_INTEGRATION') != '1':
+        pytest.skip('dedicated integration Redis required')
+    queue_backend = ChatQueue('redis://127.0.0.1:26379/0', prefix='itest:legacy:' + uuid4().hex, max_depth=4)
+    queue_backend.ping()
+    yield queue_backend
+    keys = list(queue_backend._redis.scan_iter(match=queue_backend.prefix + ':*'))
+    if keys:
+        queue_backend._redis.delete(*keys)
+
+
+def test_chat_queue_worker_persists_result(isolated_queue):
+    queue_backend = isolated_queue
     queue_backend.submit(ChatJob("job-1", "user-1", "session-1", "hello"))
     worker = ChatWorker(queue_backend, lambda job: {"reply": job.message})
     worker.start()
     try:
-        queue_backend._redis.flushdb()
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
             status = queue_backend.get("job-1")
@@ -62,13 +70,8 @@ def test_chat_queue_worker_persists_result():
         worker.stop()
 
 
-def test_redis_queue_rejects_overlapping_session_and_allows_idempotent_retry():
-    queue_backend = ChatQueue("redis://127.0.0.1:6399/15", prefix="test:ecom:busy", max_depth=4)
-    try:
-        queue_backend.ping()
-    except Exception:
-        pytest.skip("local Redis is not running")
-    queue_backend._redis.flushdb()
+def test_redis_queue_rejects_overlapping_session_and_allows_idempotent_retry(isolated_queue):
+    queue_backend = isolated_queue
     first = ChatJob("job-a", "u", "same", "a")
     assert queue_backend.submit(first) is True
     assert queue_backend.submit(first) is False

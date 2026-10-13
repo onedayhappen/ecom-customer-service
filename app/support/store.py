@@ -14,6 +14,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 from app.tasks.service import SCHEMA as TASK_SCHEMA, TaskService
+from app.runtime.outbox import SCHEMA as JOB_SCHEMA, DurableJobs
+from app.runtime.notifications import SCHEMA as NOTIFICATION_SCHEMA, enqueue as enqueue_notification
+from app.memory.case_postgres import SCHEMA as CASE_SCHEMA
+from app.runtime.maintenance import SCHEMA as MAINTENANCE_SCHEMA
 
 
 class SupportError(Exception):
@@ -59,17 +63,20 @@ SCHEMA = (
         operation_id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
         control_version INTEGER NOT NULL, tool TEXT NOT NULL, status TEXT NOT NULL,
         created_at TEXT NOT NULL, result TEXT)""",
+    """CREATE INDEX IF NOT EXISTS support_message_history ON support_events(session_id,sequence DESC)
+        WHERE kind='message'""",
     """CREATE INDEX IF NOT EXISTS support_operation_session ON support_operations(session_id)""",
     """CREATE TABLE IF NOT EXISTS support_bot_results (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, response TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS support_bot_runs (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
-) + TASK_SCHEMA
+) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + CASE_SCHEMA + MAINTENANCE_SCHEMA
+SCHEMA_VERSION = 7
 
 
 class Tx:
-    def __init__(self, connection, postgres):
-        self.connection, self.postgres = connection, postgres
+    def __init__(self, connection, postgres, read_only=False):
+        self.connection, self.postgres, self.read_only = connection, postgres, read_only
 
     def execute(self, sql, args=()):
         return self.connection.execute(sql.replace("?", "%s") if self.postgres else sql, args)
@@ -89,9 +96,10 @@ class SupportStore:
         self._initialized = False
         self._schema_lock = threading.Lock()
         self.tasks = TaskService(self)
+        self.jobs = DurableJobs(self)
 
     @contextmanager
-    def _connection(self):
+    def _connection(self, read_only=False):
         if self.postgres:
             from app.db import get_connection_pool
             from psycopg.rows import dict_row
@@ -99,7 +107,9 @@ class SupportStore:
                 previous = conn.row_factory
                 conn.row_factory = dict_row
                 try:
-                    yield Tx(conn, True)
+                    if read_only:
+                        conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                    yield Tx(conn, True, read_only)
                 finally:
                     conn.row_factory = previous
         else:
@@ -108,8 +118,8 @@ class SupportStore:
             conn = sqlite3.connect(path, timeout=10)
             conn.row_factory = sqlite3.Row
             try:
-                conn.execute("BEGIN IMMEDIATE")
-                yield Tx(conn, False)
+                conn.execute('BEGIN' if read_only else 'BEGIN IMMEDIATE')
+                yield Tx(conn, False, read_only)
                 conn.commit()
             except BaseException:
                 conn.rollback()
@@ -123,19 +133,31 @@ class SupportStore:
                 with self._connection() as tx:
                     if self.postgres:
                         tx.execute("SELECT pg_advisory_xact_lock(82344710)")
-                    for sql in SCHEMA:
-                        tx.execute(sql)
+                        exists = tx.one("SELECT to_regclass('support_schema_versions') AS name")['name']
+                    else:
+                        exists = tx.one("SELECT name FROM sqlite_master WHERE type='table' AND name='support_schema_versions'")
+                    applied = tx.one('SELECT MAX(version) AS version FROM support_schema_versions')['version'] if exists else 0
+                    if not applied or applied < SCHEMA_VERSION:
+                        for sql in SCHEMA:
+                            tx.execute(sql)
+                        if applied and applied < 4:
+                            field = "payload::jsonb->>'task_id'" if tx.postgres else "json_extract(payload,'$.task_id')"
+                            tx.execute(f"""INSERT INTO support_task_messages(task_id,session_id,sequence)
+                                SELECT {field},session_id,sequence FROM support_events
+                                WHERE kind='message' AND {field} IS NOT NULL ON CONFLICT DO NOTHING""")
+                        tx.execute('CREATE TABLE IF NOT EXISTS support_schema_versions (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
+                        tx.execute('INSERT INTO support_schema_versions VALUES (?,?) ON CONFLICT(version) DO NOTHING', (SCHEMA_VERSION, now()))
                 self._initialized = True
 
     @contextmanager
-    def transaction(self):
+    def transaction(self, read_only=False):
         self.initialize()
-        with self._connection() as tx:
+        with self._connection(read_only=read_only) as tx:
             yield tx
 
     def _control(self, tx, sid, user=None):
         row = tx.one("SELECT * FROM support_conversations WHERE session_id=?" +
-                     (" FOR UPDATE" if self.postgres else ""), (sid,))
+                     (" FOR UPDATE" if self.postgres and not tx.read_only else ""), (sid,))
         if not row or (user is not None and row["user_id"] != user):
             raise SupportError("会话不存在", 404)
         return row
@@ -155,6 +177,10 @@ class SupportStore:
         tx.execute("INSERT INTO support_events VALUES (?,?,?,?,?,?,?,?)",
                    (control["session_id"], control["sequence"], key, kind, actor,
                     "internal" if private else "public", encoded, now()))
+        enqueue_notification(tx, control['session_id'], control['sequence'])
+        if kind == 'message' and payload.get('task_id'):
+            tx.execute('INSERT INTO support_task_messages VALUES (?,?,?) ON CONFLICT DO NOTHING',
+                       (payload['task_id'], control['session_id'], control['sequence']))
         return control["sequence"]
 
     def ensure(self, sid, user, history=()):
@@ -172,7 +198,7 @@ class SupportStore:
             return c
 
     def role(self, user):
-        with self.transaction() as tx:
+        with self.transaction(read_only=True) as tx:
             return self._role(tx, user)
 
     def _role(self, tx, user):
@@ -188,7 +214,7 @@ class SupportStore:
             tx.execute("INSERT INTO support_staff_audit VALUES (?,?,?,?,?,?)", (str(uuid4()), "local_cli", user, role, 1, now()))
 
     def staff(self, actor):
-        with self.transaction() as tx:
+        with self.transaction(read_only=True) as tx:
             if self._role(tx, actor) == "customer":
                 raise SupportError("需要客服权限", 403)
             return tx.all("SELECT user_id,role,enabled FROM support_staff ORDER BY user_id")
@@ -220,6 +246,7 @@ class SupportStore:
         tx.execute("""UPDATE support_conversations SET mode='handoff_pending',
             control_version=control_version+1,ticket_id=?,bot_job_id=NULL WHERE session_id=?""", (tid, c["session_id"]))
         c.update(mode="handoff_pending", ticket_id=tid, control_version=c["control_version"] + 1)
+        self.jobs.supersede(tx, c)
         self.tasks.freeze(tx, c, actor)
         self._event(tx, c, "support_state", actor,
                     {"mode": c["mode"], "ticket_id": tid, "status": "queued", "reason": reason})
@@ -238,7 +265,7 @@ class SupportStore:
                 "cursor": c["sequence"], "ticket": public_ticket}
 
     def state(self, sid, user):
-        with self.transaction() as tx:
+        with self.transaction(read_only=True) as tx:
             return self._state(tx, self._control(tx, sid, user))
 
     def resume(self, sid, user):
@@ -257,9 +284,10 @@ class SupportStore:
             c.update(mode="bot", ticket_id=None, control_version=c["control_version"] + 1)
             self._event(tx, c, "support_state", user, {"mode": "bot", "status": target},
                         key=f"ticket-closed:{ticket['ticket_id']}")
+            self.tasks.archive_ticket(tx, c, ticket['ticket_id'], c['sequence'])
             return self._state(tx, c)
 
-    def receive(self, sid, user, content, message_id, *, explicit_handoff=False, request_fingerprint=None, task_input=None):
+    def receive(self, sid, user, content, message_id, *, explicit_handoff=False, request_fingerprint=None, task_input=None, delivery=None):
         """Append once; return routing version. Delivery to the bot queue is separate."""
         with self.transaction() as tx:
             c = self._control(tx, sid, user)
@@ -291,6 +319,8 @@ class SupportStore:
                 self._handoff(tx, c, "customer_requested", user)
             elif c["mode"] == "bot" and not task_route.get('background_control'):
                 tx.execute("UPDATE support_conversations SET bot_job_id=? WHERE session_id=?", (message_id, sid))
+                if delivery and not task_route.get('reply'):
+                    self.jobs.admit(tx, c, message_id, content, (task_input or {}).get('confirmation_token'), **delivery)
             if task_route.get('background_control'):
                 result = {'session_id': sid, 'reply': task_route['reply'], 'intent': 'answer_question',
                           'confidence': 1, 'requires_human': False, 'follow_up_question': None,
@@ -326,7 +356,7 @@ class SupportStore:
         return ticket, closed["sequence"], state, closed["created_at"]
 
     def events(self, sid, user, after=0, limit=100, *, staff=False, ticket_id=None):
-        with self.transaction() as tx:
+        with self.transaction(read_only=True) as tx:
             c = self._control(tx, sid, None if staff else user)
             ceiling, state = c["sequence"], self._state(tx, c)
             if staff:
@@ -343,16 +373,46 @@ class SupportStore:
             return {"events": rows, "cursor": cursor, "state": state}
 
     def context(self, sid, user):
-        with self.transaction() as tx:
+        with self.transaction(read_only=True) as tx:
             self._control(tx, sid, user)
             rows = tx.all("""SELECT payload FROM support_events WHERE session_id=? AND kind='message'
                 AND visibility='public' ORDER BY sequence DESC LIMIT 40""", (sid,))
             return [{"role": p["role"] if p["role"] == "user" else "assistant", "content": p["content"]}
                     for p in (json.loads(r["payload"]) for r in reversed(rows))]
 
+    def transcript(self, sid, user, before=None, limit=50, *, staff=False, ticket_id=None):
+        """Bootstrap from a bounded snapshot, then seek backwards through messages.
+
+        Snapshot state, tasks and the SSE cursor share one read transaction;
+        changes committed afterwards are recovered by incremental event delivery.
+        """
+        if not 1 <= limit <= 100 or before is not None and before < 1:
+            raise SupportError('历史分页参数不合法', 422)
+        with self.transaction(read_only=True) as tx:
+            c = self._control(tx, sid, None if staff else user)
+            ceiling, state = c['sequence'], self._state(tx, c)
+            if staff:
+                if ticket_id:
+                    _, ceiling, state, _ = self._ticket_view(tx, c, user, ticket_id)
+                else:
+                    self._authorize_ticket(tx, c, user)
+            upper = min(before, ceiling + 1) if before is not None else ceiling + 1
+            rows = tx.all("SELECT * FROM support_events WHERE session_id=? AND sequence<? AND kind='message' " +
+                          ('' if staff else "AND visibility='public' ") + 'ORDER BY sequence DESC LIMIT ?',
+                          (sid, upper, limit + 1))
+            page = rows[:limit]
+            next_before = page[-1]['sequence'] if len(rows) > limit else None
+            for row in page:
+                row['payload'] = json.loads(row['payload'])
+            snapshot = {}
+            if before is None:
+                snapshot = self.tasks.ticket_snapshot(tx, c, ticket_id, ceiling) if state['mode'] == 'archived' else self.tasks.snapshot(tx, c)
+            return {'events': list(reversed(page)), 'cursor': ceiling, 'state': state,
+                    'next_before': next_before, **snapshot}
+
     def public_history(self, sid, user):
         """Compatibility endpoint returns full history, not the bounded LLM context."""
-        with self.transaction() as tx:
+        with self.transaction(read_only=True) as tx:
             self._control(tx, sid, user)
             rows = tx.all("SELECT payload FROM support_events WHERE session_id=? AND kind='message' AND visibility='public' ORDER BY sequence", (sid,))
             return [{"role": p["role"], "content": p["content"]} for p in (json.loads(r["payload"]) for r in rows)]
@@ -365,7 +425,7 @@ class SupportStore:
         return ticket
 
     def list_tickets(self, actor, view="queue", offset=0, limit=30):
-        with self.transaction() as tx:
+        with self.transaction(read_only=True) as tx:
             role = self._role(tx, actor)
             if role == "customer" or (view == "all" and role != "admin"):
                 raise SupportError("无权查看工单", 403)
@@ -375,7 +435,7 @@ class SupportStore:
                           " ORDER BY t.created_at DESC LIMIT ? OFFSET ?", (*args, limit, offset))
 
     def detail(self, tid, actor):
-        with self.transaction() as tx:
+        with self.transaction(read_only=True) as tx:
             t = tx.one("SELECT session_id FROM support_tickets WHERE ticket_id=?", (tid,))
             if not t:
                 raise SupportError("工单不存在", 404)
@@ -385,7 +445,7 @@ class SupportStore:
                                 (c["session_id"], closed_at or now()))
             evidence = tx.all("SELECT payload,created_at FROM support_events WHERE session_id=? AND sequence<=? AND kind='tool_evidence' ORDER BY sequence DESC LIMIT 20", (c["session_id"], ceiling))
             return {"ticket": ticket, "state": state, "operations": operations,
-                    "tasks": self.tasks.snapshot(tx, c, ceiling)["tasks"],
+                    "tasks": self.tasks.ticket_snapshot(tx, c, tid, ceiling)["tasks"],
                     "evidence": [{**json.loads(e["payload"]), "created_at": e["created_at"]} for e in evidence]}
 
     def change(self, tid, actor, version, action, assignee=None):
@@ -447,7 +507,7 @@ class SupportStore:
             return {"sequence": seq}
 
     def check_bot(self, sid, user, version):
-        with self.transaction() as tx:
+        with self.transaction(read_only=True) as tx:
             self._check(tx, sid, user, version)
 
     def _check(self, tx, sid, user, version):
@@ -461,6 +521,7 @@ class SupportStore:
             c = self._check(tx, sid, user, version)
             if response is not None:
                 self.tasks.finish(tx, c, job_id, response)
+                self.jobs.completed(tx, job_id, response)
             self._event(tx, c, "message", "bot", {"role": "assistant", "content": content,
                         'task_id': self.tasks.message_task_id(tx, job_id)}, key=f"bot:{job_id}")
             if response is not None:
@@ -478,6 +539,7 @@ class SupportStore:
             if not inserted:
                 raise SupportError("该任务已启动过，请查看会话结果或转人工核实，不能重复执行")
             tx.execute("UPDATE support_conversations SET bot_job_id=? WHERE session_id=?", (job_id, sid))
+            self.jobs.started(tx, c, job_id)
             self.tasks.started(tx, c, job_id)
 
     def release_bot(self, sid, user, job_id):
@@ -512,7 +574,7 @@ class SupportStore:
             self._event(tx, c, "tool_evidence", "bot", mask_sensitive({"tool": tool, "arguments": arguments, "result": result}), private=True)
 
     def bot_result(self, sid, user, job_id):
-        with self.transaction() as tx:
+        with self.transaction(read_only=True) as tx:
             self._control(tx, sid, user)
             row = tx.one("SELECT response FROM support_bot_results WHERE job_id=? AND session_id=?", (job_id, sid))
             return json.loads(row["response"]) if row else None

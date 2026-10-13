@@ -17,6 +17,15 @@ SCHEMA = (
         session_id TEXT PRIMARY KEY, payload TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS conversation_task_turns (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, route TEXT NOT NULL)""",
+    """CREATE INDEX IF NOT EXISTS conversation_tasks_pending ON conversation_tasks(session_id,created_sequence)
+       WHERE status NOT IN ('completed','cancelled')""",
+    """CREATE INDEX IF NOT EXISTS conversation_tasks_history ON conversation_tasks(session_id,created_sequence DESC)
+       WHERE status IN ('completed','cancelled')""",
+    """CREATE TABLE IF NOT EXISTS support_ticket_task_snapshots (
+        ticket_id TEXT PRIMARY KEY, ceiling INTEGER NOT NULL, payload TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS support_task_messages (
+        task_id TEXT NOT NULL, session_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+        PRIMARY KEY(task_id,sequence))""",
 )
 ACTIVE = {'ready', 'running', 'waiting_input', 'waiting_confirmation'}
 TERMINAL = {'completed', 'cancelled'}
@@ -33,8 +42,11 @@ class TaskService:
             row['question'] = json.loads(row['question']) if row['question'] else None
         return row
 
-    def rows(self, tx, sid):
-        return [self.decode(r) for r in tx.all('SELECT * FROM conversation_tasks WHERE session_id=? ORDER BY created_sequence', (sid,))]
+    def rows(self, tx, sid, history=False):
+        rows = tx.all("SELECT * FROM conversation_tasks WHERE session_id=? AND status NOT IN ('completed','cancelled') ORDER BY created_sequence", (sid,))
+        if history:
+            rows += tx.all("SELECT * FROM conversation_tasks WHERE session_id=? AND status IN ('completed','cancelled') ORDER BY created_sequence DESC LIMIT 80", (sid,))
+        return sorted([self.decode(r) for r in rows], key=lambda r: r['created_sequence'])
 
     def save(self, tx, c, task, actor):
         from app.support.store import now
@@ -61,6 +73,7 @@ class TaskService:
     def invalidate(self, tx, c):
         c['control_version'] += 1
         c['bot_job_id'] = None
+        self.store.jobs.supersede(tx, c)
         tx.execute('UPDATE support_conversations SET control_version=?,bot_job_id=NULL WHERE session_id=?', (c['control_version'], c['session_id']))
         tx.execute('DELETE FROM conversation_task_choices WHERE session_id=?', (c['session_id'],))
         self.store._event(tx, c, 'task_choice', 'system', {'question': None})
@@ -253,7 +266,7 @@ class TaskService:
         return route
 
     def turn(self, sid, user, job_id):
-        with self.store.transaction() as tx:
+        with self.store.transaction(read_only=True) as tx:
             self.store._control(tx, sid, user)
             row = tx.one('SELECT route FROM conversation_task_turns WHERE session_id=? AND job_id=?', (sid, job_id))
             return json.loads(row['route']) if row else {}
@@ -263,9 +276,12 @@ class TaskService:
         return json.loads(row['route']).get('task_id') if row else None
 
     def context(self, sid, user, tid):
-        with self.store.transaction() as tx:
+        with self.store.transaction(read_only=True) as tx:
             self.store._control(tx, sid, user)
-            rows = tx.all("SELECT payload FROM support_events WHERE session_id=? AND kind='message' AND visibility='public' ORDER BY sequence DESC LIMIT 200", (sid,))
+            rows = tx.all("""SELECT e.payload FROM support_task_messages m JOIN support_events e
+                ON e.session_id=m.session_id AND e.sequence=m.sequence
+                WHERE m.session_id=? AND m.task_id=? AND e.visibility='public'
+                ORDER BY m.sequence DESC LIMIT 40""", (sid, tid))
             messages = [json.loads(row['payload']) for row in rows]
             return [{'role': m['role'] if m['role'] == 'user' else 'assistant', 'content': m['content']}
                     for m in reversed([m for m in messages if m.get('task_id') == tid][:40])]
@@ -317,7 +333,7 @@ class TaskService:
 
     def snapshot(self, tx, c, ceiling=None):
         if ceiling is None:
-            tasks = self.rows(tx, c['session_id'])
+            tasks = self.rows(tx, c['session_id'], history=True)
             choice = tx.one('SELECT payload FROM conversation_task_choices WHERE session_id=?', (c['session_id'],))
             retained = [t for t in tasks if t['status'] not in TERMINAL] + [t for t in tasks if t['status'] in TERMINAL][-80:]
             return {'tasks': sorted(retained, key=lambda t: t['created_sequence']), 'question': json.loads(choice['payload']) if choice else None}
@@ -330,14 +346,38 @@ class TaskService:
         retained = [t for t in values if t['status'] not in TERMINAL] + [t for t in values if t['status'] in TERMINAL][-80:]
         return {'tasks': sorted(retained, key=lambda t: t['created_sequence']), 'question': None}
 
+    def archive_ticket(self, tx, c, tid, ceiling):
+        payload = self.snapshot(tx, c)
+        tx.execute('INSERT INTO support_ticket_task_snapshots VALUES (?,?,?) ON CONFLICT(ticket_id) DO NOTHING',
+                   (tid, ceiling, json.dumps(payload, ensure_ascii=False)))
+
+    def ticket_snapshot(self, tx, c, tid, ceiling):
+        row = tx.one('SELECT payload FROM support_ticket_task_snapshots WHERE ticket_id=? AND ceiling=?', (tid, ceiling))
+        return json.loads(row['payload']) if row else self.snapshot(tx, c, ceiling)
+
     def list(self, sid, user):
-        with self.store.transaction() as tx:
+        with self.store.transaction(read_only=True) as tx:
             c = self.store._control(tx, sid, user)
             return {**self.snapshot(tx, c), 'mode': c['mode'], 'control_version': c['control_version']}
 
+    def history(self, sid, user, before=None, limit=30):
+        """Stable keyset pagination; new completions do not shift older pages."""
+        from app.support.store import SupportError
+        if not 1 <= limit <= 100 or before is not None and before < 1:
+            raise SupportError('历史分页参数不合法', 422)
+        with self.store.transaction(read_only=True) as tx:
+            self.store._control(tx, sid, user)
+            rows = tx.all("SELECT * FROM conversation_tasks WHERE session_id=? AND status IN ('completed','cancelled') " +
+                          ('AND created_sequence<? ' if before is not None else '') +
+                          'ORDER BY created_sequence DESC LIMIT ?',
+                          (sid, before, limit + 1) if before is not None else (sid, limit + 1))
+            page = rows[:limit]
+            return {'tasks': [self.decode(row) for row in page],
+                    'next_before': page[-1]['created_sequence'] if len(rows) > limit else None}
+
     def get(self, sid, user, tid):
         from app.support.store import SupportError
-        with self.store.transaction() as tx:
+        with self.store.transaction(read_only=True) as tx:
             self.store._control(tx, sid, user)
             row = tx.one('SELECT * FROM conversation_tasks WHERE session_id=? AND task_id=?', (sid, tid))
             if not row:

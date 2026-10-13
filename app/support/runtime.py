@@ -36,6 +36,8 @@ def bot_scope(store, sid, user, version):
 
 
 def check_bot():
+    from app.runtime.concurrency import check_execution_lease
+    check_execution_lease()
     scope = _scope.get()
     if scope:
         store, sid, user, version = scope

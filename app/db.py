@@ -81,7 +81,15 @@ class PgConnectionPool:
 
     def connection(self) -> "_PooledConnection":
         """返回可用连接；以 ``with conn`` 使用，退出时自动提交/回滚并归还。"""
-        return _PooledConnection(self, self._acquire())
+        from app.runtime.metrics import POOL_WAIT, POOL_TIMEOUTS
+        started = time.monotonic()
+        try:
+            return _PooledConnection(self, self._acquire())
+        except PoolTimeout:
+            POOL_TIMEOUTS.inc()
+            raise
+        finally:
+            POOL_WAIT.observe(time.monotonic() - started)
 
     def close(self) -> None:
         self._closed = True
@@ -95,6 +103,14 @@ class PgConnectionPool:
     @property
     def created_count(self) -> int:
         return self._created
+
+    @property
+    def idle_count(self) -> int:
+        return self._idle.qsize()
+
+    @property
+    def max_size(self) -> int:
+        return self._max_size
 
     # -- 内部实现 ----------------------------------------------------------
 

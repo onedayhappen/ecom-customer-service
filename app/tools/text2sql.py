@@ -349,6 +349,8 @@ def generate_sql(query: str, *, client: Any = None, model: str | None = None) ->
         client, resolved_model = _default_llm()
         model = model or resolved_model
     model = model or ""
+    from app.observability.llm_client import LlmClient
+    client = client if isinstance(client, LlmClient) else LlmClient(client, model, default_scene='text2sql')
     messages = build_sql_prompt(query)
     response = client.chat.completions.create(
         model=model,

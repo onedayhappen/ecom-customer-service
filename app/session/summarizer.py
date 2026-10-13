@@ -48,6 +48,8 @@ def summarize(
 
     user_content = "\n\n".join(parts)
 
+    from app.observability.llm_client import LlmClient
+    client = client if isinstance(client, LlmClient) else LlmClient(client, model, default_scene='summary')
     response = client.chat.completions.create(
         model=model,
         temperature=0.3,

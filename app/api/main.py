@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+import time
+import random
 from hashlib import sha256
 from contextlib import asynccontextmanager, contextmanager, nullcontext
 from datetime import datetime
@@ -15,7 +17,8 @@ from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
+from starlette.background import BackgroundTask
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
@@ -26,9 +29,11 @@ from app.config.settings import settings
 from app.session.repository import load_session
 from app.session.lifecycle import compact_messages, context_messages
 from app.runtime.chat_queue import ChatJob, ChatQueue, ChatWorker, SessionBusy, RequestConflict
-from app.runtime.concurrency import DistributedLease, SessionLock, CoordinationUnavailable
+from app.runtime.concurrency import DistributedLease, SessionLock, CoordinationUnavailable, execution_lease_guard
 from app.support.runtime import get_store, bot_scope, current_scope, explicit_handoff, check_bot
 from app.support.store import SupportError, BotInterrupted
+from app.runtime.budgets import RateExceeded, admit_request, agent_partition
+from app.runtime.streaming import BoundedStreamingResponse, open_subscription
 from app.api.support import router as support_router, ensure_session
 
 auth_scheme = HTTPBearer(auto_error=False)
@@ -90,6 +95,8 @@ async def lifespan(app: FastAPI):
     首次真实检索时仍会按原逻辑懒加载。
     """
     settings.validate_runtime_configuration()
+    from app.runtime.metrics import install
+    install()
     from app.db import get_connection_pool
 
     # 第12期：装配 Trace/Span 核心与审计器（异常 100% 写 agent_audit_log）
@@ -125,7 +132,7 @@ async def lifespan(app: FastAPI):
     if settings.api_chat_execution_mode == "sync" or settings.api_chat_worker_enabled:
         warmup_task = asyncio.create_task(_warmup_rag())
     if settings.api_chat_execution_mode == "async":
-        await asyncio.to_thread(_chat_queue.ping)
+        await asyncio.to_thread(get_store().initialize)
     if settings.api_chat_execution_mode == "async" and settings.api_chat_worker_enabled:
         _ensure_chat_worker()
     try:
@@ -134,6 +141,10 @@ async def lifespan(app: FastAPI):
         if warmup_task:
             warmup_task.cancel()
         await asyncio.to_thread(_stop_chat_worker)
+        from app.runtime.notifications import get_hub
+        await asyncio.to_thread(get_hub().close)
+        from app.rag.remote import close_clients
+        await asyncio.to_thread(close_clients)
         from app.db import close_pools
 
         close_pools()
@@ -406,6 +417,16 @@ app.include_router(support_router)
 async def support_error_handler(request: Request, exc: SupportError):
     return JSONResponse(status_code=exc.status, content={"detail": str(exc)})
 
+
+@app.exception_handler(RateExceeded)
+async def rate_error_handler(request: Request, exc: RateExceeded):
+    return JSONResponse(status_code=429, content={'detail': str(exc)}, headers={'Retry-After': str(exc.retry_after)})
+
+
+@app.exception_handler(CoordinationUnavailable)
+async def coordination_error_handler(request: Request, exc: CoordinationUnavailable):
+    return JSONResponse(status_code=503, content={'detail': str(exc)}, headers={'Retry-After': '2'})
+
 # 注册一个 GET 请求接口，访问路径：http://你的服务地址/health
 @app.get("/health")
 def health() -> dict:
@@ -414,15 +435,16 @@ def health() -> dict:
 
 @app.get("/ready")
 def ready() -> Response:
-    """服务就绪探针：异步模式必须能访问共享 Redis 队列。"""
+    """Admission depends on the durable store; Redis outages leave jobs pending."""
     if settings.api_chat_execution_mode == "async":
         if _chat_queue is None:
             return Response(content='{"status":"not_ready","reason":"queue_not_configured"}',
                             status_code=503, media_type="application/json")
         try:
-            _chat_queue.ping()
-        except CoordinationUnavailable:
-            return Response(content='{"status":"not_ready","reason":"queue_unavailable"}',
+            with get_store().transaction(read_only=True) as tx:
+                tx.one('SELECT 1 AS ready')
+        except Exception:
+            return Response(content='{"status":"not_ready","reason":"database_unavailable"}',
                             status_code=503, media_type="application/json")
     return Response(content='{"status":"ready"}', media_type="application/json")
 
@@ -456,6 +478,7 @@ async def get_session_history(
     session_id: str,
     current_user: CurrentUser = Depends(get_current_user),
 ) -> SessionHistoryResponse:
+    await asyncio.to_thread(admit_request, current_user.user_id, 'read')
     return await asyncio.to_thread(_load_session_history, session_id, current_user.user_id)
 
 
@@ -488,6 +511,20 @@ def _load_session_history(session_id: str, user_id: str) -> SessionHistoryRespon
 
 
 def _run_chat_job(job: ChatJob) -> dict:
+    from app.runtime.metrics import EXECUTION
+    import time
+    started_at = time.monotonic()
+    try:
+        result = _execute_chat_job(job)
+    except Exception:
+        EXECUTION.labels(result='error').observe(time.monotonic() - started_at)
+        raise
+    EXECUTION.labels(result='suppressed' if result.get('suppressed') else 'completed').observe(time.monotonic() - started_at)
+    get_store().jobs.finish(job, response=result)
+    return result
+
+
+def _execute_chat_job(job: ChatJob) -> dict:
     """Worker 入口：全局 LLM 租约 + 本地槽位 + session 锁三层保护。"""
     request = ChatRequest(
         message=job.message,
@@ -520,7 +557,8 @@ def _run_chat_job(job: ChatJob) -> dict:
                 request.task_version = task_route['task_version']
                 if not task_route.get('confirmation'):
                     request.message = task_route['message']
-            with _llm_lease.slot(settings.api_queue_wait_seconds) as acquired:
+            lost_lease = threading.Event()
+            with execution_lease_guard(lost_lease), agent_partition(job.user_id, lost_lease), _llm_lease.slot(settings.api_queue_wait_seconds, lost_event=lost_lease) as acquired:
                 if not acquired:
                     raise TimeoutError("Agent 全局并发配额暂时耗尽")
                 result = _handle_chat(request, job.user_id)
@@ -538,6 +576,10 @@ def _run_chat_job(job: ChatJob) -> dict:
         return result.model_dump()
     except CoordinationUnavailable:
         get_store().failed_job(job.session_id, job.user_id, job.job_id, interrupted=True)
+        raise
+    except Exception:
+        if started:
+            get_store().jobs.finish(job, error='任务执行失败，请查看会话或转人工核实')
         raise
     finally:
         if started:
@@ -601,6 +643,12 @@ async def chat(
     normalized_session_id = _normalise_session_id(
         request.session_id or str(uuid5(NAMESPACE_URL, "session:" + job_id)))
     request.session_id = normalized_session_id
+    from app.tasks.routing import parse
+    control_request = request.task_action or explicit_handoff(request.message) or parse(request.message)['action']
+    try:
+        await asyncio.to_thread(admit_request, current_user.user_id, 'control' if control_request else 'chat')
+    except RateExceeded as exc:
+        raise HTTPException(429, str(exc), headers={'Retry-After': str(exc.retry_after)}) from exc
     # Preserve idempotent replay of requests made before task fields were added.
     has_task_input = any((request.task_action, request.task_id, request.task_version, request.question_id))
     fingerprint_input = json.dumps(request.model_dump(mode='json', exclude={'request_id','session_id','message'}), sort_keys=True) if has_task_input else (request.confirmation_token or '')
@@ -608,7 +656,11 @@ async def chat(
     routing = await asyncio.to_thread(get_store().receive, normalized_session_id, current_user.user_id,
                                      request.message, job_id, explicit_handoff=explicit_handoff(request.message),
                                      request_fingerprint=sha256(fingerprint_input.encode()).hexdigest(),
-                                     task_input=request.model_dump(mode='json'))
+                                     task_input=request.model_dump(mode='json'),
+                                     delivery=({'max_pending': settings.api_chat_queue_max_depth,
+                                                'queue_timeout': settings.api_chat_queue_timeout_seconds,
+                                                'run_timeout': settings.api_chat_run_timeout_seconds}
+                                               if settings.api_chat_execution_mode == 'async' else None))
     if routing["mode"] != "bot" or routing["route_version"] != routing["control_version"]:
         return _support_response(routing)
     cached = await asyncio.to_thread(get_store().bot_result, normalized_session_id, current_user.user_id, job_id)
@@ -627,20 +679,8 @@ async def chat(
     task_route = await asyncio.to_thread(get_store().tasks.turn, normalized_session_id, current_user.user_id, job_id)
     if settings.api_chat_execution_mode != "async" or task_route.get('reply'):
         return ChatResponse.model_validate(await asyncio.to_thread(_run_chat_job, job))
-    try:
-        await asyncio.to_thread(_chat_queue.submit, job)
-    except OverflowError as exc:
-        await asyncio.to_thread(get_store().release_admission, job.session_id, job.user_id, job.job_id)
-        raise HTTPException(status_code=429, detail=str(exc)) from exc
-    except SessionBusy as exc:
-        await asyncio.to_thread(get_store().release_admission, job.session_id, job.user_id, job.job_id)
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except RequestConflict as exc:
-        await asyncio.to_thread(get_store().release_admission, job.session_id, job.user_id, job.job_id)
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except CoordinationUnavailable as exc:
-        await asyncio.to_thread(get_store().release_admission, job.session_id, job.user_id, job.job_id)
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    # The receive transaction already committed the durable outbox record.
+    # Dispatch is independent of this request and survives API/Redis outages.
     response.status_code = 202
     return ChatAcceptedResponse(
         job_id=job.job_id,
@@ -653,7 +693,10 @@ async def chat(
 
 
 def _job_status_for_user(job_id: str, user_id: str) -> dict:
-    status_data = _chat_queue.get(job_id)
+    durable = get_store().jobs.get(job_id, user_id)
+    if durable is not None:
+        return durable
+    status_data = _chat_queue.get(job_id) if _chat_queue else None
     if not status_data or status_data.get("user_id") != user_id:
         raise HTTPException(status_code=404, detail="任务不存在")
     if status_data.get("status") in {"expired", "failed", "interrupted"}:
@@ -667,6 +710,7 @@ async def chat_status(
     job_id: str,
     current_user: CurrentUser = Depends(get_current_user),
 ) -> ChatJobStatusResponse:
+    await asyncio.to_thread(admit_request, current_user.user_id, 'read')
     data = await asyncio.to_thread(_job_status_for_user, job_id, current_user.user_id)
     result = data.get("result")
     return ChatJobStatusResponse(
@@ -681,34 +725,48 @@ async def chat_status(
 @app.get("/api/v1/chat/{job_id}/events")
 async def chat_events(
     job_id: str,
+    request: Request,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    # 先校验归属，避免在生成器中无法正确返回 HTTP 404。
-    await asyncio.to_thread(_job_status_for_user, job_id, current_user.user_id)
+    await asyncio.to_thread(admit_request, current_user.user_id, 'read')
+    data = await asyncio.to_thread(_job_status_for_user, job_id, current_user.user_id)
+    wake, lost, cleanup = await open_subscription(current_user.user_id, data['session_id'])
 
     async def event_stream():
         last_status = None
         deadline = asyncio.get_running_loop().time() + settings.api_chat_job_ttl_seconds
-        while asyncio.get_running_loop().time() < deadline:
-            data = await asyncio.to_thread(_job_status_for_user, job_id, current_user.user_id)
-            status_value = str(data.get("status", "unknown"))
-            if status_value != last_status:
-                payload = {"job_id": job_id, "status": status_value}
-                if data.get("result") is not None:
-                    payload["result"] = data["result"]
-                if data.get("error"):
-                    payload["error"] = data["error"]
-                yield f"event: status\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                last_status = status_value
-            if status_value in {"completed", "failed", "expired", "interrupted"}:
-                return
-            await asyncio.sleep(0.25)
-        yield "event: status\ndata: {\"status\": \"expired\"}\n\n"
+        try:
+            yield f'retry: {random.randint(2000, 5000)}\n\n'
+            while asyncio.get_running_loop().time() < deadline and not await request.is_disconnected():
+                if lost.is_set():
+                    return
+                wake.clear()
+                remaining = getattr(request.state, 'token_expires_at', 0) - time.time()
+                if remaining <= 0:
+                    yield 'event: revoked\ndata: {}\n\n'
+                    return
+                data = await asyncio.to_thread(_job_status_for_user, job_id, current_user.user_id)
+                status_value = str(data.get('status', 'unknown'))
+                if status_value != last_status:
+                    payload = {key: data[key] for key in ('job_id', 'status', 'result', 'error') if data.get(key) is not None}
+                    yield f'event: status\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n'
+                    last_status = status_value
+                else:
+                    yield ': heartbeat\n\n'
+                if status_value in {'completed', 'failed', 'expired', 'interrupted', 'superseded'}:
+                    return
+                try:
+                    await asyncio.wait_for(wake.wait(), min(settings.api_sse_catchup_seconds, remaining))
+                except TimeoutError:
+                    pass
+        finally:
+            await cleanup()
 
-    return StreamingResponse(
+    return BoundedStreamingResponse(
         event_stream(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        background=BackgroundTask(cleanup),
     )
 
 
@@ -800,10 +858,10 @@ def _handle_chat_inner_impl(
     from app.data_plan.enums import Intent
     from app.intent import recognize
     from app.intent.query_rewrite import make_llm_disambiguator, rewrite_query
-    from app.memory import CaseManager
     from app.reliability import MutationGuard
 
-    case_manager = CaseManager(user_id, settings.case_dir)
+    from app.memory.case_postgres import create_case_manager
+    case_manager = create_case_manager(user_id)
 
     # 若上一轮在多订单中要求选择，本轮只接受明确序号或候选订单号。
     # 选中后恢复原始请求并注入订单号，不让“第 2 个”交给模型猜测。

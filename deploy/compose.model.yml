@@ -1,0 +1,20 @@
+# Optional independent GPU model server. Pin MODEL_SERVER_IMAGE to a tested
+# vllm/vllm-openai version/digest and mount a locally provisioned model directory.
+# Start separately from the API stack; never download arbitrary model code.
+services:
+  model:
+    image: ${MODEL_SERVER_IMAGE:?Set a pinned vllm/vllm-openai image}
+    gpus: all
+    shm_size: "2gb"
+    environment:
+      VLLM_API_KEY: ${MODEL_SERVER_API_KEY:?Set service authentication}
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ${MODEL_WEIGHTS_DIR:?Set a model directory}:/models/chat:ro
+    command: ["--model", "/models/chat", "--served-model-name", "ecom-chat", "--host", "0.0.0.0", "--port", "8000", "--max-model-len", "8192", "--enable-auto-tool-choice", "--tool-call-parser", "${MODEL_TOOL_CALL_PARSER:?Set the tool parser matching the selected model}"]
+    ports: ["127.0.0.1:8021:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30

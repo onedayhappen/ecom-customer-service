@@ -108,6 +108,18 @@ class ChatQueue:
     if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end
     return 0
     """
+    _RETIRE = """
+    local skey = redis.call('HGET', KEYS[1], 'session_key')
+    if skey and redis.call('GET', skey) == ARGV[1] then redis.call('DEL', skey) end
+    redis.call('LREM', KEYS[2], 1, ARGV[1])
+    redis.call('ZREM', KEYS[3], ARGV[1])
+    if redis.call('EXISTS', KEYS[1]) == 1 then
+      redis.call('HSET', KEYS[1], 'status', 'retired')
+      redis.call('HDEL', KEYS[1], 'payload')
+      redis.call('EXPIRE', KEYS[1], ARGV[2])
+    end
+    return 1
+    """
     _RESERVE = """
     local current = redis.call('GET', KEYS[1])
     if current then
@@ -158,7 +170,6 @@ class ChatQueue:
                           self.prefix, self.ttl)
 
     def submit(self, job):
-        self.reap()
         payload = json.dumps(job.to_dict(), ensure_ascii=False, sort_keys=True)
         result = self._call('eval', self._SUBMIT, 4, self.queue_key,
                             self.status_key(job.job_id), self.session_key(
@@ -175,7 +186,6 @@ class ChatQueue:
         return result == 1
 
     def claim(self, owner):
-        self.reap()
         payload = self._call('eval', self._CLAIM, 2, self.queue_key, self.deadlines_key,
                              self.prefix, owner, self.run_timeout)
         return ChatJob(**json.loads(payload)) if payload else None
@@ -189,7 +199,6 @@ class ChatQueue:
                                error or '', self.ttl, job.job_id))
 
     def get(self, job_id):
-        self.reap()
         data = self._call('hgetall', self.status_key(job_id))
         if not data:
             return None
@@ -199,8 +208,12 @@ class ChatQueue:
         data['error'] = data.get('error') or None
         return data
 
+    def retire(self, job_id):
+        """Caller must first verify the durable job is terminal."""
+        return self._call('eval', self._RETIRE, 3, self.status_key(job_id), self.queue_key,
+                          self.deadlines_key, job_id, self.ttl)
+
     def reserve_control(self, session_id):
-        self.reap()
         token = 'control:' + uuid4().hex
         # A bounded expiry prevents an API crash from leaving the session locked forever.
         if not self._call('eval', self._RESERVE, 1, self.session_key(session_id),
@@ -242,6 +255,8 @@ class ChatWorker:
             owner = uuid4().hex
             try:
                 job = self.queue.claim(owner)
+                from app.runtime.metrics import RUNTIME_HEARTBEAT
+                RUNTIME_HEARTBEAT.labels(role='worker').set_to_current_time()
                 if job is None:
                     self._stop.wait(.1)
                     continue

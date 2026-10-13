@@ -235,6 +235,21 @@ def test_known_failure_still_records_failed_and_allows_retry(tmp_path):
     assert status["status"] == "failed"
 
 
+def test_exception_after_business_effect_remains_unknown(tmp_path):
+    guard = _guard(tmp_path)
+    args = {'order_id': 'ORD-001', 'reason': '不想要了'}
+    calls = []
+    def lost_response(name, params):
+        calls.append(params)
+        raise TimeoutError('business committed, response lost')
+    token = guard.request_confirmation('after_sale_request', 'apply_refund', args)
+    guard.execute('after_sale_request', 'apply_refund', args, token, lost_response)
+    assert guard.query_idempotency_status('after_sale_request', 'apply_refund', args)['status'] == 'unknown'
+    fresh = guard.request_confirmation('after_sale_request', 'apply_refund', args)
+    guard.execute('after_sale_request', 'apply_refund', args, fresh, lost_response)
+    assert len(calls) == 1
+
+
 # ---------------------------------------------------------------------------
 # query_idempotency_status：五种状态
 # ---------------------------------------------------------------------------

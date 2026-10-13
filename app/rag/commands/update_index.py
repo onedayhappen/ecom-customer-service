@@ -27,8 +27,8 @@ def main():
         kb_dir=ROOT / settings.kb_dir,
         manifest_path=ROOT / settings.kb_manifest_path,
         embedder=Embedder(
-            settings.openai_api_key,
-            settings.openai_base_url,
+            settings.embedding_api_key or settings.openai_api_key,
+            settings.embedding_base_url or settings.openai_base_url,
             settings.embedding_model,
             provider=settings.embedding_provider,
             local_model_path=ROOT / settings.local_embedding_model_path,

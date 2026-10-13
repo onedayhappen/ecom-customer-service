@@ -82,6 +82,8 @@ def extract_long_term_facts(
     prompt = LTM_EXTRACTION_PROMPT.format(existing_ltm=existing_text)
     from app.config.settings import settings
 
+    from app.observability.llm_client import LlmClient
+    client = client if isinstance(client, LlmClient) else LlmClient(client, model, default_scene='memory')
     response = client.chat.completions.create(
         model=model,
         temperature=0.0,

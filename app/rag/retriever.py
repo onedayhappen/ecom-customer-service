@@ -59,7 +59,11 @@ class KnowledgeRetriever:
         if not self._loaded:
             self.load()
         # 并发上限内执行「编码 + 检索」整段，避免 embedding 模型被多线程同时调用。
-        with _retrieval_semaphore:
+        if not _retrieval_semaphore.acquire(timeout=settings.retrieval_local_wait_seconds):
+            raise TimeoutError('Retrieval instance is busy')
+        try:
             # Retriever 只负责“文本转向量”和调用时机，具体召回算法由后端实现。
             q_vec = self._embedder.encode_one(query)
             return self._backend.search(q_vec, top_k=top_k)
+        finally:
+            _retrieval_semaphore.release()

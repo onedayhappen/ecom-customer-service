@@ -77,8 +77,8 @@ def main():
 
     print(f"\n[2/3] 调用 {settings.embedding_provider} Embedding 批量向量化...")
     embedder = Embedder(
-        api_key=settings.openai_api_key,
-        base_url=settings.openai_base_url,
+        api_key=settings.embedding_api_key or settings.openai_api_key,
+        base_url=settings.embedding_base_url or settings.openai_base_url,
         model=settings.embedding_model,
         provider=settings.embedding_provider,
         local_model_path=ROOT / settings.local_embedding_model_path,

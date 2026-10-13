@@ -11,6 +11,7 @@ search_knowledge 面向非结构化文本（退换货政策、配送说明、FAQ
 
 from pathlib import Path
 from typing import Optional
+import threading
 
 from app.config.settings import settings
 from app.rag.backends import create_backend
@@ -19,6 +20,7 @@ from app.rag.retriever import KnowledgeRetriever
 from app.reliability.failure_policy import FailureCategory
 
 _retriever: Optional[KnowledgeRetriever] = None
+_retriever_lock = threading.RLock()
 
 
 def _create_backend_from_settings():
@@ -36,12 +38,17 @@ def _create_backend_from_settings():
 
 
 def _get_retriever() -> KnowledgeRetriever:
+    with _retriever_lock:
+        return _initialize_retriever()
+
+
+def _initialize_retriever() -> KnowledgeRetriever:
     """初始化和获取检索器"""
     global _retriever
     if _retriever is None:
         embedder = Embedder(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
+            api_key=settings.embedding_api_key or settings.openai_api_key,
+            base_url=settings.embedding_base_url or settings.openai_base_url,
             model=settings.embedding_model,
             provider=settings.embedding_provider,
             local_model_path=settings.local_embedding_model_path,
@@ -59,6 +66,19 @@ def reset_retriever() -> None:
 
 
 def search_knowledge(query: str, top_k: int = 3) -> dict:
+    if settings.retrieval_service_url:
+        from app.rag.remote import search
+        try:
+            if not query or len(query) > 4000 or not 1 <= int(top_k) <= 5:
+                raise ValueError('Invalid retrieval input')
+            return search(query, int(top_k))
+        except Exception:
+            return {'success': False, 'backend': 'remote', 'query': query, 'results': [],
+                    'error': '远程检索暂时不可用', 'error_code': FailureCategory.TRANSIENT_FAILURE.value}
+    return search_knowledge_local(query, top_k)
+
+
+def search_knowledge_local(query: str, top_k: int = 3) -> dict:
     """检索退换货政策、配送说明、会员权益、FAQ 等知识库内容。
 
     Returns:

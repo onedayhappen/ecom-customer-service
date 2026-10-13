@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from contextlib import contextmanager
 from hashlib import sha256
 from dataclasses import asdict, dataclass, field
@@ -67,6 +68,9 @@ class CaseManager:
 
     def __init__(self, user_id: str, storage_dir: str = "data/sessions/cases"):
         self.user_id = user_id
+        # Protect shared in-process objects; cross-instance coordination stays
+        # in the per-user file/DB transaction, not one global mutation lock.
+        self.mutation_lock = threading.RLock()
         # user_id 来自认证主体，仍不将其直接拼进路径，避免意外路径穿越。
         safe_id = sha256(user_id.encode("utf-8")).hexdigest()
         self.path = Path(storage_dir) / f"{safe_id}.json"

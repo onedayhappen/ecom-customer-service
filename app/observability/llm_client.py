@@ -343,7 +343,12 @@ class LlmClient:
             options = settings.chat_completion_options
             for key, value in options.items():
                 kwargs.setdefault(key, value)
-            return raw.chat.completions.create(**kwargs)
+            from app.runtime.budgets import model_budget
+            if not kwargs.get('max_completion_tokens') and not kwargs.get('max_tokens'):
+                kwargs['max_tokens'] = settings.model_max_output_tokens
+            with model_budget(str(kwargs.get('model', 'default')), kwargs):
+                check_bot()
+                return raw.chat.completions.create(**kwargs)
 
     async def _raw_acreate(self, **kwargs: Any) -> Any:
         from app.support.runtime import check_bot
@@ -360,7 +365,36 @@ class LlmClient:
             options = settings.chat_completion_options
             for key, value in options.items():
                 kwargs.setdefault(key, value)
-            return await raw.chat.completions.create(**kwargs)
+            from app.runtime.budgets import model_budget
+            import inspect
+            if not inspect.iscoroutinefunction(raw.chat.completions.create):
+                # The lease stays inside the thread until the sync network call
+                # actually returns, even if its async caller is cancelled.
+                return await asyncio.to_thread(self._raw_create, **kwargs)
+            if not kwargs.get('max_completion_tokens') and not kwargs.get('max_tokens'):
+                kwargs['max_tokens'] = settings.model_max_output_tokens
+            budget = model_budget(str(kwargs.get('model', 'default')), kwargs)
+            from app.runtime.async_utils import settle
+            admission = asyncio.create_task(asyncio.to_thread(budget.__enter__))
+            try:
+                await asyncio.shield(admission)
+            except asyncio.CancelledError:
+                # Acquisition may already be running in a thread. Settle it
+                # before propagating cancellation so no slot is leaked.
+                try:
+                    await settle(admission)
+                except Exception:
+                    pass
+                else:
+                    await settle(asyncio.create_task(asyncio.to_thread(budget.__exit__, None, None, None)))
+                raise
+            try:
+                await asyncio.to_thread(check_bot)
+                if inspect.iscoroutinefunction(raw.chat.completions.create):
+                    return await raw.chat.completions.create(**kwargs)
+                return await asyncio.to_thread(raw.chat.completions.create, **kwargs)
+            finally:
+                await settle(asyncio.create_task(asyncio.to_thread(budget.__exit__, None, None, None)))
 
     # -- 观测 --------------------------------------------------------------
 
