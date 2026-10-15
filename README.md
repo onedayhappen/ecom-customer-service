@@ -7,6 +7,7 @@
 - 意图识别、实体抽取和查询改写；没有本地模型时自动使用规则回退。
 - 订单、物流、商品、退款、知识库和用户记忆工具。
 - Workflow 的确认门控、能力降级和可验证证据；ReAct 的按意图工具裁剪。
+- 短期上下文按任务装配：当前任务状态、近期原话、后台结构化摘要与历史回查；模型请求统一限制输入预算。
 - FastAPI API、JWT/HttpOnly Cookie 登录、PostgreSQL 会话、Redis 队列与独立 Worker。
 - MySQL 订单数据访问层、Chroma RAG、MCP 工具服务和 React 客服工作台。
 
@@ -144,6 +145,10 @@ python scripts/hash_password.py admin "your-password"
 将输出内容写入 .env 的 API_AUTH_USERS。生产环境还应配置 HTTPS、限流、数据库备份和日志脱敏。
 
 ## API
+
+短期记忆设计、数据边界和回归方案见 [短期上下文方案](docs/SHORT_TERM_MEMORY.md)。默认启用 `SHORT_TERM_MEMORY_ENABLED`，每次模型请求的估算输入上限由 `CONTEXT_REQUEST_INPUT_TOKENS` 控制（默认 12000，包含工具定义）。`CONTEXT_MODEL_WINDOW_TOKENS` 按实际提供商模型配置后，会额外扣除输出预算与安全余量。
+
+后台摘要复用 Docker 的 `maintenance` 服务；本地可执行 `python -m scripts.platform_maintenance --once`。摘要模型调用在数据库事务之外；没有模型配置或摘要失败时仍可使用近期对话、任务状态和历史检索。摘要与模型窗口不会删除公开聊天记录。
 
 公开接口：GET /health、GET /ready、GET /metrics 和 POST /api/v1/auth/login。其余业务接口需要登录 Cookie 或 Authorization: Bearer <jwt>。
 

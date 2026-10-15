@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import time
 from functools import wraps
 from typing import Any, Callable, Optional
@@ -33,6 +34,8 @@ from typing import Any, Callable, Optional
 from app.observability.audit import audit_event, mask_sensitive
 from app.observability.metrics import emit_llm
 from app.observability.trace import SpanKind, TraceManager
+
+logger = logging.getLogger(__name__)
 
 #: LLM 场景标签：分开统计的维度
 SCENE_REWRITE = "rewrite"          # 查询改写（指代消歧子模型）
@@ -287,44 +290,71 @@ class LlmClient:
     # -- 内部实现（被 OpenAI 兼容代理调用） --------------------------------
 
     def _sync_call(self, params: dict) -> LLMCallResult:
+        params = dict(params)
         scene = params.pop("scene", self._default_scene)
         model = params.pop("model", self._model) or ""
         span_id = TraceManager.start_span(SpanKind.LLM, scene, model=model)
         start = time.perf_counter()
+        budget_info: dict = {}
         try:
-            # model 仅从 params 抽出用于埋点，必须放回后再传给底层，
-            # 否则 openai 客户端因缺少 model 参数报 TypeError。
-            response = self._raw_create(**dict(params, model=model))
+            params = self._prepare_request(dict(params, model=model), scene, model, budget_info)
+            response = self._raw_create(**params)
             result = self._build_result(response, scene, model, start, "ok", None)
-            self._observe(scene, model, result, "ok", None, params)
+            self._observe(scene, model, result, "ok", None, params, budget_info)
             TraceManager.end_span(span_id, status="ok", model=model)
             return result
         except Exception as exc:  # noqa: BLE001 —— 埋点后原样抛出
             error = f"{type(exc).__name__}: {exc}"
             result = LLMCallResult("", model=model, scene=scene, status="error", error=error)
-            self._observe(scene, model, result, "error", error, params)
+            self._observe(scene, model, result, "error", error, params, budget_info)
             TraceManager.end_span(
                 span_id, status="error", error=error, model=model,
             )
             raise
 
     async def _async_call(self, params: dict) -> LLMCallResult:
+        params = dict(params)
         scene = params.pop("scene", self._default_scene)
         model = params.pop("model", self._model) or ""
         span_id = TraceManager.start_span(SpanKind.LLM, scene, model=model)
         start = time.perf_counter()
+        budget_info: dict = {}
         try:
-            response = await self._raw_acreate(**dict(params, model=model))
+            params = self._prepare_request(dict(params, model=model), scene, model, budget_info)
+            response = await self._raw_acreate(**params)
             result = self._build_result(response, scene, model, start, "ok", None)
-            self._observe(scene, model, result, "ok", None, params)
+            self._observe(scene, model, result, "ok", None, params, budget_info)
             TraceManager.end_span(span_id, status="ok", model=model)
             return result
         except Exception as exc:  # noqa: BLE001
             error = f"{type(exc).__name__}: {exc}"
             result = LLMCallResult("", model=model, scene=scene, status="error", error=error)
-            self._observe(scene, model, result, "error", error, params)
+            self._observe(scene, model, result, "error", error, params, budget_info)
             TraceManager.end_span(span_id, status="error", error=error, model=model)
             raise
+
+    @staticmethod
+    def _prepare_request(params: dict, scene: str, model: str, report: dict) -> dict:
+        from app.config.settings import settings
+        from app.session.context_budget import estimate_request_tokens
+        from app.session.request_budget import apply_request_budget, request_input_limit
+
+        # Resolve all provider options before estimating the actual wire request.
+        for key, value in settings.chat_completion_options.items():
+            params.setdefault(key, value)
+        if not params.get("max_completion_tokens") and not params.get("max_tokens"):
+            params["max_tokens"] = settings.model_max_output_tokens
+        before = estimate_request_tokens(params)
+        report.update(context_budget_enabled=settings.context_request_budget_enabled,
+                      context_input_estimated_before=before,
+                      context_input_limit=request_input_limit(params))
+        bounded = apply_request_budget(params, scene=scene, model=model)
+        after = estimate_request_tokens(bounded)
+        removed = len(params.get("messages", [])) - len(bounded.get("messages", []))
+        report.update(context_input_estimated_after=after, context_messages_removed=removed)
+        logger.info("LLM context budget scene=%s model=%s before=%s after=%s limit=%s removed=%s",
+                    scene, model, before, after, report["context_input_limit"], removed)
+        return bounded
 
     # -- 底层调用（绕开 patch_client，避免双重采集） -----------------------
 
@@ -406,6 +436,7 @@ class LlmClient:
         status: str,
         error: str | None,
         params: dict,
+        budget_info: dict | None = None,
     ) -> None:
         """指标 + 审计（审计由 AuditLogger 做抽样；异常 force 100% 写入）。"""
         emit_llm(
@@ -431,6 +462,7 @@ class LlmClient:
                 "prompt_tokens": result.prompt_tokens,
                 "completion_tokens": result.completion_tokens,
                 "total_tokens": result.total_tokens,
+                **(budget_info or {}),
             },
             # 完整报文也必须先脱敏；审计 sink 不应成为用户地址、手机号的泄漏出口。
             raw={"messages": mask_sensitive(params.get("messages", []))},

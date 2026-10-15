@@ -58,6 +58,11 @@ class TaskService:
                    (task['request_text'], json.dumps(task['slots'], ensure_ascii=False), task['status'], task['version'],
                     json.dumps(task['question'], ensure_ascii=False) if task['question'] else None, task['updated_at'], task['task_id']))
         self.store._event(tx, c, 'task_state', actor, {'task': task})
+        if task['status'] in {'paused', 'completed', 'cancelled', 'needs_human'}:
+            from app.config.settings import settings
+            if settings.short_term_memory_enabled:
+                from app.session.short_term import enqueue_context_job
+                enqueue_context_job(tx, c, task['task_id'])
 
     def create(self, tx, c, spec, actor):
         from app.support.store import now
@@ -275,7 +280,12 @@ class TaskService:
         row = tx.one('SELECT route FROM conversation_task_turns WHERE job_id=?', (job_id,))
         return json.loads(row['route']).get('task_id') if row else None
 
-    def context(self, sid, user, tid):
+    def context(self, sid, user, tid, *, query='', exclude_latest_user=False):
+        from app.config.settings import settings
+        if settings.short_term_memory_enabled:
+            from app.session.short_term import ContextService
+            return ContextService(self.store).build(sid, user, task_id=tid, query=query,
+                                                   exclude_latest_user=exclude_latest_user)
         with self.store.transaction(read_only=True) as tx:
             self.store._control(tx, sid, user)
             rows = tx.all("""SELECT e.payload FROM support_task_messages m JOIN support_events e
@@ -283,8 +293,9 @@ class TaskService:
                 WHERE m.session_id=? AND m.task_id=? AND e.visibility='public'
                 ORDER BY m.sequence DESC LIMIT 40""", (sid, tid))
             messages = [json.loads(row['payload']) for row in rows]
-            return [{'role': m['role'] if m['role'] == 'user' else 'assistant', 'content': m['content']}
-                    for m in reversed([m for m in messages if m.get('task_id') == tid][:40])]
+            result = [{'role': m['role'] if m['role'] == 'user' else 'assistant', 'content': m['content']}
+                      for m in reversed(messages[:40])]
+            return result[:-1] if exclude_latest_user and result and result[-1]['role'] == 'user' else result
 
     def started(self, tx, c, job_id):
         row = tx.one('SELECT route FROM conversation_task_turns WHERE job_id=?', (job_id,))
@@ -387,7 +398,7 @@ class TaskService:
     def adopt(self, sid, user, version, intent, message):
         """A classified business intent not recognized by the ingress rules becomes a task too."""
         from app.support.store import SupportError
-        if intent not in LABELS:
+        if intent not in LABELS or intent in {'greetings', 'closure', 'others'}:
             return None
         with self.store.transaction() as tx:
             c = self.store._check(tx, sid, user, version)
@@ -402,4 +413,14 @@ class TaskService:
             route = {'task_id': task['task_id'], 'task_version': task['version'], 'intent': intent, 'message': message}
             tx.execute('INSERT INTO conversation_task_turns VALUES (?,?,?) ON CONFLICT(job_id) DO UPDATE SET route=excluded.route',
                        (c['bot_job_id'], sid, json.dumps(route, ensure_ascii=False)))
+            # Ingress did not yet know this task. Associate the original public
+            # event without rewriting the immutable transcript payload.
+            tx.execute('''INSERT INTO support_task_messages(task_id,session_id,sequence)
+                SELECT ?,session_id,sequence FROM support_events
+                WHERE session_id=? AND event_key=? AND kind='message' AND visibility='public'
+                ON CONFLICT DO NOTHING''', (task['task_id'], sid, f"user:{c['bot_job_id']}"))
+            from app.config.settings import settings
+            if settings.short_term_memory_enabled:
+                from app.session.short_term import enqueue_context_job
+                enqueue_context_job(tx, c, task['task_id'])
             return task

@@ -230,6 +230,19 @@ class Settings(BaseSettings):
     context_compaction_trigger_ratio: float = 0.70
     context_compaction_retain_ratio: float = 0.40
 
+    # 生产客服事件的短期上下文；与旧 JSON 会话压缩设置独立。
+    short_term_memory_enabled: bool = True
+    short_term_recent_tokens: int = Field(default=4000, ge=256)
+    short_term_summary_tokens: int = Field(default=1200, ge=128)
+    short_term_recall_tokens: int = Field(default=1200, ge=128)
+    short_term_recent_turns: int = Field(default=4, ge=1, le=20)
+    short_term_compaction_batch_messages: int = Field(default=64, ge=8, le=256)
+    # 最终提供商请求预算包含 system、工具定义、调用参数和结果。
+    context_request_budget_enabled: bool = True
+    context_request_input_tokens: int = Field(default=12000, ge=512)
+    context_model_window_tokens: int = Field(default=0, ge=0)
+    context_window_margin_tokens: int = Field(default=1024, ge=0)
+
     model_config = {"env_file": ".env"}
 
     def validate_runtime_configuration(self) -> None:

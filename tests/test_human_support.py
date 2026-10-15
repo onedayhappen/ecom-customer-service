@@ -259,6 +259,8 @@ def test_full_history_is_independent_of_model_window(store):
     tid = claim(store)
     for i in range(45): store.receive("session", "customer", str(i), str(i))
     store.reply(tid, "alice", "internal only", "private", True)
-    assert len(store.context("session", "customer")) == 40
+    window = store.context("session", "customer")
+    assert window[-1]['content'] == '44'
+    assert len([m for m in window if m['role'] != 'system']) < 45
     assert len(store.public_history("session", "customer")) == 45
     assert store.public_history("session", "customer")[0]["content"] == "0"

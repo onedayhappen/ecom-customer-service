@@ -6,6 +6,8 @@ import threading
 
 from app.support.runtime import get_store
 from app.runtime.maintenance import archive_jobs, backfill_ticket_snapshots
+from app.session.short_term import process_context_jobs
+from app.config.settings import settings
 
 
 def main():
@@ -25,6 +27,9 @@ def main():
             count = archive_jobs(get_store(), args.retention_days, args.batch_size)
             logging.info('Archived %s terminal jobs; execution tombstones retained', count)
             backfill_ticket_snapshots(get_store())
+            if settings.short_term_memory_enabled:
+                contexts = process_context_jobs(get_store(), limit=min(args.batch_size, 20))
+                logging.info('Short-term context maintenance: %s', contexts)
         except Exception:
             if args.once:
                 raise

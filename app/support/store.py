@@ -18,6 +18,7 @@ from app.runtime.outbox import SCHEMA as JOB_SCHEMA, DurableJobs
 from app.runtime.notifications import SCHEMA as NOTIFICATION_SCHEMA, enqueue as enqueue_notification
 from app.memory.case_postgres import SCHEMA as CASE_SCHEMA
 from app.runtime.maintenance import SCHEMA as MAINTENANCE_SCHEMA
+from app.session.short_term import SCHEMA as CONTEXT_SCHEMA
 
 
 class SupportError(Exception):
@@ -70,8 +71,8 @@ SCHEMA = (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, response TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS support_bot_runs (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
-) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + CASE_SCHEMA + MAINTENANCE_SCHEMA
-SCHEMA_VERSION = 7
+) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + CASE_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA
+SCHEMA_VERSION = 8
 
 
 class Tx:
@@ -181,6 +182,11 @@ class SupportStore:
         if kind == 'message' and payload.get('task_id'):
             tx.execute('INSERT INTO support_task_messages VALUES (?,?,?) ON CONFLICT DO NOTHING',
                        (payload['task_id'], control['session_id'], control['sequence']))
+        if kind == 'message' and not private:
+            from app.config.settings import settings
+            if settings.short_term_memory_enabled:
+                from app.session.short_term import enqueue_context_job
+                enqueue_context_job(tx, control, payload.get('task_id'))
         return control["sequence"]
 
     def ensure(self, sid, user, history=()):
@@ -372,13 +378,18 @@ class SupportStore:
             cursor = rows[-1]["sequence"] if len(rows) == limit else ceiling
             return {"events": rows, "cursor": cursor, "state": state}
 
-    def context(self, sid, user):
+    def context(self, sid, user, *, query='', exclude_latest_user=False):
+        from app.config.settings import settings
+        if settings.short_term_memory_enabled:
+            from app.session.short_term import ContextService
+            return ContextService(self).build(sid, user, query=query, exclude_latest_user=exclude_latest_user)
         with self.transaction(read_only=True) as tx:
             self._control(tx, sid, user)
             rows = tx.all("""SELECT payload FROM support_events WHERE session_id=? AND kind='message'
                 AND visibility='public' ORDER BY sequence DESC LIMIT 40""", (sid,))
-            return [{"role": p["role"] if p["role"] == "user" else "assistant", "content": p["content"]}
-                    for p in (json.loads(r["payload"]) for r in reversed(rows))]
+            messages = [{"role": p["role"] if p["role"] == "user" else "assistant", "content": p["content"]}
+                        for p in (json.loads(r["payload"]) for r in reversed(rows))]
+            return messages[:-1] if exclude_latest_user and messages and messages[-1]['role'] == 'user' else messages
 
     def transcript(self, sid, user, before=None, limit=50, *, staff=False, ticket_id=None):
         """Bootstrap from a bounded snapshot, then seek backwards through messages.
