@@ -307,7 +307,8 @@ class CaseManager:
         # 列表结果可能包含多个订单号；不能把第一个订单误绑定成当前 Case。
         # 只有非列表的单实体结果才允许从原文兜底抽取订单号。
         order_id = order.get("order_id") or (
-            None if "orders" in result else self._order_id_from_text(raw_result)
+            None if "orders" in result or tool_name in {"read_case_memory", "save_case_context"}
+            else self._order_id_from_text(raw_result)
         )
         if not order_id:
             # 列表、知识库等工具结果没有单个订单号，但仍是当前用户会话的
@@ -343,6 +344,8 @@ class CaseManager:
         evidence: list[dict] = []
         for event in reversed(self.events):
             if event.get("event_type") != "tool_result" or event.get("session_id") != session_id:
+                continue
+            if (event.get('payload') or {}).get('tool') in {'read_case_memory', 'save_case_context'}:
                 continue
             value = (event.get("payload") or {}).get("evidence")
             if isinstance(value, dict):

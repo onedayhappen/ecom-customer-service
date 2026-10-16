@@ -101,7 +101,9 @@ def test_classifier_context_excludes_future_answers_and_tool_output():
 
 @pytest.mark.parametrize('intent', [i for i in CLASSIFICATION_INTENTS
                                   if not build_data_plan(i).spec.execution_ready])
-def test_pending_execution_never_calls_a_tool_or_requires_a_client(intent):
+def test_pending_execution_never_calls_a_tool_or_requires_a_client(intent, monkeypatch):
+    from app.config.settings import settings
+    monkeypatch.setattr(settings, 'assistant_just_react', False)
     class Forbidden:
         def __getattr__(self, name):
             raise AssertionError(f'未接入执行路径不能调用 {name}')

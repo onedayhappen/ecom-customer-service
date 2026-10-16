@@ -93,6 +93,47 @@ class TaskService:
         return {'reply': question['prompt'], 'background_control': True}
 
     def route(self, tx, c, text, actor, data):
+        from app.config.settings import settings
+        if settings.assistant_just_react and not data.get('task_action'):
+            return self.conversation_route(tx, c, text, actor, data)
+        return self.legacy_route(tx, c, text, actor, data)
+
+    def conversation_route(self, tx, c, text, actor, data):
+        """Admit the original message, without splitting tasks or filling slots.
+
+        Only explicit UI actions use the legacy task API. Every new conversational
+        turn fences old jobs/proposals; a confirmation keeps the exact issuing epoch.
+        """
+        from app.support.store import SupportError
+        if c['mode'] != 'bot':
+            return {}
+        if c['bot_job_id']:
+            previous = tx.one("SELECT payload FROM support_events WHERE session_id=? AND event_key=?",
+                              (c['session_id'], f"user:{c['bot_job_id']}"))
+            if previous and json.loads(previous['payload']).get('content') == text:
+                raise SupportError('相同消息正在处理中，请等待结果或使用原请求 ID 查询')
+        confirmation = (data.get('confirmation_token') and
+                        text.strip().strip('。！! ') in {'确认', '确认执行', '是', '是的', '同意'})
+        if confirmation:
+            if c['bot_job_id']:
+                raise SupportError('操作正在处理中，请等待结果')
+            return {'confirmation': True, 'message': text}
+        self.invalidate(tx, c)
+        inflight = tx.one("SELECT operation_id FROM support_operations WHERE session_id=? AND status IN ('running','unknown') LIMIT 1", (c['session_id'],))
+        if inflight:
+            self.store._handoff(tx, c, 'business_result_unknown', actor)
+            self.store._event(tx, c, 'message', 'system', {'role': 'assistant',
+                'content': '已有业务操作开始执行或结果待核实，无法保证撤回。已停止后续执行并转人工核实。'})
+            return {}
+        # Preserve pre-migration tasks as history, never force their questions
+        # onto the new message or infer completion from an ordinary answer.
+        for task in self.rows(tx, c['session_id']):
+            if task['status'] in ACTIVE:
+                task['status'] = 'paused'
+                self.save(tx, c, task, actor)
+        return {'message': text}
+
+    def legacy_route(self, tx, c, text, actor, data):
         from app.support.store import SupportError
         if c['mode'] != 'bot':
             if data.get('task_action'):

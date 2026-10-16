@@ -16,9 +16,11 @@ from app.reliability.failure_policy import FailureCategory
 from app.support.runtime import call_tool as controlled_tool_call
 from app.support.runtime import escalate_to_human
 from app.tools.commerce import TOOL_MAP as COMMERCE_TOOLS, TOOL_DEFINITIONS as COMMERCE_DEFINITIONS
+from app.tools.case_context import TOOL_MAP as CASE_TOOLS, TOOL_DEFINITIONS as CASE_DEFINITIONS
 
 _TOOL_MAP: dict[str, Callable] = {
     **COMMERCE_TOOLS,
+    **CASE_TOOLS,
     "escalate_to_human": escalate_to_human,
     "query_order": query_order,
     "query_product": query_product,
@@ -247,6 +249,7 @@ TOOL_DEFINITIONS: list[dict] = [
 
 
 TOOL_DEFINITIONS.extend(COMMERCE_DEFINITIONS)
+TOOL_DEFINITIONS.extend(CASE_DEFINITIONS)
 
 
 def execute_tool(name: str, arguments: dict) -> str:

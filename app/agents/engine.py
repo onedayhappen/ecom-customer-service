@@ -1,13 +1,9 @@
-"""统一执行引擎（替代旧 MultiAgentOrchestrator 的 Router + SubAgent + ReAct）。
+"""统一对话 Agent：全部分类标签使用同一个可选工具循环。
 
-新链路入口：意图识别 → IntentSpec → Data Plan → :func:`dispatch` 执行 →
-包装为 :class:`CustomerServiceResponse`。Session / Case / LTM 等外壳能力
-由调用方（API / 评测沙箱）按需组合，引擎本身保持纯执行职责。
-
-- WORKFLOW：确定性脚本（ToolRunner 直跑；成功路径的回复可注入 LLM 生成器，
-  把工具返回结果交给模型表述——见 :meth:`_workflow_reply_generator`）
-- REACT：LLM + 工具循环（ReactExecutor，需 client/model）
-- RULE：对话流固定回复（dispatch 兜底，活跃 Case 时由决策规则接管）
+默认使用 build_conversation_plan：标签是参考，当前输入决定对话走向；没有
+工具调用时直接回复。确认、参数校验和业务写入由服务端保护层执行。
+ASSISTANT_JUST_REACT=false 才启用下方保留的历史 Workflow 回滚路径。
+Session / Case / LTM 由 API 或评测调用方装配。
 """
 
 from __future__ import annotations
@@ -18,6 +14,8 @@ from typing import Any
 
 from app.agents.response import CustomerServiceResponse
 from app.data_plan import DataPlan, build_data_plan
+from app.data_plan.builder import build_conversation_plan
+from app.config.settings import settings
 from app.data_plan.enums import Execution, Intent
 from app.execution import (
     ReactExecutor,
@@ -31,7 +29,7 @@ from app.prompts.react_guidelines import WORKFLOW_REPLY_GUIDELINES
 
 
 class AgentEngine:
-    """意图 → DataPlan → dispatch → 响应 的统一执行入口。"""
+    """统一对话执行入口；分类结果不授予任何业务操作权限。"""
 
     def __init__(
         self,
@@ -42,7 +40,8 @@ class AgentEngine:
         temperature: float = 0.0,
     ):
         self.intent = Intent(intent) if isinstance(intent, str) else intent
-        self.plan: DataPlan = build_data_plan(self.intent)
+        self.plan: DataPlan = (build_conversation_plan(self.intent)
+                               if settings.assistant_just_react else build_data_plan(self.intent))
         self.client = client
         self.model = model
         self.temperature = temperature

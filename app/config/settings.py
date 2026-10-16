@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     )
     temperature: float = 0.7
 
+    # 统一对话入口；False 仅用于旧版本回滚和历史流程回归。
+    assistant_just_react: bool = True
+
     # ReAct 循环
     max_react_steps: int = 5
     compact_react_enabled: bool = True

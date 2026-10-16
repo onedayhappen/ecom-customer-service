@@ -57,9 +57,9 @@ class Sandbox:
 
             for turn in case.turns:
                 from app.intent import recognize
-                from app.intent.query_rewrite import make_llm_disambiguator, rewrite_query
+                from app.intent.query_rewrite import make_llm_disambiguator, rewrite_query, RewriteOutcome
                 # 与 API 相同：先尝试消费上一轮的多订单选择，再做意图识别。
-                selection = case_manager.consume_order_selection(session_id, turn)
+                selection = None if settings.assistant_just_react else case_manager.consume_order_selection(session_id, turn)
                 if selection and selection.get("invalid"):
                     lines = ["请回复候选序号或完整订单号，例如“2”："]
                     lines.extend(
@@ -84,7 +84,7 @@ class Sandbox:
                     Intent(selected_intent)
                     if selected_intent else recognize(effective_turn, messages=context)
                 )
-                rewritten = rewrite_query(
+                rewritten = RewriteOutcome(message=effective_turn, source='conversation') if settings.assistant_just_react else rewrite_query(
                     effective_turn,
                     intent=intent,
                     case_manager=case_manager,
@@ -179,7 +179,11 @@ class Sandbox:
         from app.tools.registry import execute_tool
 
         def wrapper(name: str, arguments: dict) -> str:
-            result_str = execute_tool(name, arguments)
+            # These new tools must not read/write a live user's cross-session
+            # drafts when an evaluation is invoked with an existing identity.
+            result_str = json.dumps({'success': False, 'error_code': 'evidence_unavailable',
+                                     'error': '评测沙箱不读取或修改真实对话草稿'}, ensure_ascii=False) if name in {
+                                         'read_case_memory', 'save_case_context'} else execute_tool(name, arguments)
             trace.tool_observations.append(
                 ToolObservation(name=name, arguments=dict(arguments), result=result_str)
             )

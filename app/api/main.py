@@ -564,7 +564,7 @@ def _execute_chat_job(job: ChatJob) -> dict:
             if task_route.get('task_id'):
                 request.task_id = UUID(task_route['task_id'])
                 request.task_version = task_route['task_version']
-                if not task_route.get('confirmation'):
+                if not settings.assistant_just_react and not task_route.get('confirmation'):
                     request.message = task_route['message']
             lost_lease = threading.Event()
             with execution_lease_guard(lost_lease), agent_partition(job.user_id, lost_lease), _llm_lease.slot(settings.api_queue_wait_seconds, lost_event=lost_lease) as acquired:
@@ -653,7 +653,9 @@ async def chat(
         request.session_id or str(uuid5(NAMESPACE_URL, "session:" + job_id)))
     request.session_id = normalized_session_id
     from app.tasks.routing import parse
-    control_request = request.task_action or explicit_handoff(request.message) or parse(request.message)['action']
+    control_request = request.task_action or explicit_handoff(request.message)
+    if not settings.assistant_just_react:
+        control_request = control_request or parse(request.message)['action']
     try:
         await asyncio.to_thread(admit_request, current_user.user_id, 'control' if control_request else 'chat')
     except RateExceeded as exc:
@@ -874,7 +876,10 @@ def _handle_chat_inner(
 def _handle_chat_inner_impl(
     request: ChatRequest, user_id: str, tracer, observer,
 ) -> ChatResponse:
-    """原 _handle_chat 主体；tracer 为 None 时埋点全部跳过，行为与旧版一致。"""
+    """Unified conversation by default; the old route remains for rollback only."""
+    if settings.assistant_just_react:
+        from app.api.conversation import handle_conversation
+        return handle_conversation(request, user_id, tracer, observer)
     session_id, history = _build_engine(user_id, request.session_id, query=request.message,
                                         task_id=str(request.task_id) if request.task_id else None)
     request.session_id = session_id

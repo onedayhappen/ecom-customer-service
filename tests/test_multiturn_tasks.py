@@ -10,7 +10,9 @@ from app.tasks.routing import parse
 
 
 @pytest.fixture
-def store(tmp_path):
+def store(tmp_path, monkeypatch):
+    from app.config.settings import settings
+    monkeypatch.setattr(settings, 'assistant_just_react', False)
     store = SupportStore(f"sqlite:///{tmp_path / 'tasks.db'}")
     store.ensure('session', 'user')
     return store

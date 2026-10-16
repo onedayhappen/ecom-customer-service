@@ -62,7 +62,8 @@ _APPLY_PRICE_PROTECT = ToolCapability("apply_price_protect", _BUSINESS, True, Fa
 _ESCALATE_TO_HUMAN = ToolCapability("escalate_to_human", _BUSINESS, True, True, "转人工/创建升级工单")
 
 # 记忆域（2）
-_READ_CASE_MEMORY = ToolCapability("read_case_memory", _MEMORY, False, False, "读取当前/历史 Case 业务事实")
+_READ_CASE_MEMORY = ToolCapability("read_case_memory", _MEMORY, False, True, "读取当前用户跨会话 Case 和草稿版本")
+_SAVE_CASE_CONTEXT = ToolCapability("save_case_context", _MEMORY, True, True, "保存当前订单的对话草稿，不执行业务操作")
 
 # 引擎域（2）
 _RECOMMEND_PRODUCTS = ToolCapability("recommend_products", _ENGINE, False, False, "基于用户画像与商品库生成个性化推荐")
@@ -83,7 +84,7 @@ CAPABILITIES: dict[str, ToolCapability] = {
         _CANCEL_ORDER, _EXPEDITE_LOGISTICS, _APPLY_REFUND, _APPLY_EXCHANGE,
         _APPLY_PRICE_PROTECT, _ESCALATE_TO_HUMAN,
         # 记忆域（2）
-        _RECALL_USER_MEMORY, _READ_CASE_MEMORY,
+        _RECALL_USER_MEMORY, _READ_CASE_MEMORY, _SAVE_CASE_CONTEXT,
         # 引擎域（2）
         _SEARCH_KNOWLEDGE, _RECOMMEND_PRODUCTS,
         # 增强域（3）
@@ -128,7 +129,7 @@ IMPLEMENTED_CAPABILITIES: frozenset[str] = frozenset(
 MUTATING_CAPABILITIES: frozenset[str] = frozenset(
     # Conversation-control writes have their own authorization/transaction path,
     # and do not require an order ID or a second refund-style confirmation.
-    name for name, c in CAPABILITIES.items() if c.side_effect and name != "escalate_to_human"
+    name for name, c in CAPABILITIES.items() if c.side_effect and name not in {"escalate_to_human", "save_case_context"}
 )
 
 

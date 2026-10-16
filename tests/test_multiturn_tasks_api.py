@@ -18,6 +18,8 @@ from app.support.runtime import get_store
 
 @pytest.fixture
 def api(tmp_path, monkeypatch):
+    # Historical task/card API remains an explicit rollback contract.
+    monkeypatch.setattr(settings, 'assistant_just_react', False)
     from app.session import repository
     from app.runtime.concurrency import DistributedLease
     from app.agents.engine import AgentEngine

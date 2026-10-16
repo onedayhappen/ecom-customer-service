@@ -1,26 +1,26 @@
 # Ecom Customer Service
 
-一个面向电商客服场景的 Agent 服务，提供订单、物流、商品、退款和知识库问答能力。后端使用 FastAPI，执行层支持确定性的 Workflow 与带工具调用的 ReAct，前端使用 React/Vite。项目可以接入 DeepSeek 或其他 OpenAI 兼容模型；本地意图模型和 Embedding 模型均作为可选外部依赖，模型权重不会提交到仓库。
+一个面向电商客服场景的 Agent 服务，提供订单、物流、商品、退款和知识库问答能力。后端使用 FastAPI，默认由统一对话 Agent 接待，按需调用工具；实际业务写入由确定性工具和服务端确认机制执行。前端使用 React/Vite。项目可以接入 DeepSeek 或其他 OpenAI 兼容模型；本地意图模型和 Embedding 模型均作为可选外部依赖，模型权重不会提交到仓库。
 
 ## 功能
 
-- 意图识别、实体抽取和查询改写；没有本地模型时自动使用规则回退。
+- 31 类业务标签只作参考，不锁定执行路径；没有本地分类模型时使用规则回退。
 - 订单、物流、商品、退款、知识库和用户记忆工具。
-- Workflow 的确认门控、能力降级和可验证证据；ReAct 的按意图工具裁剪。
-- 短期上下文按任务装配：当前任务状态、近期原话、后台结构化摘要与历史回查；模型请求统一限制输入预算。
+- 自由多轮对话支持追问、插问和改口；不再自动拆待办或强制填槽。写操作先预检、展示具体内容，再校验确认令牌。
+- 会话原话、后台摘要、历史回查和跨会话订单草稿；草稿使用版本校验，不能覆盖业务工具的权威状态。
 - FastAPI API、JWT/HttpOnly Cookie 登录、PostgreSQL 会话、Redis 队列与独立 Worker。
 - MySQL 订单数据访问层、Chroma RAG、MCP 工具服务和 React 客服工作台。
 
-业务扩充方案见 [电商客服业务场景扩充评审稿](docs/BUSINESS_SCENARIOS_REVIEW.md)：规划 28 个业务意图，加问候、收尾、其他共 31 类；逐类确定默认执行路径（12 类 ReAct、19 类 Workflow），包含原 29 类映射、48 个业务场景及 24 个多轮对照用例。本分支已更新 31 类识别契约、规则、提示词与路由；5 个旧枚举仅供历史任务兼容。19 类 Workflow 的完整步骤、分支、工具契约见文档专节，新增业务工具已有 MySQL 实现；Workflow 执行器仍需逐项接入。
+当前架构见 [统一对话 Agent 方案](docs/ASSISTANT_JUST_REACT.md)。[业务场景评审稿](docs/BUSINESS_SCENARIOS_REVIEW.md)保留 28 个业务意图，加问候、收尾、其他共 31 类的分类边界；其中原 19 类 Workflow / 12 类 ReAct 分流已退出默认运行链路。分类器输出仍只有意图标签，训练数据格式不变。接待全部意图不代表所有业务动作都已实现；本地演示发票不连接税务系统。
 
 ## 架构
 
 ~~~text
-React/Nginx -> FastAPI -> IntentSpec/DataPlan -> Workflow 或 ReAct
-                                  |                 |
-                                  +--> Tool/Evidence/Response
-                                  |
-                 PostgreSQL（会话/记忆） Redis（队列/缓存） MySQL（订单）
+React/Nginx -> FastAPI -> 统一对话 Agent -> 查询 / 计算 / 澄清
+                           |          -> 操作预检 -> 参数绑定确认 -> 业务写入
+                           |          -> 人工接管
+                           +-- 会话上下文 / Case 草稿 / 工具证据
+              PostgreSQL（会话/记忆） Redis（队列/缓存） MySQL（业务数据）
 ~~~
 
 主要代码位于 app/：
@@ -31,7 +31,7 @@ app/
 ├── agents/       Agent 入口和响应结构
 ├── data/         订单 DAO、缓存和数据适配
 ├── data_plan/    IntentSpec 与工具能力规划
-├── execution/    Workflow、ReAct 和 dispatch
+├── execution/    对话工具循环、操作预检与历史 Workflow 回滚路径
 ├── intent/       意图分类、规则回退和查询改写
 ├── memory/       长期记忆与 Case
 ├── rag/          知识库和 Chroma 检索

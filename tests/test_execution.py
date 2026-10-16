@@ -10,6 +10,13 @@ import json
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def legacy_execution_contract(monkeypatch):
+    """This module retains regression coverage for the explicit rollback path."""
+    from app.config.settings import settings
+    monkeypatch.setattr(settings, 'assistant_just_react', False)
+
 from app.agents.engine import AgentEngine
 from app.data_plan import DataPlan, build_data_plan
 from app.data_plan.enums import Execution
