@@ -11,11 +11,11 @@ from app.intent.rules import recognize
 @pytest.mark.parametrize("text,expected", [
     ("帮我看下 ORD-20240125-006 这单现在什么状态", Intent.ORDER_INQUIRY),
     ("帮我查 ORD-20240125-006", Intent.ORDER_INQUIRY),
-    ("Nike Air Max 270 还有 42 码吗", Intent.PRODUCT_INQUIRY),
-    ("MUJI 新疆棉四件套有灰色的吗，1.8米床能用吗", Intent.PRODUCT_INQUIRY),
-    ("新疆地区包邮吗，大概几天送到", Intent.PRODUCT_INQUIRY),
-    ("ORD-20240118-004 的退款怎么还没到", Intent.REFUND_STATUS),
-    ("退款几天到账", Intent.REFUND_STATUS),
+    ("Nike Air Max 270 还有 42 码吗", Intent.INVENTORY_INQUIRY),
+    ("MUJI 新疆棉四件套有灰色的吗，1.8米床能用吗", Intent.INVENTORY_INQUIRY),
+    ("新疆地区包邮吗，大概几天送到", Intent.DELIVERY_INQUIRY),
+    ("ORD-20240118-004 的退款怎么还没到", Intent.AFTER_SALE_STATUS),
+    ("退款几天到账", Intent.AFTER_SALE_STATUS),
 ])
 def test_rules_recognize_natural_phrasings(text: str, expected: Intent) -> None:
     assert recognize(text) == expected
@@ -25,9 +25,9 @@ def test_rules_recognize_natural_phrasings(text: str, expected: Intent) -> None:
     ("我的快递到哪了", Intent.LOGISTICS_INQUIRY),
     ("快递送到哪了", Intent.LOGISTICS_INQUIRY),
     ("ORD-20240115-001 的物流", Intent.LOGISTICS_INQUIRY),
-    ("这个耳机有货吗", Intent.PRODUCT_INQUIRY),
-    ("退款到账了吗", Intent.REFUND_STATUS),
-    ("我要退款", Intent.AFTER_SALE_REQUEST),
+    ("这个耳机有货吗", Intent.INVENTORY_INQUIRY),
+    ("退款到账了吗", Intent.AFTER_SALE_STATUS),
+    ("我要退款", Intent.REFUND_SERVICE),
     ("我要投诉", Intent.COMPLAINT),
     ("你好", Intent.GREETINGS),
     ("谢谢", Intent.CLOSURE),

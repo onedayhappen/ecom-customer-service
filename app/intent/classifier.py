@@ -1,7 +1,7 @@
 """可选本地意图分类器：Qwen2.5-0.5B-Instruct + LoRA adapter。
 
 替换 app/intent/ 的规则识别作为第一优先级：判断对话中用户最后一条消息的
-意图，输出 17 类业务任务级标签。
+意图，输出 31 类业务任务级标签。
 
 设计要点：
 - **延迟加载 + 进程内单例**：torch/transformers/peft 在首次调用时才导入，
@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-import re
+import json
 import threading
 from contextlib import nullcontext
 from pathlib import Path
@@ -23,6 +23,7 @@ from typing import Any
 
 from app.config.settings import settings
 from app.data_plan.enums import Intent
+from app.data_plan.taxonomy import VALID_INTENTS, validate_manifest
 from app.prompts.intent_system import SYSTEM_PROMPT, with_intent_system
 
 # torch 为可选依赖（见 requirements-intent.txt）：缺失时分类器整体不可用，
@@ -32,28 +33,24 @@ try:  # pragma: no cover - 环境依赖
 except ImportError:  # pragma: no cover
     torch = None  # type: ignore[assignment]
 
-# 与分类器契约一致的 17 类标签
-VALID_INTENTS = {
-    "product_inquiry", "product_recommendation",
-    "order_inquiry", "logistics_inquiry", "address_change", "order_cancel", "expedite",
-    "after_sale_request", "refund_status", "issue_report", "invoice", "complaint",
-    "confirmation", "answer_question", "closure", "greetings",
-    "others",
-}
+# 与分类器契约一致的 31 类标签
 
-_INTENT_RE = re.compile(r'"intent"\s*:\s*"([^"]+)"')
 
 # 项目根目录：app/intent/classifier.py → 上溯 3 级
 ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def parse_intent(text: str) -> str | None:
-    """从模型输出中解析 intent 标签；格式不合法或标签不在 17 类内返回 None。"""
-    match = _INTENT_RE.search(text or "")
-    if not match:
+    """从模型输出中解析 intent 标签；格式不合法或标签不在 31 类内返回 None。"""
+    text = text or ""
+    start = text.find('{')
+    if start < 0:
         return None
-    value = match.group(1).strip()
-    return value if value in VALID_INTENTS else None
+    try:
+        value = json.loads(text[start:]).get('intent')
+    except (ValueError, AttributeError):
+        return None
+    return value if isinstance(value, str) and value in VALID_INTENTS else None
 
 
 def _resolve_path(path: str) -> Path:
@@ -100,6 +97,7 @@ class IntentClassifier:
                 return False
 
     def _load(self) -> None:
+        validate_manifest(_resolve_path(settings.intent_adapter_path))
         import torch
         from peft import PeftModel
         from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -180,7 +178,9 @@ class IntentClassifier:
     @staticmethod
     def _trim_context(messages: list[dict]) -> list[dict]:
         """只保留最近 N 轮上下文；若末轮不是 user 则丢弃其后的消息。"""
-        msgs = [m for m in (messages or []) if isinstance(m, dict) and m.get("content")]
+        msgs = [m for m in (messages or []) if isinstance(m, dict)
+                and m.get("role") in {"user", "assistant"}
+                and isinstance(m.get("content"), str) and m["content"]]
         if not msgs:
             return [{"role": "user", "content": ""}]
         # 末轮必须是 user（当前消息）；否则截到最近一条 user
@@ -190,7 +190,7 @@ class IntentClassifier:
                 idx -= 1
             msgs = msgs[: idx + 1]
         limit = max(1, settings.intent_max_context_turns)
-        return msgs[-limit:]
+        return msgs[-limit:] or [{"role": "user", "content": ""}]
 
 
 # 进程内单例：API 多线程共享，模型只加载一次

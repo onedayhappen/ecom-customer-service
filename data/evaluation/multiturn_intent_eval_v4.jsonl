@@ -1,0 +1,76 @@
+{"id": "v4-001", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这个耳机支持蓝牙吗"}], "expected_intent": "product_inquiry"}
+{"id": "v4-002", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "预算五百，推荐通勤耳机"}], "expected_intent": "product_recommendation"}
+{"id": "v4-003", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "A和B两款耳机续航有什么区别"}], "expected_intent": "product_comparison"}
+{"id": "v4-004", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这双鞋42码有货吗"}], "expected_intent": "inventory_inquiry"}
+{"id": "v4-005", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "今天买这个寄到新疆需要几天"}], "expected_intent": "delivery_inquiry"}
+{"id": "v4-006", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "一般七天无理由退货运费谁承担"}], "expected_intent": "service_policy_inquiry"}
+{"id": "v4-007", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这次活动优惠券可以叠加吗"}], "expected_intent": "promotion_inquiry"}
+{"id": "v4-008", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这两件商品用券后实付多少"}], "expected_intent": "promotion_calculation"}
+{"id": "v4-009", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我的优惠券在结算时用不了"}], "expected_intent": "coupon_issue"}
+{"id": "v4-010", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "同款耳机这两家店哪家便宜"}], "expected_intent": "price_comparison"}
+{"id": "v4-011", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "购物车差三十满减怎么凑单"}], "expected_intent": "cart_optimization"}
+{"id": "v4-012", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这款手机过去一个月价格走势"}], "expected_intent": "price_history"}
+{"id": "v4-013", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我的会员积分还剩多少"}], "expected_intent": "membership_inquiry"}
+{"id": "v4-014", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "查一下ORD-001是否发货"}], "expected_intent": "order_inquiry"}
+{"id": "v4-015", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我的包裹现在到哪了"}], "expected_intent": "logistics_inquiry"}
+{"id": "v4-016", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "帮我把ORD-001收货地址改一下"}], "expected_intent": "address_change"}
+{"id": "v4-017", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "取消订单ORD-001"}], "expected_intent": "order_cancel"}
+{"id": "v4-018", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "帮我催一下快递尽快配送"}], "expected_intent": "expedite"}
+{"id": "v4-019", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "钱扣了两次但是订单未支付"}], "expected_intent": "payment_issue"}
+{"id": "v4-020", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "昨天买的耳机能退款吗"}], "expected_intent": "refund_service"}
+{"id": "v4-021", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我收到的鞋小了想换货"}], "expected_intent": "exchange_service"}
+{"id": "v4-022", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "昨天买的手机降价了可以申请价保吗"}], "expected_intent": "price_protection_service"}
+{"id": "v4-023", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我申请的换货审核到哪一步了"}], "expected_intent": "after_sale_status"}
+{"id": "v4-024", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "收到的手机开不了机"}], "expected_intent": "issue_report"}
+{"id": "v4-025", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我的电子发票开好了吗"}], "expected_intent": "invoice_inquiry"}
+{"id": "v4-026", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "帮我开一张公司发票"}], "expected_intent": "invoice_request"}
+{"id": "v4-027", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我要投诉商家虚假宣传"}], "expected_intent": "complaint"}
+{"id": "v4-028", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "帮我转人工客服"}], "expected_intent": "human_handoff"}
+{"id": "v4-029", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "你好"}], "expected_intent": "greetings"}
+{"id": "v4-030", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "谢谢再见"}], "expected_intent": "closure"}
+{"id": "v4-031", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "帮我订一张机票"}], "expected_intent": "others"}
+{"id": "v4-032", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "两款耳机哪个更适合通勤"}], "expected_intent": "product_recommendation"}
+{"id": "v4-033", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这两款手机哪个贵"}], "expected_intent": "product_comparison"}
+{"id": "v4-034", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "新会员能领哪些优惠券"}], "expected_intent": "promotion_inquiry"}
+{"id": "v4-035", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "会员积分抵扣上限是多少"}], "expected_intent": "membership_inquiry"}
+{"id": "v4-036", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "只买这款耳机开会员划算吗"}], "expected_intent": "promotion_calculation"}
+{"id": "v4-037", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "一般价保规则是什么"}], "expected_intent": "service_policy_inquiry"}
+{"id": "v4-038", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这个订单能退运费吗"}], "expected_intent": "refund_service"}
+{"id": "v4-039", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "价保申请的结果出来了吗"}], "expected_intent": "after_sale_status"}
+{"id": "v4-040", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "开发票需要提供什么信息"}], "expected_intent": "invoice_inquiry"}
+{"id": "v4-041", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我要修改发票抬头"}], "expected_intent": "invoice_request"}
+{"id": "v4-042", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "支付失败但银行卡已经扣款了"}], "expected_intent": "payment_issue"}
+{"id": "v4-043", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "订单为什么还没有发货"}], "expected_intent": "order_inquiry"}
+{"id": "v4-044", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "快递显示签收但我没有收到"}], "expected_intent": "issue_report"}
+{"id": "v4-045", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "ORD-001的快递公司和运单号是什么"}], "expected_intent": "logistics_inquiry"}
+{"id": "v4-046", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "先别查物流，帮我查订单金额"}], "expected_intent": "order_inquiry"}
+{"id": "v4-047", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "帮我退款，然后查物流"}], "expected_intent": "refund_service"}
+{"id": "v4-048", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "不用退款了，帮我开发票"}], "expected_intent": "invoice_request"}
+{"id": "v4-049", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我要退货"}, {"role": "assistant", "content": "请提供订单号"}, {"role": "user", "content": "ORD-001"}], "expected_intent": "refund_service"}
+{"id": "v4-050", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我要退货"}, {"role": "assistant", "content": "请问退货原因是什么？"}, {"role": "user", "content": "尺码不合适"}], "expected_intent": "refund_service"}
+{"id": "v4-051", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我要退货"}, {"role": "assistant", "content": "请确认是否申请退款？"}, {"role": "user", "content": "确认"}], "expected_intent": "refund_service"}
+{"id": "v4-052", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我要退货"}, {"role": "assistant", "content": "请确认是否申请退款？"}, {"role": "user", "content": "不退了"}], "expected_intent": "refund_service"}
+{"id": "v4-053", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我要换货"}, {"role": "assistant", "content": "您要换哪个尺码？"}, {"role": "user", "content": "42码"}], "expected_intent": "exchange_service"}
+{"id": "v4-054", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这款鞋还有货吗"}, {"role": "assistant", "content": "请选择颜色和尺码"}, {"role": "user", "content": "黑色42码"}], "expected_intent": "inventory_inquiry"}
+{"id": "v4-055", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "今天买几天送到"}, {"role": "assistant", "content": "请问配送到哪个城市？"}, {"role": "user", "content": "杭州"}], "expected_intent": "delivery_inquiry"}
+{"id": "v4-056", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这两件用券后多少钱"}, {"role": "assistant", "content": "请提供配送地址用于运费估算"}, {"role": "user", "content": "上海"}], "expected_intent": "promotion_calculation"}
+{"id": "v4-057", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "推荐一款耳机"}, {"role": "assistant", "content": "预算是多少？"}, {"role": "user", "content": "500元"}], "expected_intent": "product_recommendation"}
+{"id": "v4-058", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我昨天申请了退款"}, {"role": "assistant", "content": "退款正在处理中"}, {"role": "user", "content": "那钱怎么还没到账"}], "expected_intent": "after_sale_status"}
+{"id": "v4-059", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "订单重复扣款了"}, {"role": "assistant", "content": "支付通道正在核对"}, {"role": "user", "content": "钱还是没到账"}], "expected_intent": "payment_issue"}
+{"id": "v4-060", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "帮我开公司发票"}, {"role": "assistant", "content": "请提供抬头和税号"}, {"role": "user", "content": "抬头是测试科技公司"}], "expected_intent": "invoice_request"}
+{"id": "v4-061", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这张券用不了"}, {"role": "assistant", "content": "本活动不支持与会员折扣叠加"}, {"role": "user", "content": "为什么不能一起用"}], "expected_intent": "coupon_issue"}
+{"id": "v4-062", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "查一下我的物流"}, {"role": "assistant", "content": "请提供订单号"}, {"role": "user", "content": "先不查了，帮我看快递到哪了"}], "expected_intent": "logistics_inquiry"}
+{"id": "v4-063", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我要退货"}, {"role": "assistant", "content": "请问退货原因是什么？"}, {"role": "user", "content": "我要取消订单"}], "expected_intent": "order_cancel"}
+{"id": "v4-064", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我要退货"}, {"role": "assistant", "content": "请问退货原因是什么？"}, {"role": "user", "content": "退款到账了吗"}], "expected_intent": "after_sale_status"}
+{"id": "v4-065", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "我要退货"}, {"role": "assistant", "content": "请问退货原因是什么？"}, {"role": "user", "content": "谢谢再见"}], "expected_intent": "closure"}
+{"id": "v4-066", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "推荐一个手机"}, {"role": "assistant", "content": "您的预算是多少？"}, {"role": "user", "content": "这款支持无线充电吗"}], "expected_intent": "product_inquiry"}
+{"id": "v4-067", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "您好"}, {"role": "user", "content": "确认"}], "expected_intent": "others"}
+{"id": "v4-068", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "别退款了，改换42码"}], "expected_intent": "exchange_service"}
+{"id": "v4-069", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这单能换吗"}], "expected_intent": "exchange_service"}
+{"id": "v4-070", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这单能补多少差价"}], "expected_intent": "price_protection_service"}
+{"id": "v4-071", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这两张券不能叠加吗"}], "expected_intent": "promotion_inquiry"}
+{"id": "v4-072", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "一般退款几天到账"}], "expected_intent": "service_policy_inquiry"}
+{"id": "v4-073", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "这家支持退货吗"}], "expected_intent": "service_policy_inquiry"}
+{"id": "v4-074", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "昨天申请退款，帮我查物流"}], "expected_intent": "logistics_inquiry"}
+{"id": "v4-075", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "你好，帮我查订单，然后开发票"}], "expected_intent": "order_inquiry"}
+{"id": "v4-076", "taxonomy_version": "ecom-intent-v4-31", "messages": [{"role": "user", "content": "给我开发票"}], "expected_intent": "invoice_request"}

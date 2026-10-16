@@ -8,7 +8,7 @@
 
 2. 新 Memory Item 存储
    ``agent_memory_items`` / ``items/{user_id}.items.json``，每条记忆独立治理。
-   在线读取只读 active items；被替换/删除的旧 item 会在覆盖前进入冷归档。
+   在线读取只读 active items（含冷热层）；历史版本和证据保留在同一个权威账本。
 
 Redis 是 cache-aside 加速层，只缓存旧 snapshot 路径；Memory Item 写入后会主动删缓存，
 避免旧 snapshot 被误用。
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol
 
@@ -55,7 +56,10 @@ class JsonMemoryRepository:
         self.memory_dir = Path(memory_dir)
 
     def _path(self, user_id: str) -> Path:
-        return self.memory_dir / f"{user_id}.json"
+        path = self.memory_dir / f"{user_id}.json"
+        if path.resolve().parent != self.memory_dir.resolve():
+            raise ValueError('Invalid memory user path')
+        return path
 
     def load(self, user_id: str) -> tuple[dict | None, int]:
         path = self._path(user_id)
@@ -260,22 +264,79 @@ class LongTermMemoryStore:
         return version
 
     def list_items(self, user_id: str) -> list[MemoryItem]:
-        """读取 Memory Item active 热层；未配置 item repository 时返回空。"""
+        """读取所有 active 版本，冷热 tier 不影响检索资格。"""
         if self.item_repository is None:
             return []
         return self.item_repository.list_active(user_id)
+
+    def list_versions(self, user_id: str) -> list[MemoryItem]:
+        """读取全部生命周期状态；读取不触发旧归档迁移或写入。"""
+        return self.item_repository.list_versions(user_id) if self.item_repository else []
+
+    def list_evidence(self, user_id: str, memory_id: str) -> list[dict]:
+        return self.item_repository.list_evidence(user_id, memory_id) if self.item_repository else []
+
+    def commit_versions(self, user_id: str, items: list[MemoryItem]) -> None:
+        """原子保存提供的版本及证据，遗漏的版本保留。"""
+        if self.item_repository is None:
+            raise RuntimeError('Memory version commits require an item repository')
+        with self.transaction(user_id):
+            self._migrate_archive(user_id)
+            if self.item_archive:
+                incoming_ids = {item.memory_id for item in items}
+                changed = self._items_to_archive(
+                    [item for item in self.list_items(user_id) if item.memory_id in incoming_ids], items)
+                self.item_archive.append(user_id, changed)
+            self.item_repository.commit_versions(user_id, items)
+        if self.cache:
+            self.cache.delete(user_id)
+
+    def _migrate_archive(self, user_id: str) -> None:
+        # Only explicit writes import legacy JSONL, once under the user lock.
+        # Imported rows are historical and cannot re-enter the current timeline.
+        marker = '__migration__:memory_archive_v1'
+        if self.batch_processed(user_id, marker):
+            return
+        if self.item_archive and hasattr(self.item_archive, 'read_versions'):
+            self.item_repository.commit_versions(user_id, self.item_archive.read_versions(user_id))
+        self.record_batch(user_id, marker)
+
+    def items_initialized(self, user_id: str) -> bool:
+        return self.item_repository is not None and self.item_repository.initialized(user_id)
+
+    @contextmanager
+    def transaction(self, user_id: str):
+        if self.item_repository is None:
+            raise RuntimeError('Atomic memory merging requires an item repository')
+        with self.item_repository.transaction(user_id):
+            yield
+
+    def batch_processed(self, user_id: str, batch_id: str) -> bool:
+        return self.item_repository.batch_processed(user_id, batch_id)
+
+    def record_batch(self, user_id: str, batch_id: str) -> None:
+        self.item_repository.record_batch(user_id, batch_id)
+
+    def source_through(self, user_id: str, session_id: str) -> int:
+        return self.item_repository.source_through(user_id, session_id)
+
+    def record_source(self, user_id: str, session_id: str, through: int) -> None:
+        self.item_repository.record_source(user_id, session_id, through)
 
     def replace_items(self, user_id: str, items: list[MemoryItem]) -> None:
         """替换 Memory Item active 热层，并归档被替换/移除的旧 item。"""
         if self.item_repository is None:
             return
-        if self.item_archive:
-            # 归档发生在覆盖前，确保旧版本不会因为 replace 而丢失。
-            existing = self.item_repository.list_active(user_id)
-            archive_items = self._items_to_archive(existing, items)
-            if archive_items:
-                self.item_archive.append(user_id, archive_items)
-        self.item_repository.replace_user_items(user_id, items)
+        with self.transaction(user_id):
+            self._migrate_archive(user_id)
+            if self.item_archive:
+                # Archive is append-only; crash retries may duplicate an audit
+                # line, but authoritative items/receipts commit together.
+                existing = self.item_repository.list_active(user_id)
+                archive_items = self._items_to_archive(existing, items)
+                if archive_items:
+                    self.item_archive.append(user_id, archive_items)
+            self.item_repository.replace_user_items(user_id, items)
         if self.cache:
             self.cache.delete(user_id)
 

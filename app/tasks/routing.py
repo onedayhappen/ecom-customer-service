@@ -1,5 +1,7 @@
 """Conservative, deterministic control parsing; ambiguous targets are asked."""
 import re
+from app.data_plan.taxonomy import DEFINITIONS, LEGACY_INTENTS
+from app.intent.rules import recognize
 
 LABELS = {
     'after_sale_request': '售后申请', 'refund_status': '退款进度',
@@ -9,21 +11,24 @@ LABELS = {
     'product_recommendation': '商品推荐', 'issue_report': '问题反馈',
     'others': '其他咨询',
 }
-PATTERNS = [
-    ('refund_status', r'退款(?:进度|状态|到哪|到账)'),
-    ('order_cancel', r'(?:取消|撤销)订单'),
-    ('address_change', r'(?:修改|更改|改|换)(?:一下)?(?:收货)?地址'),
-    ('after_sale_request', r'退款|退货|换货|价保|售后申请'),
-    ('logistics_inquiry', r'物流|快递|运单|到哪了'),
-    ('invoice', r'发票|开票'), ('expedite', r'催发货|催单|加急'),
-    ('complaint', r'投诉'), ('order_inquiry', r'查(?:询|一下)?订单'),
-    ('product_inquiry', r'商品咨询|商品推荐|推荐.*商品'),
-]
+LABELS.update({intent.value: title for intent, (title, _) in DEFINITIONS.items()})
 ORDER = re.compile(r'\bORD-[A-Za-z0-9-]+\b', re.I)
 
 
 def intent_of(text):
-    return next((kind for kind, pattern in PATTERNS if re.search(pattern, text)), None)
+    intent = recognize(text).value
+    return None if intent in {'greetings', 'closure', 'others'} else intent
+
+
+def task_matches(task, intent):
+    stored = task['intent']
+    if stored == intent:
+        return True
+    if stored == 'refund_status' and intent == 'after_sale_status':
+        return True
+    if stored in {item.value for item in LEGACY_INTENTS}:
+        return intent_of(task['request_text']) == intent
+    return False
 
 
 def is_new_request(text):
@@ -45,7 +50,11 @@ def parse(text):
         if not control_question and (re.search(r'^(?:算了|不用了|取消(?:此|这个|刚才|之前|旧|当前)?(?:任务|申请|操作)?$)', clause)
                 or re.search(r'不(?:要|用|想)?(?:退款|退货|退|换货|开票|查物流)了|取消.*(?:任务|申请)|撤销.*任务', clause)
                 or (clause.startswith('取消') and kind and kind != 'order_cancel')):
-            action, target = 'cancel', kind or ('after_sale_request' if '不退了' in clause else None)
+            # This cancels a local pending task only; it never revokes a
+            # submitted after-sale record. Classification still returns others
+            # for an unsupported request to revoke an actual refund application.
+            target_kind = kind or intent_of(re.sub(r'^(?:取消|撤销)', '', clause))
+            action, target = 'cancel', target_kind or ('refund_service' if '不退了' in clause else None)
             continue
         if re.match(r'^(?:继续|恢复)', clause):
             action, target = 'resume', kind

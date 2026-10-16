@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
@@ -56,7 +56,7 @@ class MemoryConsolidator:
         incoming: Iterable["MemoryFact"],
         now: datetime | None = None,
     ) -> list["MemoryFact"]:
-        now = now or datetime.now()
+        now = now or datetime.now(timezone.utc)
         # 先确保现有 facts 都有 memory_key/memory_id；旧 snapshot 数据可能没有这些字段。
         active = [self._with_key(fact) for fact in existing]
         by_key = {fact.memory_key: fact for fact in active}
@@ -69,6 +69,16 @@ class MemoryConsolidator:
                 active.append(candidate)
                 by_key[candidate.memory_key] = candidate
                 continue
+
+            # Event time, rather than worker completion order, determines
+            # whether a delayed batch can change an already newer slot.
+            if candidate.source_event_id and current.source_event_id:
+                if candidate.source_event_id == current.source_event_id:
+                    continue
+                old_time = _event_time(current)
+                new_time = _event_time(candidate)
+                if old_time and new_time and new_time < old_time:
+                    continue
 
             if self._same_content(current, candidate):
                 # 同槽位同内容：不是新增，只刷新时间/置信度/过期时间。
@@ -83,8 +93,6 @@ class MemoryConsolidator:
                 active = [item for item in active if item is not current]
                 active.append(candidate)
                 by_key[candidate.memory_key] = candidate
-            else:
-                self._refresh(current, current, now)
 
         return self._apply_quota(active)
 
@@ -148,13 +156,18 @@ class MemoryConsolidator:
         对偏好类事实，如果没有显式 expires_at，则给一个默认 TTL；这可以让“可能变化的
         口味/偏好”自然退场，避免多年以前的偏好长期污染推荐。
         """
-        timestamp = now.isoformat(timespec="seconds")
+        legacy_now = now.astimezone(timezone.utc).replace(tzinfo=None) if now.tzinfo else now
+        timestamp = (source.updated_at or source.created_at) if source.source_event_id else legacy_now.isoformat(timespec="seconds")
         target.updated_at = timestamp
         target.confidence = max(target.confidence, source.confidence)
         if source.expires_at:
             target.expires_at = source.expires_at
         elif target.category == "preference" and not target.expires_at:
-            target.expires_at = (now + timedelta(days=90)).isoformat(timespec="seconds")
+            target.expires_at = (legacy_now + timedelta(days=90)).isoformat(timespec="seconds")
+        if source.source_event_id:
+            target.source_event_id = source.source_event_id
+            target.source_session = source.source_session
+            target.source_span = source.source_span
 
     @staticmethod
     def _candidate_wins(current: "MemoryFact", candidate: "MemoryFact") -> bool:
@@ -162,6 +175,10 @@ class MemoryConsolidator:
 
         当前策略偏简单：来源权重 + 置信度。tool_verified > user_explicit > llm_inferred。
         """
+        if current.source_type == candidate.source_type == 'user_explicit':
+            old_time, new_time = _event_time(current), _event_time(candidate)
+            if old_time and new_time and candidate.source_event_id and current.source_event_id:
+                return new_time >= old_time
         return _memory_score(candidate) >= _memory_score(current)
 
     def _apply_quota(self, facts: list["MemoryFact"]) -> list["MemoryFact"]:
@@ -196,6 +213,14 @@ def _memory_score(fact: "MemoryFact") -> float:
         "llm_inferred": 1.0,
     }.get(fact.source_type, 0.0)
     return source_weight + fact.confidence
+
+
+def _event_time(fact: "MemoryFact") -> datetime | None:
+    try:
+        value = datetime.fromisoformat(fact.updated_at or fact.created_at)
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return None
 
 
 def _sort_key(fact: "MemoryFact") -> tuple[float, str]:

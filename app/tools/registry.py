@@ -15,8 +15,10 @@ from app.tools.text2sql import text_to_sql
 from app.reliability.failure_policy import FailureCategory
 from app.support.runtime import call_tool as controlled_tool_call
 from app.support.runtime import escalate_to_human
+from app.tools.commerce import TOOL_MAP as COMMERCE_TOOLS, TOOL_DEFINITIONS as COMMERCE_DEFINITIONS
 
 _TOOL_MAP: dict[str, Callable] = {
+    **COMMERCE_TOOLS,
     "escalate_to_human": escalate_to_human,
     "query_order": query_order,
     "query_product": query_product,
@@ -182,8 +184,8 @@ TOOL_DEFINITIONS: list[dict] = [
         "function": {
             "name": "recall_user_memory",
             "description": (
-                "查询当前用户的长期记忆与相关历史情境。"
-                "当需要回顾用户的偏好、历史问题、补偿承诺、会员信息等时使用。"
+                "查询当前用户有来源的长期偏好，支持过去日期的历史版本。"
+                "适用于颜色、尺码、预算、沟通偏好等；客服承诺走公开历史回查，订单和会员状态走业务工具。"
             ),
             "parameters": {
                 "type": "object",
@@ -242,6 +244,9 @@ TOOL_DEFINITIONS: list[dict] = [
         },
     },
 ]
+
+
+TOOL_DEFINITIONS.extend(COMMERCE_DEFINITIONS)
 
 
 def execute_tool(name: str, arguments: dict) -> str:

@@ -44,7 +44,7 @@ class DataPlan:
         写操作缺失意味着任务无法落库（改址/取消/退款等），必须降级；
         只读工具缺失通常还有兜底（如缺 list_user_orders 可改为索要订单号）。
         """
-        return any(t in MUTATING_CAPABILITIES for t in self.pending_tools)
+        return not self.spec.execution_ready or any(t in MUTATING_CAPABILITIES for t in self.pending_tools)
 
     @property
     def prompt_tool_names(self) -> frozenset[str]:

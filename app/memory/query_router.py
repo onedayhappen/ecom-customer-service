@@ -3,8 +3,8 @@
 这层只做一个很窄的判断：当前用户 query 是否“明显需要”先检索长期记忆。
 
 设计上分成两条路径：
-- 自动注入路径：少量带有明确历史指代的 query，例如“昨天你不是说……”
-  由编排器先 recall，再把相关记忆注入 prompt。
+- 自动注入路径：明确用户偏好或历史画像的 query，例如“我以前喜欢什么颜色”。
+- 事件路径：客服承诺等问题需要公开会话事件，不能使用用户画像代替。
 - 工具路径：大多数 query 不预注入记忆，Agent 在 ReAct 推理中按需调用
   ``recall_user_memory`` 工具。
 - 跳过路径：明显的实时业务查询，例如“查询订单 DX123 的物流”，直接走业务工具。
@@ -16,7 +16,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 import re
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 # “昨天/上次/你说过”这类词通常意味着用户在引用历史承诺或历史上下文。
@@ -34,7 +36,7 @@ _REALTIME_CUES = (
 )
 
 # 当前项目里常见订单号/工单号形态。命中后通常意味着 query 有明确业务实体。
-_ORDER_ID_PATTERN = re.compile(r"\b(?:ORD|DX)[-]?[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*\b", re.IGNORECASE)
+_ORDER_ID_PATTERN = re.compile(r"(?<![A-Za-z0-9])(?:ORD|DX)[-]?[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*(?![A-Za-z0-9])", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,51 @@ class MemoryRouteDecision:
 
     should_auto_inject: bool
     reason: str
+    route: str = "facts"
+    history: bool = False
+    as_of: str | None = None
+
+
+def temporal_query(query: str, now: datetime | None = None) -> tuple[bool, str | None]:
+    """Resolve explicit dates; an unspecified past requests labeled history."""
+    now = now or datetime.now(timezone.utc)
+    from app.config.settings import settings
+    try:
+        zone = ZoneInfo(settings.memory_timezone)
+    except ZoneInfoNotFoundError:
+        if settings.memory_timezone != "Asia/Shanghai":
+            raise ValueError("Unknown memory timezone") from None
+        zone = timezone(timedelta(hours=8))
+    now = now.astimezone(zone)
+    match = re.search(r"(20\d{2})[-/年](\d{1,2})[-/月](\d{1,2})(?:日)?", query)
+    if match:
+        try:
+            day = datetime(*map(int, match.groups()), tzinfo=zone)
+        except ValueError:
+            return True, None
+        # A date without a clock time means the state at that date's end.
+        return True, (day + timedelta(days=1, microseconds=-1)).isoformat()
+    if "昨天" in query:
+        day = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(microseconds=1)
+        return True, day.isoformat()
+    month = re.search(r"(20\d{2})[-/年](\d{1,2})(?:月)?", query)
+    if month:
+        year, number = map(int, month.groups())
+        try:
+            start = datetime(year, number, 1, tzinfo=zone)
+        except ValueError:
+            return True, None
+        end = start.replace(year=year + 1, month=1) if number == 12 else start.replace(month=number + 1)
+        return True, (end - timedelta(microseconds=1)).isoformat()
+    if "上个月" in query:
+        end = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return True, (end - timedelta(microseconds=1)).isoformat()
+    year = re.search(r"(20\d{2})年", query)
+    if year or "去年" in query:
+        number = int(year[1]) if year else now.year - 1
+        return True, (datetime(number + 1, 1, 1, tzinfo=zone) - timedelta(microseconds=1)).isoformat()
+    history = any(cue in query for cue in ("以前", "之前", "过去", "当时", "曾经", "去年", "上个月", "变过", "变化", "历史偏好"))
+    return history, None
 
 
 class MemoryQueryRouter:
@@ -65,18 +112,27 @@ class MemoryQueryRouter:
         has_realtime_cue = any(cue in text for cue in _REALTIME_CUES)
         has_order_id = bool(_ORDER_ID_PATTERN.search(text))
 
-        # 历史指代优先级最高：即便提到“退款/物流”，用户问的也可能是历史承诺。
-        if has_memory_cue:
-            return MemoryRouteDecision(True, "memory_cue")
-
-        # 明确实体 + 实时词，通常应该查订单/售后系统，而不是查长期记忆。
-        if has_order_id and has_realtime_cue:
-            return MemoryRouteDecision(False, "explicit_realtime_query")
-
+        # Explicit business entities always require the authorized business path.
         if has_order_id:
-            return MemoryRouteDecision(False, "explicit_entity_query")
+            return MemoryRouteDecision(False, "explicit_entity_query", route="realtime")
 
-        if has_realtime_cue:
-            return MemoryRouteDecision(False, "realtime_query")
+        # Historical commitments belong to public events/cases, not the user
+        # profile. This decision prevents accidental preference substitution.
+        if has_memory_cue and any(cue in text for cue in ("你说", "你不是说", "承诺", "答应", "说好的", "回电")):
+            return MemoryRouteDecision(False, "historical_event", route="events", history=True)
+
+        from app.memory.atomic import query_slots
+        predicates, qualifiers = query_slots(text)
+        history, as_of = temporal_query(text)
+        explicit_preference = (bool(predicates or qualifiers)
+                               and any(cue in text for cue in ("我", "偏好", "喜欢", "适合")))
+        if has_realtime_cue and not explicit_preference:
+            return MemoryRouteDecision(False, "realtime_query", route="realtime")
+
+        if has_memory_cue:
+            return MemoryRouteDecision(True, "memory_cue", history=history, as_of=as_of)
+
+        if predicates or qualifiers or any(cue in text for cue in ("推荐", "适合我", "我的偏好", "我喜欢什么")) or (history and "偏好" in text):
+            return MemoryRouteDecision(True, "personalization", history=history, as_of=as_of)
 
         return MemoryRouteDecision(False, "no_clear_memory_need")

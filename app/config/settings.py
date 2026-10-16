@@ -110,6 +110,15 @@ class Settings(BaseSettings):
     memory_redis_url: str = "redis://127.0.0.1:6379/0"
     memory_cache_ttl_seconds: int = 1800
     memory_cache_key_prefix: str = "ecom:ltm"
+    memory_context_tokens: int = Field(default=1200, ge=128)
+    memory_hot_facts: int = Field(default=20, ge=1, le=200)
+    memory_topic_tokens: int = Field(default=300, ge=64)
+    memory_hybrid_candidates: int = Field(default=10, ge=1, le=100)
+    memory_rrf_k: int = Field(default=60, ge=1)
+    memory_timezone: str = "Asia/Shanghai"
+    memory_extraction_batch_messages: int = Field(default=32, ge=1, le=128)
+    memory_extraction_input_tokens: int = Field(default=7000, ge=512)
+    memory_extraction_debounce_seconds: int = Field(default=30, ge=0, le=3600)
 
     # FastAPI 服务与认证配置
     api_jwt_secret: str = ""

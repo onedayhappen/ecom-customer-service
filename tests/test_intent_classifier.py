@@ -57,7 +57,7 @@ def test_recognize_falls_back_to_rules_when_model_none(
 ) -> None:
     fake = SimpleNamespace(classify=lambda msgs: None)
     monkeypatch.setattr("app.intent.get_classifier", lambda: fake)
-    assert recognize("我要退款") == Intent.AFTER_SALE_REQUEST
+    assert recognize("我要退款") == Intent.REFUND_SERVICE
     assert recognize("你好") == Intent.GREETINGS
 
 
@@ -77,7 +77,7 @@ def test_recognize_passes_context_to_model(
 
     def fake_classify(msgs: list[dict]):
         captured["msgs"] = msgs
-        return Intent.CONFIRMATION
+        return Intent.REFUND_SERVICE
 
     monkeypatch.setattr("app.intent.get_classifier", lambda: SimpleNamespace(classify=fake_classify))
     history = [
@@ -86,7 +86,7 @@ def test_recognize_passes_context_to_model(
         {"role": "user", "content": "好的"},
     ]
     result = recognize("好的", messages=history)
-    assert result == Intent.CONFIRMATION
+    assert result == Intent.REFUND_SERVICE
     # 上下文原样透传（含历史 assistant 回复），末轮是当前 user 消息
     assert captured["msgs"] == history
 
@@ -214,9 +214,9 @@ def _make_classifier(decode_text: str) -> tuple[IntentClassifier, _FakeTokenizer
 
 def test_classify_maps_valid_output(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.intent.classifier.settings.intent_model_enabled", True)
-    clf, tokenizer = _make_classifier('{"intent": "invoice"}')
+    clf, tokenizer = _make_classifier('{"intent": "invoice_request"}')
     messages = [{"role": "user", "content": "帮我开个发票"}]
-    assert clf.classify(messages) == Intent.INVOICE
+    assert clf.classify(messages) == Intent.INVOICE_REQUEST
     # system 在前，对话在后，且对话原样透传
     assert tokenizer.captured_messages[0] == {"role": "system", "content": SYSTEM_PROMPT}
     assert tokenizer.captured_messages[1:] == messages

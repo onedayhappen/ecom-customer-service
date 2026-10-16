@@ -12,10 +12,11 @@
 from __future__ import annotations
 
 from app.data_plan.enums import Intent
+from app.data_plan.taxonomy import CLASSIFICATION_INTENTS
 from app.intent.classifier import get_classifier
 from app.intent.query_rewrite import extract_order_status
 from app.intent.rules import has_order_id
-from app.intent.rules import active_user_text, recognize as _rule_recognize
+from app.intent.rules import active_user_text, conversation_messages, recognize as _rule_recognize
 
 # 物流轨迹语义信号词：命中说明用户想查「物流/到哪」，即使含状态约束也应保留
 # logistics_inquiry（例：「已发货的到哪了」「未发货订单的物流进度」）。
@@ -39,17 +40,10 @@ def recognize(user_input: str, messages: list[dict] | None = None) -> Intent:
         当前 user 消息；缺省时退化为单轮（仅当前消息）。
     """
     effective_text = active_user_text(user_input)
-    context = messages if messages is not None else [
-        {"role": "user", "content": user_input},
-    ]
-    if effective_text != user_input and context:
-        context = [*context]
-        last_user = next((index for index in range(len(context) - 1, -1, -1)
-                          if context[index].get("role") == "user"), None)
-        if last_user is not None:
-            context[last_user] = {**context[last_user], "content": effective_text}
+    context = conversation_messages(user_input, messages)
     predicted = get_classifier().classify(context)
-    intent = predicted if predicted is not None else _rule_recognize(effective_text)
+    intent = (Intent(predicted) if predicted in CLASSIFICATION_INTENTS
+              else _rule_recognize(user_input, messages=context))
 
     # 状态约束意图修正：分类器或规则把「查询未发货订单」这类含订单状态约束的
     # 清单查询误判为物流查询时，若消息无物流轨迹语义且是清单查询/提到订单，

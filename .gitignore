@@ -40,8 +40,16 @@ data/**
 !data/fine_tuning/multiturn_intent_sft/
 !data/fine_tuning/multiturn_intent_sft/data_v3.jsonl
 !data/fine_tuning/multiturn_intent_sft/data_v3_sharegpt.jsonl
+!data/fine_tuning/multiturn_intent_sft/train_v4.jsonl
+!data/fine_tuning/multiturn_intent_sft/dev_v4.jsonl
+!data/fine_tuning/multiturn_intent_sft/test_v4.jsonl
+!data/fine_tuning/multiturn_intent_sft/seed_dialogues_v4.txt
+!data/fine_tuning/multiturn_intent_sft/sources_v4.json
+!data/fine_tuning/multiturn_intent_sft/dataset_report_v4.json
+!data/fine_tuning/multiturn_intent_sft/LICENSE-JDDC-2.0.txt
 !data/evaluation/
 !data/evaluation/multiturn_intent_eval_v3.jsonl
+!data/evaluation/multiturn_intent_eval_v4.jsonl
 
 # 业务链观测日志（含用户消息，禁止提交）
 logs/
@@ -59,3 +67,15 @@ __pycache__/
 
 # 本地 Embedding 模型（由开发者自行下载，不纳入仓库）
 model/
+
+# ECom-Bench 已公开对话的原文、逐轮标注与来源审计（无 train/test 划分）
+!data/fine_tuning/ecom_bench_extracted/
+!data/fine_tuning/ecom_bench_extracted/source_dialogues.json
+!data/fine_tuning/ecom_bench_extracted/annotated_pool.jsonl
+!data/fine_tuning/ecom_bench_extracted/source_audit.json
+!data/fine_tuning/ecom_bench_extracted/README.md
+
+# CSDS 提取脚本的元数据；原始及提取对话继续保留在本地
+!data/fine_tuning/csds_extracted/
+!data/fine_tuning/csds_extracted/README.md
+!data/fine_tuning/csds_extracted/extraction_report.json

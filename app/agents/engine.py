@@ -75,6 +75,8 @@ class AgentEngine:
         ``entities``：实体抽取层透传的通用实体（订单号/物流号/状态等），下游
         Workflow handler 直接复用，不再自行重复解析原文。
         """
+        if not self.plan.spec.execution_ready:
+            return dispatch(self.plan)
         if self.plan.execution == Execution.REACT:
             if react_executor is None:
                 if self.client is None:
@@ -136,6 +138,8 @@ class AgentEngine:
         :meth:`_async_workflow_reply_generator`），确定性脚本本体放线程池。
         ``entities`` 同 :meth:`execute`（实体抽取层透传的通用实体）。
         """
+        if not self.plan.spec.execution_ready:
+            return await dispatch_async(self.plan)
         if self.plan.execution == Execution.REACT:
             if react_executor is None:
                 if self.client is None:

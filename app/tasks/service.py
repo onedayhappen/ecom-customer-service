@@ -2,7 +2,7 @@
 import json
 from uuid import uuid4
 
-from app.tasks.routing import LABELS, ORDER, effective_text, parse, select_option, is_new_request
+from app.tasks.routing import LABELS, ORDER, effective_text, parse, select_option, is_new_request, task_matches
 
 SCHEMA = (
     """CREATE TABLE IF NOT EXISTS conversation_tasks (
@@ -139,14 +139,14 @@ class TaskService:
                 if target['status'] != 'waiting_input' or not question or question['question_id'] != data.get('question_id'):
                     raise SupportError('问题已失效，请使用最新卡片')
         elif action:
-            candidates = [t for t in pending if not command['target'] or t['intent'] == command['target']]
+            candidates = [t for t in pending if not command['target'] or task_matches(t, command['target'])]
             if active and active in candidates:
                 target = active
             elif len(candidates) == 1:
                 target = candidates[0]
             elif len(candidates) > 1:
                 return self.ask_target(tx, c, candidates, action, text, actor)
-        elif active and active['status'] == 'waiting_input' and (not specs or not is_new_request(text) or len(specs) == 1 and specs[0]['intent'] == active['intent']):
+        elif active and active['status'] == 'waiting_input' and (not specs or not is_new_request(text) or len(specs) == 1 and task_matches(active, specs[0]['intent'])):
             target, action, specs = active, 'answer', []
         elif data.get('confirmation_token'):
             if not active or active['status'] != 'waiting_confirmation':
@@ -172,7 +172,7 @@ class TaskService:
             raise SupportError('一次最多新增 5 个诉求，会话最多保留 20 个未完成任务', 422)
 
         # Do not treat a supplementary sentence about the same task as a new todo.
-        if not action and len(specs) == 1 and active and specs[0]['intent'] == active['intent']:
+        if not action and len(specs) == 1 and active and task_matches(active, specs[0]['intent']):
             old_order = ORDER.search(effective_text(active))
             new_order = ORDER.search(text)
             if not (old_order and new_order and old_order.group().upper() != new_order.group().upper()):

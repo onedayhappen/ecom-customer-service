@@ -7,10 +7,12 @@ import threading
 from app.support.runtime import get_store
 from app.runtime.maintenance import archive_jobs, backfill_ticket_snapshots
 from app.session.short_term import process_context_jobs
+from app.memory.runtime import process_memory_jobs
 from app.config.settings import settings
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--retention-days', type=int, default=30)
     parser.add_argument('--batch-size', type=int, default=200)
@@ -30,6 +32,9 @@ def main():
             if settings.short_term_memory_enabled:
                 contexts = process_context_jobs(get_store(), limit=min(args.batch_size, 20))
                 logging.info('Short-term context maintenance: %s', contexts)
+            if settings.memory_enabled:
+                memories = process_memory_jobs(get_store(), limit=min(args.batch_size, 20))
+                logging.info('Long-term memory maintenance: %s', memories)
         except Exception:
             if args.once:
                 raise

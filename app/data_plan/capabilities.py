@@ -6,8 +6,9 @@ IntentSpec 引用的是**工具能力 ID**，而非直接绑定某个实现。�
 的能力真正放进 prompt，未实现的进入 `pending_tools`，供执行层显式降级
 （澄清 / 转人工），避免模型调用一个不存在的工具。
 
-当前已实现 8 个（含 meta 工具 `load_skill`），对应 `registry.py` 的
-`TOOL_DEFINITIONS`。其余为架构定稿中规划、待 Phase 3 扩充的能力。
+已实现集合由下方 implemented 标记派生，meta 工具 load_skill 单独装配。
+新增业务工具已按 MySQL / 本地计算 / 会话状态实现；implemented 表示代码已注册，
+不代表数据库已初始化或 Workflow 已接入。
 """
 
 from __future__ import annotations
@@ -45,10 +46,10 @@ _APPLY_REFUND = ToolCapability("apply_refund", _BUSINESS, True, True, "为订单
 _SEARCH_KNOWLEDGE = ToolCapability("search_knowledge", _ENGINE, False, True, "检索政策/FAQ/退换货规则等知识库")
 _RECALL_USER_MEMORY = ToolCapability("recall_user_memory", _MEMORY, False, True, "召回用户长期记忆与偏好画像")
 
-# 待实现
+# 分阶段接入（以每项 implemented 标记为准）
 _QUERY_REFUND = ToolCapability("query_refund", _BUSINESS, False, False, "按订单/退款单号查退款进度与到账状态")
 _QUERY_INVENTORY = ToolCapability("query_inventory", _BUSINESS, False, False, "查商品库存与实时价格")
-_CALC_PROMOTION = ToolCapability("calc_promotion", _BUSINESS, False, False, "计算优惠券/满减等优惠金额")
+_CALC_PROMOTION = ToolCapability("calc_promotion", _BUSINESS, False, True, "确定性计算固定方案的优惠金额（整数分）")
 _CALC_PRICE_PROTECT = ToolCapability("calc_price_protect", _BUSINESS, False, False, "计算价保差额与可退金额")
 _QUERY_MEMBERSHIP = ToolCapability("query_membership", _BUSINESS, False, False, "查会员等级与积分权益")
 _INVOICE_SERVICE = ToolCapability("invoice_service", _BUSINESS, True, False, "开具/查询/重开发票")
@@ -72,7 +73,7 @@ _ANALYZE_IMAGE = ToolCapability("analyze_image", _AUGMENT, False, False, "理解
 _VERIFY_IDENTITY = ToolCapability("verify_identity", _AUGMENT, False, False, "核验用户身份（手机号/实名）")
 
 
-# 25 个业务/记忆/引擎/增强能力（不含 meta 工具 load_skill）
+# 业务/记忆/引擎/增强能力目录（不含 meta 工具 load_skill）
 CAPABILITIES: dict[str, ToolCapability] = {
     c.name: c for c in (
         # 业务域（18）
@@ -89,6 +90,31 @@ CAPABILITIES: dict[str, ToolCapability] = {
         _SEND_SATISFACTION, _ANALYZE_IMAGE, _VERIFY_IDENTITY,
     )
 }
+
+# v4 tools use local MySQL evidence, scoped support state and deterministic helpers.
+for _name, _write, _description in (
+    ("query_offers", False, "查询带来源、规格与有效期的购买报价"),
+    ("query_promotions", False, "查询结构化活动和叠加规则"),
+    ("query_user_coupons", False, "查询当前用户的券及生命周期"),
+    ("query_delivery_quote", False, "查询配送可达、运费和预计时效"),
+    ("query_price_history", False, "查询带口径和覆盖范围的历史价格"),
+    ("query_after_sale", False, "查询退货退款换货价保单据与进度"),
+    ("query_invoice", False, "查询发票、规则和办理预览"),
+    ("issue_invoice", True, "申请开具发票"),
+    ("reissue_invoice", True, "申请修改或重开发票"),
+    ("evaluate_order_action", False, "核验改址、取消、催办的当前可执行条件"),
+    ("query_handoff_status", False, "封装已有 SupportStore 的归属安全转接状态查询"),
+    ("query_mutation_status", False, "封装幂等记录及下游写入回执核实"),
+    ("query_payment_status", False, "查询支付交易和对账证据"),
+):
+    CAPABILITIES[_name] = ToolCapability(_name, _BUSINESS, _write, True, _description)
+for _name, _description in (
+    ("check_coupon_eligibility", "确定性核验优惠券使用条件与失败原因"),
+    ("compare_offers", "核验报价可比性并比较完整费用"),
+    ("summarize_price_history", "统计历史低价和样本覆盖"),
+    ("validate_policy_evidence", "校验政策来源、版本、适用范围与冲突"),
+):
+    CAPABILITIES[_name] = ToolCapability(_name, _ENGINE, False, True, _description)
 
 # meta 工具：装配 Skill 剧本，不计入业务能力全集（IntentSpec.skills 引用 skill 名）。
 LOAD_SKILL = "load_skill"

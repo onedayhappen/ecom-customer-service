@@ -19,6 +19,7 @@ from app.runtime.notifications import SCHEMA as NOTIFICATION_SCHEMA, enqueue as 
 from app.memory.case_postgres import SCHEMA as CASE_SCHEMA
 from app.runtime.maintenance import SCHEMA as MAINTENANCE_SCHEMA
 from app.session.short_term import SCHEMA as CONTEXT_SCHEMA
+from app.memory.runtime import SCHEMA as MEMORY_RUNTIME_SCHEMA
 
 
 class SupportError(Exception):
@@ -71,8 +72,8 @@ SCHEMA = (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, response TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS support_bot_runs (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
-) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + CASE_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA
-SCHEMA_VERSION = 8
+) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + CASE_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA + MEMORY_RUNTIME_SCHEMA
+SCHEMA_VERSION = 9
 
 
 class Tx:
@@ -187,6 +188,9 @@ class SupportStore:
             if settings.short_term_memory_enabled:
                 from app.session.short_term import enqueue_context_job
                 enqueue_context_job(tx, control, payload.get('task_id'))
+            if settings.memory_enabled and payload.get('role') == 'user':
+                from app.memory.runtime import enqueue_memory_job
+                enqueue_memory_job(tx, control, payload)
         return control["sequence"]
 
     def ensure(self, sid, user, history=()):
@@ -273,6 +277,17 @@ class SupportStore:
     def state(self, sid, user):
         with self.transaction(read_only=True) as tx:
             return self._state(tx, self._control(tx, sid, user))
+
+    def operation_status(self, sid, user, operation_id):
+        """Read a receipt only within the authenticated conversation."""
+        with self.transaction(read_only=True) as tx:
+            self._control(tx, sid, user)
+            op = tx.one('SELECT tool,status,result FROM support_operations '
+                        'WHERE session_id=? AND operation_id=?', (sid, operation_id))
+            if not op:
+                return {'status': 'unknown', 'note': '未找到当前会话的操作记录，不能据此重试'}
+            return {'action': op['tool'], 'status': op['status'],
+                    'result': json.loads(op['result']) if op['result'] else None}
 
     def resume(self, sid, user):
         with self.transaction() as tx:
@@ -603,7 +618,7 @@ class SupportStore:
     def finish_operation(self, oid, result):
         if result.get("success") is True:
             status = "succeeded"
-        elif result.get("error_code") in {"business_rejection", "validation_error", "evidence_unavailable"}:
+        elif result.get("error_code") in {"business_rejection", "validation_error", "evidence_unavailable", "confirmation_invalid"}:
             status = "failed"
         else:
             status = "unknown"

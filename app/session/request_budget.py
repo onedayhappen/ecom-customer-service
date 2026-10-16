@@ -144,7 +144,7 @@ def apply_request_budget(params: dict, scene: str = "", model: str = "") -> dict
     if fits():
         return request
 
-    for name in ("short_term_recall", "short_term_summary"):
+    for name in ("short_term_recall", "long_term_memory", "short_term_summary"):
         messages[:] = [message for message in messages if not (
             message.get("role") == "system" and message.get("name") == name)]
         if fits():

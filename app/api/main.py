@@ -838,6 +838,8 @@ def _handle_chat_inner(
     from app.observability.fsm import StateObserver
     from app.tools.request_context import reset_current_user_id, set_current_user_id
     from app.session.request_budget import ContextBudgetExceeded
+    from app.memory.runtime import build_memory_manager
+    from app.tools.memory_tool import set_memory_manager, reset_memory_manager
 
     # 整个 chat 处理期间注入请求级用户身份：订单查询/写操作按
     # get_current_user_id() 归属（order_service 只信 ContextVar，不信任
@@ -845,7 +847,14 @@ def _handle_chat_inner(
     # 调用拿不到身份，返回"缺少用户身份上下文"，订单查询恒为空。
     token = set_current_user_id(user_id)
     observer = StateObserver()
+    memory_token = set_memory_manager(None)
     try:
+        if settings.memory_enabled:
+            try:
+                set_memory_manager(build_memory_manager(user_id))
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning("Long-term memory load unavailable: %s", type(exc).__name__)
         return _handle_chat_inner_impl(request, user_id, tracer, observer)
     except ContextBudgetExceeded:
         observer.close(error="context_budget_exceeded")
@@ -858,6 +867,7 @@ def _handle_chat_inner(
         observer.close(error="unhandled_exception")
         raise
     finally:
+        reset_memory_manager(memory_token)
         reset_current_user_id(token)
 
 
@@ -1067,6 +1077,10 @@ def _handle_chat_inner_impl(
         result.add_step(pending["action"], pending["arguments_dict"], outcome.result)
         observer.leave("EXECUTE", to_state="RESPONSE", replayed=outcome.replayed)
     else:
+        # Retrieve only after intent/rewrite and task adoption. Historical user
+        # preferences cannot choose an order or change the current task route.
+        from app.tools.memory_tool import memory_prompt_sections
+        context = [*memory_prompt_sections(effective_message, context=context, session_id=session_id), *context]
         historical_evidence = [] if request.task_id else case_manager.recent_tool_evidence(session_id)
         engine = AgentEngine(
             intent,

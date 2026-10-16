@@ -159,7 +159,14 @@ services:
     env_file: [.env]
     environment:
       API_SESSION_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/ecom_agent
+      MEMORY_STORAGE_BACKEND: postgres
+      MEMORY_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/ecom_agent
+      MEMORY_REDIS_URL: redis://redis:6379/0
+      API_CONCURRENCY_REDIS_URL: redis://redis:6379/0
     command: ["python", "-m", "scripts.platform_maintenance"]
+    volumes:
+      - ./.docker-data/app:/app/data
+      - ./.docker-data/logs:/app/logs
     depends_on:
       backend:
         condition: service_healthy

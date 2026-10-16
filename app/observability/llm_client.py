@@ -349,6 +349,10 @@ class LlmClient:
                       context_input_estimated_before=before,
                       context_input_limit=request_input_limit(params))
         bounded = apply_request_budget(params, scene=scene, model=model)
+        # Tool deduplication must reflect optional memory actually sent to the
+        # response model, including removal by the total request budget.
+        from app.tools.memory_tool import sync_memory_prompt_visibility
+        sync_memory_prompt_visibility(bounded.get("messages", []))
         after = estimate_request_tokens(bounded)
         removed = len(params.get("messages", [])) - len(bounded.get("messages", []))
         report.update(context_input_estimated_after=after, context_messages_removed=removed)

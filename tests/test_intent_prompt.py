@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.data_plan.enums import Intent
+from app.data_plan.taxonomy import VALID_INTENTS
 from app.prompts.intent_classifier import (
     INTENT_CLASSIFIER_PROMPT,
     INTENT_LABELS,
@@ -12,8 +12,8 @@ from app.prompts.intent_classifier import (
 
 
 def test_intent_labels_match_enum() -> None:
-    assert set(INTENT_LABELS) == {item.value for item in Intent}
-    assert len(INTENT_LABELS) == 17
+    assert set(INTENT_LABELS) == VALID_INTENTS
+    assert len(INTENT_LABELS) == 31
 
 
 def test_prompt_contains_all_labels_and_output_rules() -> None:

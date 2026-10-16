@@ -162,7 +162,9 @@ class MutationGuard:
                 })
 
         try:
-            raw = execute(action, arguments)
+            from app.tools.mutation_context import authorized_mutation
+            with authorized_mutation(self.case_manager.user_id, action, arguments, key):
+                raw = execute(action, arguments)
             result = json.loads(raw) if isinstance(raw, str) else raw
             result = result if isinstance(result, dict) else {"success": True, "value": result}
         except Exception as exc:  # noqa: BLE001

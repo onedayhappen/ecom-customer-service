@@ -48,7 +48,7 @@ def test_answer_continues_original_task_after_restart(store):
     job, state, route = receive(restored, 'ORD-A', {'task_action': 'answer', 'task_id': original['task_id'],
         'task_version': original['version'], 'question_id': original['question']['question_id']})
     assert route['task_id'] == original['task_id']
-    assert route['intent'] == 'after_sale_request'
+    assert route['intent'] == 'refund_service'
     assert '我要退款' in route['message'] and 'ORD-A' in route['message']
     finish(restored, job, state, token='confirmation')
     assert tasks(restored)[0]['status'] == 'waiting_confirmation'
@@ -185,14 +185,14 @@ def test_failed_worker_pauses_task_for_explicit_recovery(store):
 
 
 @pytest.mark.parametrize('text,action,target,specs', [
-    ('不退款了，改查物流', 'cancel', 'after_sale_request', ['logistics_inquiry']),
-    ('退款先放着，查物流', 'pause', 'after_sale_request', ['logistics_inquiry']),
+    ('不退款了，改查物流', 'cancel', 'refund_service', ['logistics_inquiry']),
+    ('退款先放着，查物流', 'pause', 'refund_service', ['logistics_inquiry']),
     ('取消订单 ORD-A', None, None, ['order_cancel']),
-    ('取消退款申请', 'cancel', 'after_sale_request', []),
-    ('继续退款', 'resume', 'after_sale_request', []),
-    ('查物流，再退款，还要开发票', None, None, ['logistics_inquiry', 'after_sale_request', 'invoice']),
+    ('取消退款申请', 'cancel', 'refund_service', []),
+    ('继续退款', 'resume', 'refund_service', []),
+    ('查物流，再退款，还要开发票', None, None, ['logistics_inquiry', 'refund_service', 'invoice_request']),
     ('不要取消退款申请', None, None, []),
-    ('查物流和申请退款', None, None, ['logistics_inquiry', 'after_sale_request']),
+    ('查物流和申请退款', None, None, ['logistics_inquiry', 'refund_service']),
 ])
 def test_control_parsing(text, action, target, specs):
     parsed = parse(text)

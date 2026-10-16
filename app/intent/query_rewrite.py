@@ -77,6 +77,9 @@ TRACKING_NO_RE = re.compile(
 # 需要「订单实体消歧」的意图（定位具体订单）。其余意图（商品咨询、对话流、
 # 兜底）不需要订单定位，查询改写直接放行，不触发 LLM/工具调用。
 _ORDER_DISAMBIGUATION_INTENTS = frozenset({
+    Intent.REFUND_SERVICE, Intent.EXCHANGE_SERVICE, Intent.PRICE_PROTECTION_SERVICE,
+    Intent.AFTER_SALE_STATUS, Intent.INVOICE_INQUIRY, Intent.INVOICE_REQUEST,
+    Intent.PAYMENT_ISSUE,
     Intent.ORDER_INQUIRY, Intent.LOGISTICS_INQUIRY, Intent.REFUND_STATUS,
     Intent.ADDRESS_CHANGE, Intent.ORDER_CANCEL, Intent.EXPEDITE,
     Intent.INVOICE, Intent.AFTER_SALE_REQUEST, Intent.ISSUE_REPORT,
