@@ -35,6 +35,15 @@ __all__ = [
 ]
 
 
+def unavailable_execution(plan: DataPlan) -> ExecutionResult:
+    from app.data_plan.taxonomy import DEFINITIONS
+    title = DEFINITIONS[plan.intent][0]
+    return ExecutionResult(
+        intent=plan.intent, execution=plan.execution, blocked=True,
+        reply=f"已识别您的{title}需求，该业务执行路径尚未接入，本次未提交任何业务操作。您可以联系人工客服处理。",
+    )
+
+
 def dispatch(
     plan: DataPlan,
     *,
@@ -57,6 +66,8 @@ def dispatch(
     - ``entities``：实体抽取层透传的通用实体（订单号/物流号/状态等），
       经 ``run_workflow`` 注入声明了该形参的 handler。
     """
+    if not plan.spec.execution_ready:
+        return unavailable_execution(plan)
     if plan.execution == Execution.WORKFLOW:
         return run_workflow(
             plan.intent, user_input, plan,
@@ -99,6 +110,8 @@ async def dispatch_async(
     - REACT：``await react_executor.run_async`` — LLM ``await``，工具 ``asyncio.to_thread``。
     - ``entities``：实体抽取层透传的通用实体，经 ``run_workflow_async`` 注入 handler。
     """
+    if not plan.spec.execution_ready:
+        return unavailable_execution(plan)
     if plan.execution == Execution.WORKFLOW:
         return await run_workflow_async(
             plan.intent, user_input, plan,

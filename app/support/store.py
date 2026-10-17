@@ -18,6 +18,8 @@ from app.runtime.outbox import SCHEMA as JOB_SCHEMA, DurableJobs
 from app.runtime.notifications import SCHEMA as NOTIFICATION_SCHEMA, enqueue as enqueue_notification
 from app.memory.case_postgres import SCHEMA as CASE_SCHEMA
 from app.runtime.maintenance import SCHEMA as MAINTENANCE_SCHEMA
+from app.session.short_term import SCHEMA as CONTEXT_SCHEMA
+from app.memory.runtime import SCHEMA as MEMORY_RUNTIME_SCHEMA
 
 
 class SupportError(Exception):
@@ -70,8 +72,8 @@ SCHEMA = (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, response TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS support_bot_runs (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
-) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + CASE_SCHEMA + MAINTENANCE_SCHEMA
-SCHEMA_VERSION = 7
+) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + CASE_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA + MEMORY_RUNTIME_SCHEMA
+SCHEMA_VERSION = 9
 
 
 class Tx:
@@ -181,6 +183,14 @@ class SupportStore:
         if kind == 'message' and payload.get('task_id'):
             tx.execute('INSERT INTO support_task_messages VALUES (?,?,?) ON CONFLICT DO NOTHING',
                        (payload['task_id'], control['session_id'], control['sequence']))
+        if kind == 'message' and not private:
+            from app.config.settings import settings
+            if settings.short_term_memory_enabled:
+                from app.session.short_term import enqueue_context_job
+                enqueue_context_job(tx, control, payload.get('task_id'))
+            if settings.memory_enabled and payload.get('role') == 'user':
+                from app.memory.runtime import enqueue_memory_job
+                enqueue_memory_job(tx, control, payload)
         return control["sequence"]
 
     def ensure(self, sid, user, history=()):
@@ -267,6 +277,17 @@ class SupportStore:
     def state(self, sid, user):
         with self.transaction(read_only=True) as tx:
             return self._state(tx, self._control(tx, sid, user))
+
+    def operation_status(self, sid, user, operation_id):
+        """Read a receipt only within the authenticated conversation."""
+        with self.transaction(read_only=True) as tx:
+            self._control(tx, sid, user)
+            op = tx.one('SELECT tool,status,result FROM support_operations '
+                        'WHERE session_id=? AND operation_id=?', (sid, operation_id))
+            if not op:
+                return {'status': 'unknown', 'note': '未找到当前会话的操作记录，不能据此重试'}
+            return {'action': op['tool'], 'status': op['status'],
+                    'result': json.loads(op['result']) if op['result'] else None}
 
     def resume(self, sid, user):
         with self.transaction() as tx:
@@ -372,13 +393,18 @@ class SupportStore:
             cursor = rows[-1]["sequence"] if len(rows) == limit else ceiling
             return {"events": rows, "cursor": cursor, "state": state}
 
-    def context(self, sid, user):
+    def context(self, sid, user, *, query='', exclude_latest_user=False):
+        from app.config.settings import settings
+        if settings.short_term_memory_enabled:
+            from app.session.short_term import ContextService
+            return ContextService(self).build(sid, user, query=query, exclude_latest_user=exclude_latest_user)
         with self.transaction(read_only=True) as tx:
             self._control(tx, sid, user)
             rows = tx.all("""SELECT payload FROM support_events WHERE session_id=? AND kind='message'
                 AND visibility='public' ORDER BY sequence DESC LIMIT 40""", (sid,))
-            return [{"role": p["role"] if p["role"] == "user" else "assistant", "content": p["content"]}
-                    for p in (json.loads(r["payload"]) for r in reversed(rows))]
+            messages = [{"role": p["role"] if p["role"] == "user" else "assistant", "content": p["content"]}
+                        for p in (json.loads(r["payload"]) for r in reversed(rows))]
+            return messages[:-1] if exclude_latest_user and messages and messages[-1]['role'] == 'user' else messages
 
     def transcript(self, sid, user, before=None, limit=50, *, staff=False, ticket_id=None):
         """Bootstrap from a bounded snapshot, then seek backwards through messages.
@@ -592,7 +618,7 @@ class SupportStore:
     def finish_operation(self, oid, result):
         if result.get("success") is True:
             status = "succeeded"
-        elif result.get("error_code") in {"business_rejection", "validation_error", "evidence_unavailable"}:
+        elif result.get("error_code") in {"business_rejection", "validation_error", "evidence_unavailable", "confirmation_invalid"}:
             status = "failed"
         else:
             status = "unknown"

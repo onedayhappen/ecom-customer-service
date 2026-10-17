@@ -110,7 +110,8 @@ def test_recovery_expires_unstarted_job_without_client_polling(store):
     assert store.jobs.get(job.job_id, 'user')['status'] == 'expired'
     with pytest.raises(BotInterrupted):
         store.start_bot(job.session_id, job.user_id, job.control_version, job.job_id)
-    assert store.tasks.list('session', 'user')['tasks'][0]['status'] == 'paused'
+    # Unified dialogue has no classifier-created task; expiry is a job state.
+    assert store.tasks.list('session', 'user')['tasks'] == []
 
 
 def test_recovery_fences_dead_worker_and_never_replays_mutation(store):

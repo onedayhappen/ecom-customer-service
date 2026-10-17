@@ -8,7 +8,7 @@ IntentSpec 是静态定义（intent → 需求）；DataPlan 是结合当前可�
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Collection, Mapping
 
 from app.data_plan.capabilities import (
@@ -36,6 +36,7 @@ class DataPlan:
     required_slots: tuple[str, ...]
     fallback: Fallback
     retrievable: bool               # 派生自 spec（是否需检索数据源）
+    conversational: bool = False    # 标签只作提示，不限制对话或授予操作权限
 
     @property
     def blocked(self) -> bool:
@@ -44,7 +45,7 @@ class DataPlan:
         写操作缺失意味着任务无法落库（改址/取消/退款等），必须降级；
         只读工具缺失通常还有兜底（如缺 list_user_orders 可改为索要订单号）。
         """
-        return any(t in MUTATING_CAPABILITIES for t in self.pending_tools)
+        return not self.spec.execution_ready or any(t in MUTATING_CAPABILITIES for t in self.pending_tools)
 
     @property
     def prompt_tool_names(self) -> frozenset[str]:
@@ -101,3 +102,22 @@ def build_data_plan(
         fallback=spec.fallback,
         retrievable=spec.retrievable,
     )
+
+
+def build_conversation_plan(intent: Intent | str) -> DataPlan:
+    """一个对话 Agent 接待全部业务；未接入的动作不阻断咨询和查询。
+
+    工具白名单来自服务端能力注册，不从分类标签推导。required_slots 仅在
+    具体工具调用时校验，避免问政策也被强制索要订单号。
+    """
+    plan = build_data_plan(intent)
+    tools = tuple(sorted(IMPLEMENTED_CAPABILITIES))
+    memory = MemorySpec(session=True, case=True, user_profile=True,
+                        order_db=True, product_db=True, policy_kb=True)
+    spec = replace(plan.spec, execution=Execution.REACT, execution_ready=True,
+                   tools=tools, skills=(), required_slots=(), memory=memory,
+                   permission=Permission.CONFIRM_REQUIRED)
+    return replace(plan, spec=spec, execution=Execution.REACT, tools=tools,
+                   pending_tools=(), skills=(), required_slots=(), memory=memory,
+                   permission=Permission.CONFIRM_REQUIRED, retrievable=True,
+                   conversational=True)

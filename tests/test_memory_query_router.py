@@ -19,13 +19,13 @@ def test_explicit_order_query_skips_auto_memory():
     assert not decision.should_auto_inject
 
 
-def test_clear_memory_query_triggers_auto_injection():
+def test_commitment_query_routes_to_source_events():
     router = MemoryQueryRouter()
 
     decision = router.decide("昨天你不是说要给我一张优惠券嘛，到我账户了吗")
 
-    assert decision.should_auto_inject
-    assert decision.reason == "memory_cue"
+    assert not decision.should_auto_inject
+    assert decision.route == "events"
 
 
 def test_plain_policy_query_does_not_force_memory():
@@ -39,6 +39,6 @@ def test_plain_policy_query_does_not_force_memory():
 
 if __name__ == "__main__":
     test_explicit_order_query_skips_auto_memory()
-    test_clear_memory_query_triggers_auto_injection()
+    test_commitment_query_routes_to_source_events()
     test_plain_policy_query_does_not_force_memory()
     print("长期记忆 query 路由测试通过")

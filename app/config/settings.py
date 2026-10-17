@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     )
     temperature: float = 0.7
 
+    # 统一对话入口；False 仅用于旧版本回滚和历史流程回归。
+    assistant_just_react: bool = True
+
     # ReAct 循环
     max_react_steps: int = 5
     compact_react_enabled: bool = True
@@ -110,6 +113,15 @@ class Settings(BaseSettings):
     memory_redis_url: str = "redis://127.0.0.1:6379/0"
     memory_cache_ttl_seconds: int = 1800
     memory_cache_key_prefix: str = "ecom:ltm"
+    memory_context_tokens: int = Field(default=1200, ge=128)
+    memory_hot_facts: int = Field(default=20, ge=1, le=200)
+    memory_topic_tokens: int = Field(default=300, ge=64)
+    memory_hybrid_candidates: int = Field(default=10, ge=1, le=100)
+    memory_rrf_k: int = Field(default=60, ge=1)
+    memory_timezone: str = "Asia/Shanghai"
+    memory_extraction_batch_messages: int = Field(default=32, ge=1, le=128)
+    memory_extraction_input_tokens: int = Field(default=7000, ge=512)
+    memory_extraction_debounce_seconds: int = Field(default=30, ge=0, le=3600)
 
     # FastAPI 服务与认证配置
     api_jwt_secret: str = ""
@@ -229,6 +241,19 @@ class Settings(BaseSettings):
     context_input_budget_tokens: int = 192_000
     context_compaction_trigger_ratio: float = 0.70
     context_compaction_retain_ratio: float = 0.40
+
+    # 生产客服事件的短期上下文；与旧 JSON 会话压缩设置独立。
+    short_term_memory_enabled: bool = True
+    short_term_recent_tokens: int = Field(default=4000, ge=256)
+    short_term_summary_tokens: int = Field(default=1200, ge=128)
+    short_term_recall_tokens: int = Field(default=1200, ge=128)
+    short_term_recent_turns: int = Field(default=4, ge=1, le=20)
+    short_term_compaction_batch_messages: int = Field(default=64, ge=8, le=256)
+    # 最终提供商请求预算包含 system、工具定义、调用参数和结果。
+    context_request_budget_enabled: bool = True
+    context_request_input_tokens: int = Field(default=12000, ge=512)
+    context_model_window_tokens: int = Field(default=0, ge=0)
+    context_window_margin_tokens: int = Field(default=1024, ge=0)
 
     model_config = {"env_file": ".env"}
 

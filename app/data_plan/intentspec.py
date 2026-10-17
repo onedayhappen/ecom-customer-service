@@ -2,7 +2,7 @@
 
 IntentSpec 是**静态定义层**（intent → 需求），与运行时的 Data Plan
 （结合 Case 上下文实例化）分离。装配差异显著且稳定的意图独立成类；
-同数据源同动作只换对象的（退货/换货/价保）用槽位区分，不拆标签。
+退款、换货和价保分别分类；旧任务规格保留用于兼容既有记录。
 
 字段说明：
 - ``tools``      引用 :mod:`app.data_plan.capabilities` 的能力 ID（按装配优先级排序）。
@@ -11,16 +11,18 @@ IntentSpec 是**静态定义层**（intent → 需求），与运行时的 Data 
 - ``permission`` 权限等级：只读 / 执行前确认 / 升级转人工。
 - ``required_slots`` 执行前必须解析的实体/槽位，用于初始化 ``case.pending_slots``。
 - ``fallback``   前置条件不满足时的降级策略。
-- ``execution``  workflow（确定性脚本）/ react（动态规划）/ rule（决策规则填槽）。
+- ``execution``  workflow（确定性脚本）/ react（动态规划）。
+- ``execution_ready`` 是否已经接入执行路径；False 时显式返回能力未接入。
 - ``retrievable`` 派生：是否需检索外部数据源（对应已废弃的 requires_retrieval）。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from app.data_plan.capabilities import CAPABILITIES
 from app.data_plan.enums import Domain, Execution, Fallback, Intent, Permission
+from app.data_plan.taxonomy import DEFINITIONS, DEFAULT_EXECUTION
 
 
 @dataclass(frozen=True)
@@ -61,6 +63,8 @@ class IntentSpec:
     permission: Permission = Permission.READ_ONLY
     required_slots: tuple[str, ...] = ()
     fallback: Fallback = Fallback.CLARIFY
+    # Recognition can be shipped before a new execution contract is implemented.
+    execution_ready: bool = True
 
     @property
     def retrievable(self) -> bool:
@@ -266,6 +270,60 @@ _SPECS: tuple[IntentSpec, ...] = (
 # intent → spec 的查询表（O(1) 查表，IntentSpec 是确定性映射，不靠 LLM）
 SPECS: dict[Intent, IntentSpec] = {spec.intent: spec for spec in _SPECS}
 
+# v4 classification contract. Existing serialized legacy tasks retain their
+# original specs; new labels never silently fall back to a broader legacy action.
+_NEW_TOOLS = {
+    Intent.PRODUCT_COMPARISON: ("query_product", "search_knowledge"),
+    Intent.INVENTORY_INQUIRY: ("query_product", "query_inventory"),
+    Intent.DELIVERY_INQUIRY: ("query_product", "search_knowledge", "validate_policy_evidence", "query_delivery_quote"),
+    Intent.SERVICE_POLICY_INQUIRY: ("search_knowledge", "validate_policy_evidence"),
+    Intent.PROMOTION_INQUIRY: ("query_promotions", "query_user_coupons", "query_membership"),
+    Intent.PROMOTION_CALCULATION: ("query_offers", "query_promotions", "query_user_coupons", "query_membership", "query_delivery_quote", "calc_promotion"),
+    Intent.COUPON_ISSUE: ("query_user_coupons", "query_promotions", "query_order", "check_coupon_eligibility"),
+    Intent.PRICE_COMPARISON: ("query_offers", "query_promotions", "query_user_coupons", "query_membership", "query_delivery_quote", "calc_promotion", "compare_offers"),
+    Intent.CART_OPTIMIZATION: ("query_product", "query_offers", "calc_promotion"),
+    Intent.PRICE_HISTORY: ("query_price_history", "summarize_price_history"),
+    Intent.MEMBERSHIP_INQUIRY: ("query_membership", "search_knowledge", "validate_policy_evidence"),
+    Intent.PAYMENT_ISSUE: ("query_order", "search_knowledge", "query_payment_status"),
+    Intent.REFUND_SERVICE: ("query_order", "list_user_orders", "search_knowledge", "apply_refund"),
+    Intent.EXCHANGE_SERVICE: ("query_order", "list_user_orders", "search_knowledge", "query_inventory", "apply_exchange"),
+    Intent.PRICE_PROTECTION_SERVICE: ("query_order", "query_offers", "search_knowledge", "calc_price_protect", "apply_price_protect"),
+    Intent.AFTER_SALE_STATUS: ("query_order", "list_user_orders", "query_after_sale", "query_logistics"),
+    Intent.INVOICE_INQUIRY: ("query_order", "list_user_orders", "search_knowledge", "validate_policy_evidence", "query_invoice"),
+    Intent.INVOICE_REQUEST: ("query_order", "list_user_orders", "query_invoice", "issue_invoice", "reissue_invoice", "query_mutation_status"),
+    Intent.HUMAN_HANDOFF: ("escalate_to_human", "query_handoff_status"),
+}
+_NEW_ORDER = {Intent.PAYMENT_ISSUE}
+_NEW_AFTER_SALE = {Intent.REFUND_SERVICE, Intent.EXCHANGE_SERVICE,
+                  Intent.PRICE_PROTECTION_SERVICE, Intent.AFTER_SALE_STATUS,
+                  Intent.INVOICE_INQUIRY, Intent.INVOICE_REQUEST, Intent.HUMAN_HANDOFF}
+_NEW_WRITES = {Intent.REFUND_SERVICE, Intent.EXCHANGE_SERVICE,
+               Intent.PRICE_PROTECTION_SERVICE, Intent.INVOICE_REQUEST}
+# Refunds already have a guarded ReAct tool chain. Preserve that capability
+# under the narrower label; do not give it exchange/price-protection tools.
+SPECS[Intent.REFUND_SERVICE] = replace(
+    SPECS[Intent.AFTER_SALE_REQUEST], intent=Intent.REFUND_SERVICE,
+    tools=_NEW_TOOLS[Intent.REFUND_SERVICE],
+)
+for _intent, (_title, _description) in DEFINITIONS.items():
+    if _intent in SPECS:
+        SPECS[_intent] = replace(SPECS[_intent], description=_description,
+                                 execution=DEFAULT_EXECUTION[_intent])
+        continue
+    _domain = (Domain.AFTER_SALE if _intent in _NEW_AFTER_SALE
+               else Domain.ORDER if _intent in _NEW_ORDER else Domain.PRESALE)
+    SPECS[_intent] = IntentSpec(
+        intent=_intent, domain=_domain, execution=DEFAULT_EXECUTION[_intent],
+        description=_description, tools=_NEW_TOOLS[_intent],
+        memory=MemorySpec(session=True, case=_intent in _NEW_AFTER_SALE,
+                          order_db=_intent in _NEW_AFTER_SALE | _NEW_ORDER,
+                          product_db=_domain == Domain.PRESALE, policy_kb=True),
+        permission=(Permission.CONFIRM_REQUIRED if _intent in _NEW_WRITES
+                    else Permission.ESCALATE if _intent == Intent.HUMAN_HANDOFF
+                    else Permission.READ_ONLY),
+        fallback=Fallback.EXPLAIN, execution_ready=False,
+    )
+
 
 def get_intentspec(intent: Intent | str) -> IntentSpec:
     """按意图查 IntentSpec；未知意图抛 KeyError（配置完备性由测试保障）。
@@ -281,10 +339,10 @@ def validate_specs() -> list[str]:
     """返回配置错误列表（空列表 = 全部合法）。
 
     在导入/测试阶段调用，保障：
-    1. 17 类全覆盖、无重复；
+    1. 当前 31 类及 5 个旧任务兼容值全覆盖；
     2. 每个 spec 引用的工具能力都存在于能力目录；
     3. 写操作能力只出现在 CONFIRM_REQUIRED 权限下（安全约束）；
-    4. 对话流（RULE）不装配业务检索工具。
+    4. 对话域不装配业务检索工具。
     """
     errors: list[str] = []
 

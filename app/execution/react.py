@@ -1,9 +1,7 @@
-"""ReAct 动态执行器：为 6 个 react 类提供 LLM + 工具循环。
+"""统一对话执行器：直接回复或按需进行 LLM + 工具循环。
 
 与 Workflow 的差别在于：下一步无法预先写死，需 Agent 根据工具返回动态规划。
-ReAct 类的共同特征是「理解 + 判断 + 灵活组合」：商品咨询（客观信息+政策检索）、
-售后申请（政策判定 + 写操作确认）、推荐（依赖偏好画像）、
-问题诊断（故障/货损）、投诉（安抚 + 升级）、兜底（澄清/转人工）。
+默认接待全部 31 类意图，使用统一对话策略；历史意图剧本仅用于回滚模式。
 
 工具集来自 :class:`DataPlan` 的 ``prompt_tool_names``（已实现能力 + load_skill），
 因此本执行器**不会**碰到未实现工具。知识检索无结果时 fail-closed，绝不编造政策。
@@ -67,6 +65,11 @@ IN_PROGRESS_REPLY = "该操作正在处理中，请勿重复提交，稍后可�
 ToolExecutor = Callable[[str, dict[str, Any]], str]
 
 
+def business_evidence(steps: list[ToolStep]) -> list[dict]:
+    """Conversation drafts may contain user claims, never proof of business facts."""
+    return [step.result for step in steps if step.name not in {'read_case_memory', 'save_case_context'}]
+
+
 def default_system_prompt(plan: DataPlan) -> str:
     """从 IntentSpec 生成默认 system prompt。
 
@@ -75,6 +78,9 @@ def default_system_prompt(plan: DataPlan) -> str:
     ``app/prompts/react_guidelines.py``）。工具清单不写死，
     保证与 DataPlan 装配一致；准则提供角色定位与回复规范。
     """
+    if plan.conversational:
+        from app.prompts.conversation import CONVERSATION_PROMPT
+        return CONVERSATION_PROMPT + f'\n本轮参考标签：{plan.intent.value}（{plan.description}）；以当前对话实际需求为准。'
     tool_lines = [
         f"- {name}: {get_capability(name).description}"
         for name in plan.tools
@@ -236,7 +242,7 @@ class ReactExecutor:
         # 未在 schema 中声明的函数名。真正的白名单来自静态 DataPlan。
         allowed_tool_names = set(plan.prompt_tool_names)
         from app.support.runtime import current_scope
-        if current_scope():
+        if current_scope() or plan.conversational:
             # This is a conversation control tool, not a business capability.
             tools = [*tools, {'type': 'function', 'function': {
                 'name': 'ask_user', 'description': '缺少必要信息时向用户提问并暂停当前任务。回答不会授权退款等写操作。',
@@ -255,7 +261,7 @@ class ReactExecutor:
 
         def make_result(reply: str, **kwargs: Any) -> ExecutionResult:
             """终点出口：Evidence Pack 校验后构造 ExecutionResult。"""
-            report = verify_reply(reply, [*(historical_evidence or []), *(step.result for step in steps)])
+            report = verify_reply(reply, [*(historical_evidence or []), *business_evidence(steps)])
             if report.has_unsupported:
                 reply = sanitize_reply(reply, report)
             return ExecutionResult(
@@ -282,7 +288,7 @@ class ReactExecutor:
 
             # 无工具调用 → 直接回复
             if not assistant_msg.tool_calls:
-                return make_result(assistant_msg.content or "")
+                return make_result(assistant_msg.content or "暂时未能形成有效答复，请补充您的问题或稍后再试。")
 
             working.append({
                 "role": "assistant",
@@ -343,11 +349,33 @@ class ReactExecutor:
                     if report is not None:
                         return make_result(CONVERGENCE_REPLY)
 
-                # 写操作确认门控（与 workflow.py 一致）：
+                # Unified conversation: authorization depends on the tool, never the label.
+                mutation_intent = plan.intent.value
+                if plan.conversational and name in MUTATING_CAPABILITIES:
+                    from app.execution.proposals import MUTATION_INTENTS, prepare_proposal
+                    mutation_intent = MUTATION_INTENTS.get(name, plan.intent.value)
+                    if mutation_guard is None:
+                        return make_result('当前缺少安全执行上下文，操作未执行，请重新进入会话或联系人工。', blocked=True)
+                    if not confirmation_token:
+                        proposal = await call_sync(prepare_proposal, name, args, self._observed_execute)
+                        steps.extend(proposal.steps)
+                        if proposal.error:
+                            result = {'success': False, 'error_code': 'validation_error', 'error': proposal.error}
+                            steps.append(ToolStep(name, args, result, blocked=True))
+                            working.append({'role': 'tool', 'tool_call_id': tc.id,
+                                            'content': json.dumps(result, ensure_ascii=False)})
+                            continue
+                        token = await call_sync(mutation_guard.request_confirmation, mutation_intent, name, args)
+                        return ExecutionResult(intent=plan.intent, execution=plan.execution,
+                                               reply=proposal.summary, tool_steps=steps,
+                                               needs_confirmation=True, confirmation_token=token)
+
+                # Legacy plans retain their historical confirmation contract.
                 # CONFIRM_REQUIRED 意图的写操作工具在未 confirmed 时不真正执行，
                 # 返回 needs_confirmation=True，等待用户确认后再带 confirmed=True 重跑。
                 if (
                     name in MUTATING_CAPABILITIES
+                    and not plan.conversational
                     and plan.permission == Permission.CONFIRM_REQUIRED
                     and not confirmed
                 ):
@@ -388,7 +416,7 @@ class ReactExecutor:
                 if mutation_guard is not None and name in MUTATING_CAPABILITIES:
                     outcome = await call_sync(
                         mutation_guard.execute,
-                        plan.intent.value, name, args, confirmation_token,
+                        mutation_intent, name, args, confirmation_token,
                         self._observed_execute,
                     )
                     result = dict(outcome.result)
@@ -415,7 +443,7 @@ class ReactExecutor:
                         return make_result(HANDOFF_REPLY, needs_human=True)
                     status = await call_sync(
                         mutation_guard.query_idempotency_status,
-                        plan.intent.value, name, args,
+                        mutation_intent, name, args,
                     )
                     state = status.get("status")
                     if state == "succeeded":
@@ -494,7 +522,7 @@ class ReactExecutor:
             reply = (reply.rstrip("\u3002") + "\u3002" + EVIDENCE_FINALIZE_NOTE) if reply else EVIDENCE_FINALIZE_NOTE
         else:
             reply = fixed_reply
-        report = verify_reply(reply, [*(historical_evidence or []), *(step.result for step in steps)])
+        report = verify_reply(reply, [*(historical_evidence or []), *business_evidence(steps)])
         if report.has_unsupported:
             reply = sanitize_reply(reply, report)
         return ExecutionResult(

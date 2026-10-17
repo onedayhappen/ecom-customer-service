@@ -36,7 +36,7 @@ class CharacterTokenizer:
 def test_training_rejects_truncation_and_keeps_target():
     messages = [
         {"role": "user", "content": "我要退款"},
-        {"role": "assistant", "content": '{"intent":"after_sale_request"}'},
+        {"role": "assistant", "content": '{"intent":"refund_service"}'},
     ]
     rows = [{"messages": messages}]
     with pytest.raises(ValueError, match="不能截掉"):

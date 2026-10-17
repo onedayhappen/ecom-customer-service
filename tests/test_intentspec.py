@@ -25,22 +25,17 @@ from app.data_plan.capabilities import (
     MUTATING_CAPABILITIES,
 )
 
-# 与训练集 data_v3.jsonl 的 17 类标签逐字符一致（契约锁定）
-EXPECTED_INTENTS = {
-    "product_inquiry", "product_recommendation",
-    "order_inquiry", "logistics_inquiry", "address_change", "order_cancel", "expedite",
-    "after_sale_request", "refund_status", "issue_report", "invoice", "complaint",
-    "confirmation", "answer_question", "closure", "greetings",
-    "others",
-}
+from app.data_plan.taxonomy import CLASSIFICATION_INTENTS, LEGACY_INTENTS
 
 
 # ---------------------------------------------------------------------------
 # 配置完备性
 # ---------------------------------------------------------------------------
 
-def test_17_intents_fully_covered_and_match_training_labels():
-    assert {i.value for i in Intent} == EXPECTED_INTENTS
+def test_canonical_and_legacy_intents_fully_covered():
+    assert set(Intent) == CLASSIFICATION_INTENTS | LEGACY_INTENTS
+    assert len(CLASSIFICATION_INTENTS) == 31
+    assert len(LEGACY_INTENTS) == 5
     assert validate_specs() == []
 
 
@@ -58,9 +53,9 @@ def test_every_spec_references_known_capability():
 def test_execution_path_distribution():
     from app.data_plan.intentspec import SPECS
     from collections import Counter
-    dist = Counter(spec.execution for spec in SPECS.values())
-    assert dist[Execution.WORKFLOW] == 11
-    assert dist[Execution.REACT] == 6
+    dist = Counter(SPECS[intent].execution for intent in CLASSIFICATION_INTENTS)
+    assert dist[Execution.WORKFLOW] == 19
+    assert dist[Execution.REACT] == 12
 
 
 def test_dialog_flow_labels_are_workflow_driven():
@@ -83,9 +78,9 @@ def test_react_labels():
 
 def test_retrievable_distribution():
     from app.data_plan.intentspec import SPECS
-    true_count = sum(1 for s in SPECS.values() if s.retrievable)
-    assert true_count == 12  # 12 业务类
-    assert len(SPECS) - true_count == 5  # 4 对话流 + 1 兜底
+    true_count = sum(SPECS[i].retrievable for i in CLASSIFICATION_INTENTS)
+    assert true_count == 28  # 28 业务类
+    assert len(CLASSIFICATION_INTENTS) - true_count == 3  # 2 对话流 + 1 兜底
 
 
 def test_dialog_flow_is_not_retrievable():

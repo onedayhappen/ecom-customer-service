@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 from math import ceil
 from typing import Any
 
@@ -20,10 +21,24 @@ def estimate_text_tokens(value: Any) -> int:
 
 def estimate_message_tokens(messages: list[dict]) -> int:
     """估算 Chat Completions 消息数组的输入 token 数。"""
-    total = 0
-    for message in messages:
-        # role、消息边界和工具调用的结构本身也会消耗 token。
-        total += 8 + estimate_text_tokens(message.get("content"))
-        if message.get("tool_calls"):
-            total += estimate_text_tokens(message["tool_calls"])
-    return total
+    # Include names, call ids/arguments, reasoning fields and content arrays.
+    # JSON overhead deliberately errs upwards; this is not billing tokenization.
+    return sum(8 + estimate_text_tokens(_serialized(message)) for message in messages)
+
+
+def _serialized(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
+def estimate_request_tokens(params: dict) -> int:
+    """Estimate the complete provider input, including tool/response schemas."""
+    messages = params.get("messages", [])
+    # Output limits and sampling controls don't consume the input window. All
+    # other options are counted, including provider-specific structured input.
+    non_input = {
+        "messages", "model", "scene", "max_tokens", "max_completion_tokens",
+        "temperature", "top_p", "stream", "stream_options", "seed", "n",
+        "presence_penalty", "frequency_penalty", "timeout", "user",
+    }
+    extra = {key: value for key, value in params.items() if key not in non_input}
+    return 8 + estimate_message_tokens(messages) + (estimate_text_tokens(_serialized(extra)) if extra else 0)

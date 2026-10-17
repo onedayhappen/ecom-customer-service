@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUpRight, Bot, CircleAlert, Headphones, ShieldCheck, Sparkles, UserRound, Zap } from 'lucide-react'
 import SupportConsole from './SupportConsole'
-import TaskPanel from './TaskPanel'
 import { labels, post, request, Transcript, useConversation, nextConversationUpdate } from './supportClient'
 
 const SESSION_KEY = 'ecom-agent-session-id'
@@ -26,6 +25,7 @@ export default function App() {
   const [sessionId, setSessionId] = useState(() => localStorage.getItem(SESSION_KEY) || '')
   const [staffView, setStaffView] = useState(false), [input, setInput] = useState(''), [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false), [confirmation, setConfirmation] = useState(''), [retry, setRetry] = useState(null)
+  const [question, setQuestion] = useState(null)
   const conversation = useConversation(authenticated ? sessionId : null)
   const control = useRef(null), activeSession = useRef(sessionId)
   const sendVersion = useRef(0)
@@ -33,14 +33,15 @@ export default function App() {
   useEffect(() => {
     if (conversation.state && (conversation.state.mode !== 'bot' || confirmation?.controlVersion < conversation.state.control_version)) setConfirmation('')
     if (conversation.state && conversation.state.mode !== 'bot') setBusy(false)
-  }, [conversation.state?.mode, conversation.state?.control_version, confirmation?.controlVersion])
+    if (conversation.state && (conversation.state.mode !== 'bot' || question?.controlVersion < conversation.state.control_version)) setQuestion(null)
+  }, [conversation.state?.mode, conversation.state?.control_version, confirmation?.controlVersion, question?.controlVersion])
   async function loadIdentity() {
     try { const me = await request('/api/v1/support/me'); setIdentity(me); setAuthenticated(true) }
     catch { setAuthenticated(false); setIdentity(null) }
   }
   useEffect(() => { loadIdentity() }, [])
   function ensureId() { const sid = sessionId || crypto.randomUUID(); activeSession.current = sid; localStorage.setItem(SESSION_KEY, sid); setSessionId(sid); return sid }
-  function startNew() { sendVersion.current++; localStorage.removeItem(SESSION_KEY); setSessionId(''); setConfirmation(''); setInput(''); setNotice(''); setRetry(null); setBusy(false) }
+  function startNew() { sendVersion.current++; localStorage.removeItem(SESSION_KEY); setSessionId(''); setConfirmation(''); setQuestion(null); setInput(''); setNotice(''); setRetry(null); setBusy(false) }
   async function handoff() {
     sendVersion.current++
     const sid = ensureId()
@@ -60,7 +61,7 @@ export default function App() {
     const candidate = { message, session_id: sid, ...taskInput, ...(confirmed && confirmation ? { confirmation_token: confirmation.token } : {}) }
     const { request_id: previousId, ...previous } = retry || {}
     const payload = JSON.stringify(previous) === JSON.stringify(candidate) ? retry : { ...candidate, request_id: crypto.randomUUID() }
-    setRetry(payload); setBusy(true); setNotice(''); setConfirmation('')
+    setRetry(payload); setBusy(true); setNotice(''); setConfirmation(''); setQuestion(null)
     try {
       let data = await post('/api/v1/chat', payload)
       if (activeSession.current !== sid || generation !== sendVersion.current) return
@@ -83,6 +84,7 @@ export default function App() {
       if (activeSession.current !== sid || generation !== sendVersion.current) return
       if (data.support) conversation.setState(data.support)
       if (!data.suppressed && data.confirmation_token && (!control.current || control.current.control_version <= expectedVersion) && control.current?.mode === 'bot') setConfirmation({ token: data.confirmation_token, controlVersion: expectedVersion })
+      if (!data.suppressed && data.question && (!control.current || control.current.control_version <= expectedVersion) && control.current?.mode === 'bot') setQuestion({ ...data.question, controlVersion: expectedVersion })
     } catch (e) { if (activeSession.current === sid && generation === sendVersion.current) setNotice(e.message) }
     finally { if (activeSession.current === sid && generation === sendVersion.current) setBusy(false) }
   }
@@ -95,7 +97,7 @@ export default function App() {
       {state?.ticket && <div className="support-banner"><strong>工单 #{state.ticket.ticket_id.slice(0, 8)} · {labels[state.ticket.status]}</strong><span>{state.ticket.assignee ? `客服：${state.ticket.assignee}` : '消息已保存，等待客服领取。你可以继续补充信息。'}</span></div>}
       {(notice || conversation.error) && <div role="alert" className="support-alert">{notice || conversation.error}</div>}
       <Transcript {...conversation} />
-      <TaskPanel tasks={conversation.tasks} question={conversation.taskQuestion} mode={state?.mode} busy={busy} onSend={(message, data) => send(null, false, message, data)} />
+      {question?.options?.length > 0 && <div className="support-toolbar" aria-label="回复客服问题">{question.options.map(option => <button key={option.value} disabled={busy || state?.mode !== 'bot'} onClick={() => send(null, false, option.value)}>{option.label}</button>)}</div>}
       <div className="support-toolbar">{(!state || state.mode === 'bot') ? <button onClick={handoff}>转人工客服</button> : <button onClick={resume}>{state.mode === 'handoff_pending' ? '取消排队，返回机器人' : '结束人工服务，返回机器人'}</button>}{busy && <span>正在处理… 可随时转人工</span>}</div>
       {confirmation && <div className="support-banner"><span>请核对上方操作内容，只有点击确认才会提交。</span><button onClick={e => send(e, true)} disabled={busy}>确认执行</button><button onClick={() => setConfirmation('')}>暂不执行</button></div>}
       <form className="support-compose" onSubmit={send}><textarea aria-label="咨询内容" maxLength={4000} value={input} onChange={e => setInput(e.target.value)} placeholder={state?.mode === 'bot' || !state ? '输入问题，也可以随时改口、暂停或取消任务' : '向人工客服补充信息'} /><button disabled={!input.trim()}>{retry ? '重试发送' : '发送消息'}</button></form>

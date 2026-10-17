@@ -1,8 +1,8 @@
 """意图装配层的枚举定义。
 
 本模块是 `app/data_plan/` 的类型基础。所有枚举的字符串值都是稳定的
-契约：`Intent` 的取值必须与分类器约定的 17 类标签逐字符一致，
-分类器输出值直接查表映射到 `IntentSpec`。
+契约：当前分类器只输出 taxonomy 中的 31 类标签；5 个旧值保留用于
+读取持久化任务，不能作为新版分类器输出。所有值均可查询 IntentSpec。
 """
 
 from __future__ import annotations
@@ -11,10 +11,31 @@ from enum import Enum
 
 
 class Intent(str, Enum):
-    """17 类业务任务级意图标签（分类器输出值）。
+    """31 类分类标签和 5 个旧任务兼容值。
 
-    分类器只输出该值；退/换/价保等子类型由槽位区分，不在此拆标签。
+    有效分类输出以 taxonomy.CLASSIFICATION_INTENTS 为准。
     """
+
+    # v4 分类标签：28 个业务目标 + greetings/closure/others。
+    PRODUCT_COMPARISON = "product_comparison"
+    INVENTORY_INQUIRY = "inventory_inquiry"
+    DELIVERY_INQUIRY = "delivery_inquiry"
+    SERVICE_POLICY_INQUIRY = "service_policy_inquiry"
+    PROMOTION_INQUIRY = "promotion_inquiry"
+    PROMOTION_CALCULATION = "promotion_calculation"
+    COUPON_ISSUE = "coupon_issue"
+    PRICE_COMPARISON = "price_comparison"
+    CART_OPTIMIZATION = "cart_optimization"
+    PRICE_HISTORY = "price_history"
+    MEMBERSHIP_INQUIRY = "membership_inquiry"
+    PAYMENT_ISSUE = "payment_issue"
+    REFUND_SERVICE = "refund_service"
+    EXCHANGE_SERVICE = "exchange_service"
+    PRICE_PROTECTION_SERVICE = "price_protection_service"
+    AFTER_SALE_STATUS = "after_sale_status"
+    INVOICE_INQUIRY = "invoice_inquiry"
+    INVOICE_REQUEST = "invoice_request"
+    HUMAN_HANDOFF = "human_handoff"
 
     # 售前
     PRODUCT_INQUIRY = "product_inquiry"              # 商品咨询

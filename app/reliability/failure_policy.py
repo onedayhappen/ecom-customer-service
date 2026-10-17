@@ -199,6 +199,9 @@ class ReActPolicy:
     # -- 调用前：重复调用拦截 ---------------------------------------------
 
     def before_call(self, tool_name: str, arguments: dict[str, Any]) -> PolicyDecision:
+        if tool_name in {'read_case_memory', 'save_case_context'}:
+            # Drafts can change across sessions during the same Agent turn.
+            return PolicyDecision(Action.CONTINUE)
         cached = self._cache.get(self._call_key(tool_name, arguments))
         if cached is None:
             return PolicyDecision(Action.CONTINUE)

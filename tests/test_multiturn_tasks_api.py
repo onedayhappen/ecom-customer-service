@@ -18,6 +18,8 @@ from app.support.runtime import get_store
 
 @pytest.fixture
 def api(tmp_path, monkeypatch):
+    # Historical task/card API remains an explicit rollback contract.
+    monkeypatch.setattr(settings, 'assistant_just_react', False)
     from app.session import repository
     from app.runtime.concurrency import DistributedLease
     from app.agents.engine import AgentEngine
@@ -105,7 +107,7 @@ def test_order_candidates_and_change_of_mind_do_not_get_stuck(api):
     assert send('不查物流了，改为退款').status_code == 200
     current = tasks()
     assert current[0]['status'] == 'cancelled'
-    assert current[1]['intent'] == 'after_sale_request'
+    assert current[1]['intent'] == 'refund_service'
     assert send('ORD-B').status_code == 200
     assert tasks()[1]['status'] == 'waiting_confirmation'
 

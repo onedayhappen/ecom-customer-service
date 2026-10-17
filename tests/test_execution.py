@@ -10,6 +10,13 @@ import json
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def legacy_execution_contract(monkeypatch):
+    """This module retains regression coverage for the explicit rollback path."""
+    from app.config.settings import settings
+    monkeypatch.setattr(settings, 'assistant_just_react', False)
+
 from app.agents.engine import AgentEngine
 from app.data_plan import DataPlan, build_data_plan
 from app.data_plan.enums import Execution
@@ -489,7 +496,7 @@ def test_workflow_degrade_skips_generator():
 
 
 def test_engine_injects_workflow_reply_generator():
-    """AgentEngine 注入 LLM 生成器：system prompt 含工具返回证据。"""
+    """AgentEngine 将规则与可独立预算的业务证据一起传给模型。"""
     captured: dict = {}
 
     class _FakeMessage:
@@ -516,9 +523,9 @@ def test_engine_injects_workflow_reply_generator():
     result = engine.execute("查物流 ORD-20240115-001", runner=_runner())
     assert result.reply == "LLM 回复：您的订单正在派送中"
     # system prompt 携带工具返回的真实数据（运单号），LLM 只能基于证据回答
-    system = captured["messages"][0]["content"]
-    assert "SF1234567890" in system
-    assert captured["messages"][1]["role"] == "user"
+    evidence = next(m for m in captured['messages'] if m.get('name') == 'workflow_evidence')
+    assert "SF1234567890" in evidence['content']
+    assert captured["messages"][-1]["role"] == "user"
 
 
 def test_engine_workflow_without_client_falls_back():

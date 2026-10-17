@@ -300,7 +300,9 @@ def _next_message_has_same_structured_reply(
     return _structured_reply(next_content) == content
 
 
-def _build_engine(user_id: str, session_id: str | None) -> tuple[str, list[dict]]:
+def _build_engine(
+    user_id: str, session_id: str | None, *, query: str = '', task_id: str | None = None,
+) -> tuple[str, list[dict]]:
     """新链路执行引擎入口（意图识别 → DataPlan → dispatch）。
 
     返回 (规范化 session_id, 会话历史 messages)。历史供微调意图分类器
@@ -308,11 +310,18 @@ def _build_engine(user_id: str, session_id: str | None) -> tuple[str, list[dict]
     """
     normalized_session_id = _normalise_session_id(session_id)
     if current_scope():
-        history = get_store().context(normalized_session_id, user_id)
-        # Incoming user message is already durable; execution appends it to its prompt.
-        if history and history[-1]["role"] == "user":
-            history = history[:-1]
+        if task_id:
+            history = get_store().tasks.context(normalized_session_id, user_id, task_id,
+                                                query=query, exclude_latest_user=True)
+        else:
+            history = get_store().context(normalized_session_id, user_id,
+                                          query=query, exclude_latest_user=True)
         return normalized_session_id, history
+
+    if task_id:
+        return normalized_session_id, get_store().tasks.context(
+            normalized_session_id, user_id, task_id, query=query,
+        )
 
     if session_id is not None:
         # 显式 session_id 仅表示客户端继续当前聊天线程；不再有空闲恢复窗口。
@@ -555,7 +564,7 @@ def _execute_chat_job(job: ChatJob) -> dict:
             if task_route.get('task_id'):
                 request.task_id = UUID(task_route['task_id'])
                 request.task_version = task_route['task_version']
-                if not task_route.get('confirmation'):
+                if not settings.assistant_just_react and not task_route.get('confirmation'):
                     request.message = task_route['message']
             lost_lease = threading.Event()
             with execution_lease_guard(lost_lease), agent_partition(job.user_id, lost_lease), _llm_lease.slot(settings.api_queue_wait_seconds, lost_event=lost_lease) as acquired:
@@ -644,7 +653,9 @@ async def chat(
         request.session_id or str(uuid5(NAMESPACE_URL, "session:" + job_id)))
     request.session_id = normalized_session_id
     from app.tasks.routing import parse
-    control_request = request.task_action or explicit_handoff(request.message) or parse(request.message)['action']
+    control_request = request.task_action or explicit_handoff(request.message)
+    if not settings.assistant_just_react:
+        control_request = control_request or parse(request.message)['action']
     try:
         await asyncio.to_thread(admit_request, current_user.user_id, 'control' if control_request else 'chat')
     except RateExceeded as exc:
@@ -828,6 +839,9 @@ def _handle_chat_inner(
     """
     from app.observability.fsm import StateObserver
     from app.tools.request_context import reset_current_user_id, set_current_user_id
+    from app.session.request_budget import ContextBudgetExceeded
+    from app.memory.runtime import build_memory_manager
+    from app.tools.memory_tool import set_memory_manager, reset_memory_manager
 
     # 整个 chat 处理期间注入请求级用户身份：订单查询/写操作按
     # get_current_user_id() 归属（order_service 只信 ContextVar，不信任
@@ -835,24 +849,40 @@ def _handle_chat_inner(
     # 调用拿不到身份，返回"缺少用户身份上下文"，订单查询恒为空。
     token = set_current_user_id(user_id)
     observer = StateObserver()
+    memory_token = set_memory_manager(None)
     try:
+        if settings.memory_enabled:
+            try:
+                set_memory_manager(build_memory_manager(user_id))
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning("Long-term memory load unavailable: %s", type(exc).__name__)
         return _handle_chat_inner_impl(request, user_id, tracer, observer)
+    except ContextBudgetExceeded:
+        observer.close(error="context_budget_exceeded")
+        reply = '本次需要处理的信息过多，已暂停当前任务。请简要重述要处理的订单和问题，或转人工继续。'
+        sid = _normalise_session_id(request.session_id)
+        _persist_session_turn(sid, user_id, request.message, reply)
+        return ChatResponse(session_id=sid, reply=reply, intent='answer_question', confidence=1.0,
+                            requires_human=False, follow_up_question=None, task_outcome='paused')
     except Exception:
         observer.close(error="unhandled_exception")
         raise
     finally:
+        reset_memory_manager(memory_token)
         reset_current_user_id(token)
 
 
 def _handle_chat_inner_impl(
     request: ChatRequest, user_id: str, tracer, observer,
 ) -> ChatResponse:
-    """原 _handle_chat 主体；tracer 为 None 时埋点全部跳过，行为与旧版一致。"""
-    session_id, history = _build_engine(user_id, request.session_id)
-    if request.task_id:
-        history = get_store().tasks.context(session_id, user_id, str(request.task_id))
-        if history and history[-1]['role'] == 'user':
-            history = history[:-1]
+    """Unified conversation by default; the old route remains for rollback only."""
+    if settings.assistant_just_react:
+        from app.api.conversation import handle_conversation
+        return handle_conversation(request, user_id, tracer, observer)
+    session_id, history = _build_engine(user_id, request.session_id, query=request.message,
+                                        task_id=str(request.task_id) if request.task_id else None)
+    request.session_id = session_id
 
     from app.agents.engine import AgentEngine
     from app.data_plan.enums import Intent
@@ -879,6 +909,7 @@ def _handle_chat_inner_impl(
         )
     effective_message = request.message
     selected_intent = None
+    task = None
     if request.task_id:
         task = get_store().tasks.get(session_id, user_id, str(request.task_id))
         selected_intent = task['intent']
@@ -898,6 +929,11 @@ def _handle_chat_inner_impl(
         task = get_store().tasks.adopt(session_id, user_id, scope[3], intent.value, effective_message)
         if task:
             request.task_id = UUID(task['task_id'])
+            # Classification can create a new task after session context was
+            # read. Reassemble to avoid executing with another task's orders.
+            _, history = _build_engine(user_id, session_id, query=effective_message,
+                                        task_id=task['task_id'])
+            context = [*history, {"role": "user", "content": effective_message}]
     observer.leave("INTENT", to_state="REWRITE", intent=intent.value)
     if tracer is not None:
         tracer.record(
@@ -921,7 +957,10 @@ def _handle_chat_inner_impl(
         effective_message,
         intent=intent,
         case_manager=case_manager,
-        session_context=history,
+        # Historical summary/retrieval is reference material for generation,
+        # never an implicit selection of an order for an operation.
+        session_context=[m for m in history if m.get('role') in {'user', 'assistant'}],
+        task_order_id=(task or {}).get('slots', {}).get('order_id'),
         disambiguator=make_llm_disambiguator(llm_rewrite, settings.model_name),
         execute=_order_locate_execute(user_id),
     )
@@ -1043,6 +1082,10 @@ def _handle_chat_inner_impl(
         result.add_step(pending["action"], pending["arguments_dict"], outcome.result)
         observer.leave("EXECUTE", to_state="RESPONSE", replayed=outcome.replayed)
     else:
+        # Retrieve only after intent/rewrite and task adoption. Historical user
+        # preferences cannot choose an order or change the current task route.
+        from app.tools.memory_tool import memory_prompt_sections
+        context = [*memory_prompt_sections(effective_message, context=context, session_id=session_id), *context]
         historical_evidence = [] if request.task_id else case_manager.recent_tool_evidence(session_id)
         engine = AgentEngine(
             intent,

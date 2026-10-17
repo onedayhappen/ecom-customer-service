@@ -67,7 +67,7 @@ def call_tool(name, arguments, function):
     check_bot()
     if name not in MUTATING_CAPABILITIES:
         result = function(**arguments)
-        if name != "escalate_to_human":
+        if name not in {"escalate_to_human", "read_case_memory", "save_case_context"}:
             store.evidence(sid, user, name, arguments, result)
         return result
     oid = store.begin_operation(sid, user, version, name)

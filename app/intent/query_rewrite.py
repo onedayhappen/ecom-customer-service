@@ -77,6 +77,9 @@ TRACKING_NO_RE = re.compile(
 # 需要「订单实体消歧」的意图（定位具体订单）。其余意图（商品咨询、对话流、
 # 兜底）不需要订单定位，查询改写直接放行，不触发 LLM/工具调用。
 _ORDER_DISAMBIGUATION_INTENTS = frozenset({
+    Intent.REFUND_SERVICE, Intent.EXCHANGE_SERVICE, Intent.PRICE_PROTECTION_SERVICE,
+    Intent.AFTER_SALE_STATUS, Intent.INVOICE_INQUIRY, Intent.INVOICE_REQUEST,
+    Intent.PAYMENT_ISSUE,
     Intent.ORDER_INQUIRY, Intent.LOGISTICS_INQUIRY, Intent.REFUND_STATUS,
     Intent.ADDRESS_CHANGE, Intent.ORDER_CANCEL, Intent.EXPEDITE,
     Intent.INVOICE, Intent.AFTER_SALE_REQUEST, Intent.ISSUE_REPORT,
@@ -441,6 +444,7 @@ def rewrite_query(
     intent: Intent | str | None = None,
     case_manager: "CaseManager",
     session_context: list[dict[str, Any]] | None = None,
+    task_order_id: str | None = None,
     disambiguator: Disambiguator | None = None,
     execute: ToolExecutor | None = None,
 ) -> RewriteOutcome:
@@ -562,7 +566,12 @@ def rewrite_query(
 
     # 3) 会话内指代 → 短期记忆回填最近订单号（"那它到哪了"）
     if has_context_reference(text):
-        recalled = recall_order_id_from_context(session_context)
+        # An explicitly selected slot survives context compaction. It remains
+        # a locator; the order service must still verify ownership and status.
+        recalled = extract_order_id(task_order_id or '') or recall_order_id_from_context(
+            [m for m in (session_context or []) if isinstance(m, dict)
+             and m.get('role') in {'user', 'assistant'}],
+        )
         if recalled:
             entities = build_entities(text, order_id=recalled)
             return RewriteOutcome(

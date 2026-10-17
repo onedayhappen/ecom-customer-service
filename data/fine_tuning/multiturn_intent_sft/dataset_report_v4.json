@@ -1,0 +1,143 @@
+{
+  "dataset_version": "single-focus-last-user-v1",
+  "provenance": "Public JDDC utterance anchors, newly authored multi-turn rewrites; not real chat histories.",
+  "limitations": [
+    "Small balanced seed corpus; not enough to establish production accuracy.",
+    "No original conversation IDs in source select.txt; original conversation isolation is unverified.",
+    "Source/family and normalized exact-input overlap checked; semantic near-duplicates still require review.",
+    "Labels are agent-authored and require independent human review before final evaluation."
+  ],
+  "splits": {
+    "train": {
+      "total": 279,
+      "labels": {
+        "address_change": 9,
+        "after_sale_status": 9,
+        "cart_optimization": 9,
+        "closure": 9,
+        "complaint": 9,
+        "coupon_issue": 9,
+        "delivery_inquiry": 9,
+        "exchange_service": 9,
+        "expedite": 9,
+        "greetings": 9,
+        "human_handoff": 9,
+        "inventory_inquiry": 9,
+        "invoice_inquiry": 9,
+        "invoice_request": 9,
+        "issue_report": 9,
+        "logistics_inquiry": 9,
+        "membership_inquiry": 9,
+        "order_cancel": 9,
+        "order_inquiry": 9,
+        "others": 9,
+        "payment_issue": 9,
+        "price_comparison": 9,
+        "price_history": 9,
+        "price_protection_service": 9,
+        "product_comparison": 9,
+        "product_inquiry": 9,
+        "product_recommendation": 9,
+        "promotion_calculation": 9,
+        "promotion_inquiry": 9,
+        "refund_service": 9,
+        "service_policy_inquiry": 9
+      },
+      "input_message_lengths": {
+        "3": 240,
+        "5": 39
+      },
+      "source_families": 31,
+      "scenario_extensions": 36
+    },
+    "dev": {
+      "total": 93,
+      "labels": {
+        "address_change": 3,
+        "after_sale_status": 3,
+        "cart_optimization": 3,
+        "closure": 3,
+        "complaint": 3,
+        "coupon_issue": 3,
+        "delivery_inquiry": 3,
+        "exchange_service": 3,
+        "expedite": 3,
+        "greetings": 3,
+        "human_handoff": 3,
+        "inventory_inquiry": 3,
+        "invoice_inquiry": 3,
+        "invoice_request": 3,
+        "issue_report": 3,
+        "logistics_inquiry": 3,
+        "membership_inquiry": 3,
+        "order_cancel": 3,
+        "order_inquiry": 3,
+        "others": 3,
+        "payment_issue": 3,
+        "price_comparison": 3,
+        "price_history": 3,
+        "price_protection_service": 3,
+        "product_comparison": 3,
+        "product_inquiry": 3,
+        "product_recommendation": 3,
+        "promotion_calculation": 3,
+        "promotion_inquiry": 3,
+        "refund_service": 3,
+        "service_policy_inquiry": 3
+      },
+      "input_message_lengths": {
+        "3": 62,
+        "5": 31
+      },
+      "source_families": 31,
+      "scenario_extensions": 12
+    },
+    "test": {
+      "total": 155,
+      "labels": {
+        "address_change": 5,
+        "after_sale_status": 5,
+        "cart_optimization": 5,
+        "closure": 5,
+        "complaint": 5,
+        "coupon_issue": 5,
+        "delivery_inquiry": 5,
+        "exchange_service": 5,
+        "expedite": 5,
+        "greetings": 5,
+        "human_handoff": 5,
+        "inventory_inquiry": 5,
+        "invoice_inquiry": 5,
+        "invoice_request": 5,
+        "issue_report": 5,
+        "logistics_inquiry": 5,
+        "membership_inquiry": 5,
+        "order_cancel": 5,
+        "order_inquiry": 5,
+        "others": 5,
+        "payment_issue": 5,
+        "price_comparison": 5,
+        "price_history": 5,
+        "price_protection_service": 5,
+        "product_comparison": 5,
+        "product_inquiry": 5,
+        "product_recommendation": 5,
+        "promotion_calculation": 5,
+        "promotion_inquiry": 5,
+        "refund_service": 5,
+        "service_policy_inquiry": 5
+      },
+      "input_message_lengths": {
+        "3": 120,
+        "5": 35
+      },
+      "source_families": 31,
+      "scenario_extensions": 20
+    }
+  },
+  "sha256": {
+    "train_v4.jsonl": "e93f8af1fc48de899971a1f55fff5fcbc52e0ea319e26365a6b2e5167f83a9dc",
+    "dev_v4.jsonl": "082611c3099ed7c214c15c5292313f518b1e3af8a28a8d4b0f93efa7cb8eb19f",
+    "test_v4.jsonl": "f4c5cdd3118014cd21e7e86eba9191fce6076cac0ec186c54732ccfd1a7e81f1"
+  }
+}
