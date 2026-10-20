@@ -132,6 +132,8 @@ class CorrectionService:
                 if p.get("role") not in {"assistant", "agent"}:
                     continue
                 if (p.get("decision_id") == request.decision_id or request.decision_id in p.get("decision_ids", [])
+                        or any(tid in versions and version >= versions[tid]
+                               for tid, version in p.get("task_versions", {}).items())
                         or (p.get("task_id") in versions and
                             p.get("task_version", 0) >= versions[p["task_id"]])):
                     self._invalidate(tx, "event", event_ref(sid, row["sequence"]), request.correction_id)

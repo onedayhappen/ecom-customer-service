@@ -10,6 +10,12 @@ from app.support.store import SupportError
 from app.tasks.repository import TaskRepository, VersionConflict
 
 
+def lock_input_user(tx, user):
+    """Serialize intake/publication across sessions, before conversation locks."""
+    if tx.postgres:
+        tx.execute("SELECT pg_advisory_xact_lock(hashtextextended(?,82344716))", ("task-input:" + user,))
+
+
 def event_ref(session_id, sequence):
     return json.dumps([session_id, sequence], ensure_ascii=False, separators=(",", ":"))
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { advanceCursor, mergeMessages as mergeTranscript } from './conversationState'
 
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8010').replace(/\/+$/, '')
 export async function request(path, options = {}) {
@@ -40,11 +41,7 @@ export function useConversation(sessionId, staff = false, ticketId = '') {
     if (!sessionId) return
     let cancelled = false, source, cursor = 0
     const scope = `staff=${staff}${ticketId ? `&ticket_id=${ticketId}` : ''}`
-    const mergeMessages = events => setMessages(previous => {
-      const merged = new Map(previous.map(m => [m.sequence, m]))
-      events.filter(e => e.kind === 'message').forEach(e => merged.set(e.sequence, { ...e.payload, sequence: e.sequence, actor: e.actor, at: e.created_at }))
-      return [...merged.values()].sort((a, b) => a.sequence - b.sequence)
-    })
+    const mergeMessages = events => setMessages(previous => mergeTranscript(previous, events))
     let before = null, loadingOlder = false
     historyLoader.current = async () => {
       if (cancelled || before === null || loadingOlder) return
@@ -58,8 +55,9 @@ export function useConversation(sessionId, staff = false, ticketId = '') {
     }
     const apply = data => {
       if (cancelled) return
-      cursor = data.cursor
-      setState(data.state)
+      if (data.cursor < cursor) { mergeMessages(data.events); return }
+      cursor = advanceCursor(cursor, data.cursor)
+      setState(previous => previous?.control_version > data.state?.control_version ? previous : data.state)
       ;[...(updateListeners.get(sessionId) || [])].forEach(wake => wake())
       setTasks(previous => {
         const merged = new Map(previous.map(t => [t.task_id, t]))

@@ -152,6 +152,8 @@ class TaskRepository:
 
     def _save_event(self, tx, control, change, before, after, written_fields=()):
         from app.tasks.provenance import changed_fields
+        tx.execute("""INSERT INTO task_execution_wakes(task_id) VALUES (?)
+            ON CONFLICT(task_id) DO UPDATE SET retry_at=0""", (after.task_id,))
         source = change.source
         for sid in {control["session_id"], source.session_id}:
             tx.execute("INSERT INTO task_sessions VALUES (?,?,?) ON CONFLICT DO NOTHING",

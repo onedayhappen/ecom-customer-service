@@ -314,7 +314,7 @@ class TaskExecutor:
                     "waiting_for": context.record.waiting_for, "needs_human": result.needs_human,
                     "reason": stop_reason, "model_calls": context.model_calls, "tool_calls": context.tool_calls,
                     "validation_errors": context.validation_errors,
-                    "evidence_ids": [e["event_id"] for e in context.receipts],
+                    "evidence_ids": list(dict.fromkeys(e["event_id"] for e in context.receipts + context.historical)),
                 })
         except (SupportError, ExecutionStopped):
             return self.runs.finish(request, context.payload, {"state": "interrupted", "reply": "",

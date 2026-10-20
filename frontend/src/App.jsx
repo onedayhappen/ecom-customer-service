@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUpRight, Bot, CircleAlert, Headphones, ShieldCheck, Sparkles, UserRound, Zap } from 'lucide-react'
 import SupportConsole from './SupportConsole'
+import TaskConversation from './TaskConversation'
 import { labels, post, request, Transcript, useConversation, nextConversationUpdate } from './supportClient'
 
 const SESSION_KEY = 'ecom-agent-session-id'
+const TASK_PIPELINE_ENABLED = import.meta.env.VITE_TASK_PIPELINE_ENABLED === 'true'
 function AuthScreen({ onSave }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -26,7 +28,7 @@ export default function App() {
   const [staffView, setStaffView] = useState(false), [input, setInput] = useState(''), [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false), [confirmation, setConfirmation] = useState(''), [retry, setRetry] = useState(null)
   const [question, setQuestion] = useState(null)
-  const conversation = useConversation(authenticated ? sessionId : null)
+  const conversation = useConversation(authenticated && !TASK_PIPELINE_ENABLED ? sessionId : null)
   const control = useRef(null), activeSession = useRef(sessionId)
   const sendVersion = useRef(0)
   activeSession.current = sessionId; control.current = conversation.state
@@ -91,6 +93,7 @@ export default function App() {
   async function logout() { try { await post('/api/v1/auth/logout') } finally { startNew(); setIdentity(null); setAuthenticated(false); setStaffView(false) } }
   if (!authenticated) return <AuthScreen onSave={loadIdentity} />
   if (staffView && identity?.role !== 'customer') return <SupportConsole role={identity.role} onBack={() => setStaffView(false)} />
+  if (TASK_PIPELINE_ENABLED) return <TaskConversation identity={identity} onLogout={logout} onStaff={() => setStaffView(true)} />
   const state = conversation.state
   return <main className="support-shell customer-shell"><header className="support-top"><div><small>小夕客服</small><h1>{state?.mode === 'human' ? '人工客服' : state?.mode === 'handoff_pending' ? '等待人工接入' : '智能咨询'}</h1></div><div className="support-toolbar">{identity?.role !== 'customer' && <button onClick={() => setStaffView(true)}>客服工作台</button>}<button onClick={startNew}>新建咨询</button><button onClick={logout}>退出</button></div></header>
     <section className="support-detail"><header><span>会话 {sessionId ? `#${sessionId.slice(0, 8)}` : '尚未开始'}</span><span>{identity?.user_id}</span></header>

@@ -176,7 +176,8 @@ class TaskSchedule:
                 AND {_task_field(tx)}=? AND status IN ('pending','dispatched','running','completed')""", (record.task_id,))
             for row in active:
                 old = json.loads(row["payload"])
-                if old["request"]["expected_version"] == record.version and old.get("schedule"):
+                effective_version = old.get("provenance", {}).get("tasks", {}).get(record.task_id)
+                if record.version in {old["request"]["expected_version"], effective_version} and old.get("schedule"):
                     if old["schedule"]["dependencies"] != deps or old["scope"] != vars(self.runs.candidates.scope):
                         raise SupportError("同一事项版本已有不同的执行条件")
                     return row["job_id"]

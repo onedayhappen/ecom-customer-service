@@ -100,7 +100,10 @@ class MessageIntake:
             incoming = incoming.model_copy(update={"action": "handoff"})
         fingerprint = TaskRepository._fingerprint(dict(session_id=sid, **incoming.model_dump()))
         with self.store.transaction() as tx:
+            from app.tasks.provenance import lock_input_user
+            lock_input_user(tx, user)
             control = self.store._control(tx, sid, user)
+            tx.execute("INSERT INTO task_reply_sessions(session_id) VALUES (?) ON CONFLICT DO NOTHING", (sid,))
             # Cross-session retries share the user's request namespace.
             old = tx.one("SELECT * FROM message_intake_items WHERE user_id=? AND request_id=?", (user, incoming.request_id))
             if old:
@@ -154,8 +157,21 @@ class MessageIntake:
             state = self._state(tx, sid)
             items = tx.all("""SELECT sequence,request_id,association_status,decision_id FROM message_intake_items
                 WHERE session_id=? AND sequence>? ORDER BY sequence LIMIT ?""", (sid, after, limit))
+            active = tx.one("""SELECT COUNT(*) AS n FROM runtime_jobs WHERE session_id=?
+                AND kind='task_execution' AND status IN ('pending','dispatched','running')""", (sid,))["n"]
+            ready = tx.one("""SELECT COUNT(*) AS n FROM runtime_jobs j WHERE j.session_id=?
+                AND j.kind='task_execution' AND j.status IN ('completed','interrupted','expired')
+                AND j.payload<>'{}'
+                AND NOT EXISTS(SELECT 1 FROM task_reply_items r WHERE r.user_id=j.user_id
+                    AND r.item_key='job:' || j.job_id AND r.disposition<>'deferred')""", (sid,))["n"]
+            waiting = tx.one("""SELECT t.task_id FROM conversation_tasks t JOIN task_sessions s ON t.task_id=s.task_id
+                WHERE s.session_id=? AND t.status='waiting_user' LIMIT 1""", (sid,))
+            clarification = tx.one("""SELECT clarification_id FROM association_clarifications
+                WHERE session_id=? AND status='open' LIMIT 1""", (sid,))
+            processing = ("processing" if state["received_sequence"] > state["associated_sequence"] or active
+                          else "waiting_user" if waiting or clarification else "processing" if ready else "idle")
             return {"received_sequence": state["received_sequence"], "associated_sequence": state["associated_sequence"],
-                    "messages": items}
+                    "messages": items, "processing": processing, "active_tasks": active}
 
     def claim(self, sid, user):
         with self.store.transaction() as tx:

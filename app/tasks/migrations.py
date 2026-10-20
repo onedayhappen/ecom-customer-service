@@ -140,3 +140,23 @@ def migrate_task_scheduling(tx):
     tx.execute(f"""CREATE INDEX runtime_task_pending ON runtime_jobs({task},created_at)
         WHERE kind='task_execution' AND status IN ('pending','dispatched')""")
 
+
+def migrate_coordinated_replies(tx):
+    tx.execute("""CREATE TABLE task_reply_items (
+        user_id TEXT NOT NULL, item_key TEXT NOT NULL, session_id TEXT NOT NULL,
+        sequence INTEGER, disposition TEXT NOT NULL, created_at TEXT NOT NULL,
+        checked_at DOUBLE PRECISION NOT NULL,
+        PRIMARY KEY(user_id,item_key))""")
+    tx.execute("""CREATE TABLE task_reply_sessions (
+        session_id TEXT PRIMARY KEY, checked_at DOUBLE PRECISION NOT NULL DEFAULT 0,
+        pending_notice INTEGER NOT NULL DEFAULT 0)""")
+    tx.execute("""CREATE TABLE task_execution_wakes (
+        task_id TEXT PRIMARY KEY, version INTEGER NOT NULL DEFAULT 0,
+        job_id TEXT, retry_at DOUBLE PRECISION NOT NULL DEFAULT 0)""")
+    tx.execute("""INSERT INTO task_execution_wakes(task_id)
+        SELECT task_id FROM conversation_tasks WHERE storage_mode='durable'""")
+    tx.execute("""INSERT INTO task_reply_sessions(session_id) SELECT session_id FROM message_intake_sessions""")
+    tx.execute("""CREATE INDEX task_reply_session_scan ON task_reply_sessions(checked_at,session_id)""")
+    tx.execute("""CREATE INDEX runtime_task_reply_scan ON runtime_jobs(user_id,session_id,created_at)
+        WHERE kind='task_execution' AND status IN ('completed','interrupted','expired')""")
+
