@@ -91,3 +91,23 @@ def migrate_message_intake(tx):
     tx.execute("""CREATE INDEX message_intake_pending
         ON message_intake_items(session_id,sequence) WHERE association_status='pending'""")
 
+
+def migrate_association(tx):
+    tx.execute("""CREATE TABLE association_runs (
+        job_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT NOT NULL,
+        proposal_hash TEXT NOT NULL, result TEXT NOT NULL, created_at TEXT NOT NULL)""")
+    tx.execute("""CREATE TABLE association_decisions (
+        decision_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, user_id TEXT NOT NULL,
+        session_id TEXT NOT NULL, task_id TEXT, event_sequence INTEGER NOT NULL,
+        change_id TEXT, action TEXT NOT NULL)""")
+    tx.execute("""CREATE INDEX association_task_decisions ON association_decisions(user_id,task_id)""")
+    tx.execute("""CREATE TABLE association_sources (
+        decision_id TEXT NOT NULL, session_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+        PRIMARY KEY(decision_id,session_id,sequence))""")
+    tx.execute("""CREATE TABLE association_clarifications (
+        clarification_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT NOT NULL,
+        question TEXT NOT NULL, candidates TEXT NOT NULL, sources TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open', version INTEGER NOT NULL DEFAULT 1,
+        answer_decision_id TEXT, created_at TEXT NOT NULL)""")
+    tx.execute("""CREATE INDEX association_open_questions ON association_clarifications(user_id,session_id,status)""")
+

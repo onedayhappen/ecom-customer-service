@@ -15,6 +15,17 @@ from app.reliability import MutationGuard
 from app.tools.registry import execute_tool
 
 
+def associate_pending_messages(store, batch, *, engine=None):
+    """Internal new-pipeline entry. No real request is sent to both pipelines."""
+    from app.tasks.association import AssociationService
+    if engine is None:
+        from app.api.main import _get_openai_client
+        engine = AgentEngine(Intent.GREETINGS, client=LlmClient(
+            raw_client=_get_openai_client(), model=settings.deepseek_model_name,
+            default_scene="association"), model=settings.deepseek_model_name)
+    return AssociationService(store, batch.user_id).process(batch, engine)
+
+
 def handle_conversation(request, user_id, tracer, observer):
     # Late import keeps the API models/helpers replaceable in integration tests.
     from app.api import main

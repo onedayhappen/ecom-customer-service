@@ -120,6 +120,7 @@ class MessageIntake:
             sequence = self.store._event(tx, control, "message", user, {
                 "role": "user", "content": incoming.content, "request_id": incoming.request_id,
                 "intake_action": incoming.action,
+                "control_task_id": incoming.task_id, "control_task_version": incoming.task_version,
             }, key="intake:" + incoming.request_id)
             inserted = tx.execute("""INSERT INTO message_intake_items
                 (user_id,request_id,session_id,sequence,request_hash) VALUES (?,?,?,?,?)
@@ -184,6 +185,22 @@ class MessageIntake:
             return MessageBatch(sid, user, job["job_id"], owner, tuple(
                 dict(sequence=r["sequence"], request_id=r["request_id"], content=json.loads(r["payload"])["content"])
                 for r in messages))
+
+    def renew(self, batch, seconds=60):
+        """Bounded renewal before a model call; an expired owner cannot renew."""
+        if not 1 <= seconds <= 600:
+            raise ValueError("Invalid renewal")
+        with self.store.transaction() as tx:
+            c = self.store._control(tx, batch.session_id, batch.user_id)
+            state = self._state(tx, batch.session_id)
+            timestamp = clock(tx)
+            if c["mode"] != "bot" or state["active_job_id"] != batch.job_id or state["lease_owner"] != batch.owner:
+                raise SupportError("归属判断占用已失效")
+            updated = tx.execute("""UPDATE runtime_jobs SET run_deadline=?
+                WHERE job_id=? AND status='running' AND run_deadline>?""",
+                (timestamp + seconds, batch.job_id, timestamp)).rowcount
+            if updated != 1:
+                raise SupportError("归属判断占用已过期")
 
     def claim_next(self):
         """Poll durable outbox, including an expired lease after worker death.

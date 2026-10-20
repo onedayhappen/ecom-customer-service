@@ -53,6 +53,13 @@ class AgentEngine:
         """返回装配好的 DataPlan（供外部观测 / 测试断言）。"""
         return self.plan
 
+    def associate(self, context):
+        """Propose message ownership using the same client, never execute tools."""
+        from app.agents.association import propose
+        if self.client is None:
+            raise ValueError("Association requires the configured conversation client")
+        return propose(self.client, self.model, context)
+
     # ------------------------------------------------------------------
     # 执行
     # ------------------------------------------------------------------
