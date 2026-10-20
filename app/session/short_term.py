@@ -76,6 +76,7 @@ def _source(task_id):
 
 
 def _messages(tx, sid, task_id, *, ceiling, after=0, before=None, limit=128, descending=False):
+    from app.tasks.provenance import context_event_valid
     source, task_filter = _source(task_id)
     args = [sid, ceiling, after]
     extra = ''
@@ -92,6 +93,8 @@ def _messages(tx, sid, task_id, *, ceiling, after=0, before=None, limit=128, des
         ORDER BY e.sequence {'DESC' if descending else 'ASC'} LIMIT ?''', tuple(args))
     result = []
     for row in rows:
+        if not context_event_valid(tx, sid, row['sequence']):
+            continue
         value = json.loads(row['payload'])
         if value.get('role') in {'user', 'assistant', 'agent'} and isinstance(value.get('content'), str):
             result.append({'sequence': row['sequence'], 'role': 'assistant' if value['role'] == 'agent' else value['role'],
@@ -165,6 +168,7 @@ def _query_terms(query):
 
 
 def _recall(tx, sid, task_id, query, cutoff):
+    from app.tasks.provenance import context_event_valid
     terms = _query_terms(query)
     if not terms or cutoff <= 1:
         return []
@@ -182,6 +186,8 @@ def _recall(tx, sid, task_id, query, cutoff):
         ORDER BY e.sequence DESC LIMIT 96''', (*args, *patterns))
     ranked = []
     for row in rows:
+        if not context_event_valid(tx, sid, row['sequence']):
+            continue
         message = json.loads(row['payload'])
         content = message.get('content', '')
         if message.get('role') not in {'user', 'assistant', 'agent'} or not isinstance(content, str):
@@ -205,6 +211,12 @@ def _recall(tx, sid, task_id, query, cutoff):
 
 
 def _task_state(row):
+    if row.get('storage_mode') == 'durable':
+        from app.tasks.migrations import json_value
+        state = {key: row[key] for key in ('task_id', 'goal', 'status', 'version')}
+        state.update(details=json_value(row['details'], {}), waiting_for=json_value(row['waiting_for']))
+        return {'role': 'system', 'name': 'short_term_state',
+                'content': '当前事项进度；用户陈述不等于已核实业务结果：\n' + _json(state)}
     slots = json.loads(row['slots'])
     question = json.loads(row['question']) if row['question'] else None
     # Slots are answers supplied by the user, not proof of a business action.
@@ -227,7 +239,7 @@ class ContextService:
             control = self.store._control(tx, sid, user)
             task = None
             if task_id:
-                task = tx.one('SELECT * FROM conversation_tasks WHERE session_id=? AND task_id=?', (sid, task_id))
+                task = tx.one('SELECT * FROM conversation_tasks WHERE user_id=? AND task_id=?', (user, task_id))
                 if not task:
                     raise SupportError('任务不存在', 404)
             ceiling = control['sequence']
@@ -313,11 +325,13 @@ def _summarize(previous, messages):
 
 
 def _read_work(store, job):
+    from app.tasks.provenance import revision
     sid, scope_key = job['session_id'], job['scope_key']
     task_id = scope_key[5:] if scope_key.startswith('task:') else None
     with store.transaction(read_only=True) as tx:
         control = store._control(tx, sid)
-        if task_id and not tx.one('SELECT task_id FROM conversation_tasks WHERE session_id=? AND task_id=?', (sid, task_id)):
+        correction_revision = revision(tx, control['user_id'])
+        if task_id and not tx.one('SELECT task_id FROM conversation_tasks WHERE user_id=? AND task_id=?', (control['user_id'], task_id)):
             return None
         ceiling = min(control['sequence'], job['requested_sequence'])
         snapshot = tx.one('SELECT * FROM support_context_snapshots WHERE session_id=? AND scope_key=?', (sid, scope_key))
@@ -363,7 +377,8 @@ def _read_work(store, job):
                 batch = batch[:-len(final_turn)]
         return dict(previous=previous, messages=batch, through=batch[-1]['sequence'],
                     version=snapshot['version'] if snapshot else 0, previous_through=through,
-                    more=len(rows) > len(batch))
+                    more=len(rows) > len(batch), user_id=control['user_id'],
+                    correction_revision=correction_revision)
 
 
 def process_context_jobs(store, summarize_fn=None, limit=20):
@@ -395,6 +410,10 @@ def process_context_jobs(store, summarize_fn=None, limit=20):
             payload = _validate_summary(summarize_fn(work['previous'], work['messages']),
                                         work['previous'], work['messages'])
             with store.transaction() as tx:
+                from app.tasks.provenance import revision
+                if revision(tx, work['user_id'], lock=True) != work['correction_revision']:
+                    counts['stale'] += 1
+                    continue
                 if work['version']:
                     saved = tx.execute('''UPDATE support_context_snapshots SET through_sequence=?,version=version+1,
                         payload=?,updated_at=? WHERE session_id=? AND scope_key=? AND version=? AND through_sequence=?''',

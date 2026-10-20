@@ -121,8 +121,9 @@ class AssociationService:
         return AssociationSnapshot(context, max((n["sequence"] for n in context.control_notices), default=0))
 
     def _quote(self, tx, quote, allowed, *, user_only=True):
+        from app.tasks.provenance import context_event_valid
         key = (quote.session_id, quote.sequence)
-        if key not in allowed or quote.quote not in allowed[key]:
+        if key not in allowed or quote.quote not in allowed[key] or not context_event_valid(tx, *key):
             raise AssociationRejected("ungrounded_quote")
         row = tx.one("""SELECT e.payload,e.actor FROM support_events e JOIN support_conversations c ON c.session_id=e.session_id
             WHERE e.session_id=? AND e.sequence=? AND c.user_id=?
@@ -341,7 +342,8 @@ class AssociationService:
                         if decision.effect in {"cancel", "answer"}:
                             patch["waiting_for"] = None
                         record = self.repo.update(tid, batch.session_id, expected_version=current.version,
-                                                  change_id=did, source=source, patch=patch, tx=tx)
+                                                  change_id=did, source=source, patch=patch, tx=tx,
+                                                  written_fields=["details." + d.field for d in decision.details])
                     tid, version = record.task_id, record.version
                     current_records[tid] = record
                     # The repository allocates provenance events in this same

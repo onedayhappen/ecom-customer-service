@@ -194,6 +194,9 @@ class CandidateService:
         return list(rows.values()), limited
 
     def _source_allowed(self, tx, session_id, sequence):
+        from app.tasks.provenance import context_event_valid
+        if not context_event_valid(tx, session_id, sequence):
+            return False
         if self.scope == BusinessScope():
             return True
         rows = tx.all("""SELECT t.* FROM support_task_messages m JOIN conversation_tasks t ON t.task_id=m.task_id

@@ -111,3 +111,18 @@ def migrate_association(tx):
         answer_decision_id TEXT, created_at TEXT NOT NULL)""")
     tx.execute("""CREATE INDEX association_open_questions ON association_clarifications(user_id,session_id,status)""")
 
+
+def migrate_corrections(tx):
+    tx.execute("""CREATE TABLE task_corrections (
+        user_id TEXT NOT NULL, correction_id TEXT NOT NULL, request_hash TEXT NOT NULL,
+        decision_id TEXT NOT NULL, session_id TEXT NOT NULL, result TEXT NOT NULL,
+        created_at TEXT NOT NULL, PRIMARY KEY(user_id,correction_id))""")
+    tx.execute("""CREATE TABLE task_invalid_sources (
+        user_id TEXT NOT NULL, kind TEXT NOT NULL, source_id TEXT NOT NULL,
+        correction_id TEXT NOT NULL, PRIMARY KEY(user_id,kind,source_id))""")
+    tx.execute("""CREATE TABLE task_provenance_users (
+        user_id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0)""")
+    tx.execute("""CREATE TABLE support_operation_tasks (
+        operation_id TEXT NOT NULL, task_id TEXT NOT NULL,
+        PRIMARY KEY(operation_id,task_id))""")
+

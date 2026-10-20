@@ -150,7 +150,8 @@ class TaskRepository:
             raise SupportError("变更编号已用于不同内容")
         return TaskRecord.model_validate(json.loads(row["payload"])["after"])
 
-    def _save_event(self, tx, control, change, before, after):
+    def _save_event(self, tx, control, change, before, after, written_fields=()):
+        from app.tasks.provenance import changed_fields
         source = change.source
         for sid in {control["session_id"], source.session_id}:
             tx.execute("INSERT INTO task_sessions VALUES (?,?,?) ON CONFLICT DO NOTHING",
@@ -162,6 +163,8 @@ class TaskRepository:
             "change_id": change.change_id, "task_id": after.task_id, "version": after.version,
             "source": source.model_dump(), "before": before.model_dump() if before else None,
             "after": after.model_dump(),
+            "written_fields": sorted(changed_fields(before.model_dump() if before else None, after.model_dump())
+                                     | set(written_fields)),
         }, private=True, key="matter:" + change.change_id)
         tx.execute("UPDATE task_changes SET sequence=? WHERE user_id=? AND change_id=?",
                    (sequence, self.user_id, change.change_id))
@@ -191,13 +194,17 @@ class TaskRepository:
             self._save_event(tx, control, change, None, record)
             return record
 
-    def update(self, task_id, session_id, *, expected_version, change_id, source, patch, tx=None):
+    def update(self, task_id, session_id, *, expected_version, change_id, source, patch, tx=None, written_fields=()):
         if type(expected_version) is not int or expected_version < 1:
             raise SupportError("事项版本不合法", 422)
         change = self._validate(TaskChange, dict(change_id=change_id, source=source))
         patch = self._validate(TaskPatch, patch).model_dump(exclude_unset=True)
+        supplied = (set(patch) - {"details"}) | {"details." + k for k in patch.get("details", {})}
+        if not isinstance(written_fields, (list, tuple)) or any(not isinstance(p, str) or p not in supplied for p in written_fields):
+            raise SupportError("字段来源记录不合法", 422)
         fingerprint = self._fingerprint(dict(action="update", task_id=task_id, session_id=session_id,
-                                            expected_version=expected_version, change=change.model_dump(), patch=patch))
+                                            expected_version=expected_version, change=change.model_dump(), patch=patch,
+                                            **({"written_fields": sorted(set(written_fields))} if written_fields else {})))
         with (nullcontext(tx) if tx is not None else self.store.transaction()) as tx:
             control = self.store._control(tx, session_id, self.user_id)
             replay = self._reserve(tx, change, fingerprint, task_id, session_id, expected_version + 1)
@@ -221,7 +228,7 @@ class TaskRepository:
                  after.status, after.version, after.updated_at, task_id, self.user_id, expected_version)).rowcount
             if updated != 1:
                 raise VersionConflict()
-            self._save_event(tx, control, change, before, after)
+            self._save_event(tx, control, change, before, after, written_fields)
             return after
 
     def ask(self, task_id, session_id, *, expected_version, change_id, source, question, tx=None):
