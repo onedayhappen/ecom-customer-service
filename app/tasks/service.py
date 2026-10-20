@@ -11,8 +11,6 @@ SCHEMA = (
         status TEXT NOT NULL, version INTEGER NOT NULL, question TEXT,
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL, created_sequence INTEGER NOT NULL)""",
     """CREATE INDEX IF NOT EXISTS conversation_tasks_session ON conversation_tasks(session_id,created_at)""",
-    """CREATE UNIQUE INDEX IF NOT EXISTS conversation_one_active_task ON conversation_tasks(session_id)
-        WHERE status IN ('ready','running','waiting_input','waiting_confirmation')""",
     """CREATE TABLE IF NOT EXISTS conversation_task_choices (
         session_id TEXT PRIMARY KEY, payload TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS conversation_task_turns (
@@ -25,7 +23,7 @@ SCHEMA = (
         ticket_id TEXT PRIMARY KEY, ceiling INTEGER NOT NULL, payload TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS support_task_messages (
         task_id TEXT NOT NULL, session_id TEXT NOT NULL, sequence INTEGER NOT NULL,
-        PRIMARY KEY(task_id,sequence))""",
+        PRIMARY KEY(task_id,session_id,sequence))""",
 )
 ACTIVE = {'ready', 'running', 'waiting_input', 'waiting_confirmation'}
 TERMINAL = {'completed', 'cancelled'}
@@ -43,9 +41,9 @@ class TaskService:
         return row
 
     def rows(self, tx, sid, history=False):
-        rows = tx.all("SELECT * FROM conversation_tasks WHERE session_id=? AND status NOT IN ('completed','cancelled') ORDER BY created_sequence", (sid,))
+        rows = tx.all("SELECT * FROM conversation_tasks WHERE session_id=? AND storage_mode='legacy' AND status NOT IN ('completed','cancelled') ORDER BY created_sequence", (sid,))
         if history:
-            rows += tx.all("SELECT * FROM conversation_tasks WHERE session_id=? AND status IN ('completed','cancelled') ORDER BY created_sequence DESC LIMIT 80", (sid,))
+            rows += tx.all("SELECT * FROM conversation_tasks WHERE session_id=? AND storage_mode='legacy' AND status IN ('completed','cancelled') ORDER BY created_sequence DESC LIMIT 80", (sid,))
         return sorted([self.decode(r) for r in rows], key=lambda r: r['created_sequence'])
 
     def save(self, tx, c, task, actor):
@@ -70,8 +68,12 @@ class TaskService:
         task = dict(task_id=str(uuid4()), session_id=c['session_id'], intent=spec['intent'],
                     title=LABELS[spec['intent']], request_text=spec['text'], slots={},
                     status='queued', version=0, question=None, created_at=timestamp, updated_at=timestamp, created_sequence=c['sequence'] + 1)
-        tx.execute('INSERT INTO conversation_tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-                   (task['task_id'], c['session_id'], task['intent'], task['title'], task['request_text'], '{}', 'queued', 0, None, timestamp, timestamp, task['created_sequence']))
+        tx.execute('''INSERT INTO conversation_tasks
+            (task_id,session_id,intent,title,request_text,slots,status,version,question,
+             created_at,updated_at,created_sequence,user_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                   (task['task_id'], c['session_id'], task['intent'], task['title'], task['request_text'], '{}', 'queued', 0, None, timestamp, timestamp, task['created_sequence'], c['user_id']))
+        tx.execute('INSERT INTO task_sessions VALUES (?,?,?)', (task['task_id'], c['session_id'], timestamp))
         self.save(tx, c, task, actor)
         return task
 
@@ -419,7 +421,7 @@ class TaskService:
             raise SupportError('历史分页参数不合法', 422)
         with self.store.transaction(read_only=True) as tx:
             self.store._control(tx, sid, user)
-            rows = tx.all("SELECT * FROM conversation_tasks WHERE session_id=? AND status IN ('completed','cancelled') " +
+            rows = tx.all("SELECT * FROM conversation_tasks WHERE session_id=? AND storage_mode='legacy' AND status IN ('completed','cancelled') " +
                           ('AND created_sequence<? ' if before is not None else '') +
                           'ORDER BY created_sequence DESC LIMIT ?',
                           (sid, before, limit + 1) if before is not None else (sid, limit + 1))
@@ -431,7 +433,7 @@ class TaskService:
         from app.support.store import SupportError
         with self.store.transaction(read_only=True) as tx:
             self.store._control(tx, sid, user)
-            row = tx.one('SELECT * FROM conversation_tasks WHERE session_id=? AND task_id=?', (sid, tid))
+            row = tx.one("SELECT * FROM conversation_tasks WHERE session_id=? AND task_id=? AND storage_mode='legacy'", (sid, tid))
             if not row:
                 raise SupportError('任务不存在', 404)
             return self.decode(row)

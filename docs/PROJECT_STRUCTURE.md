@@ -24,6 +24,8 @@ ecom-customer-service/
 │   ├── runtime/          并发、队列和运行时协调
 │   ├── session/          会话存储、生命周期和上下文预算
 │   ├── skills/           可复用业务技能
+│   ├── support/          会话事件、人工客服和共享事务存储
+│   ├── tasks/            事项存储、来源记录、迁移与旧事项入口
 │   └── tools/            订单、物流、商品、退款等工具
 ├── data/
 │   ├── fine_tuning/      意图微调训练集及 ShareGPT 转换集

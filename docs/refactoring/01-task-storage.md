@@ -29,3 +29,15 @@
 交付可独立调用的事项存储接口及迁移。02 只通过该接口关联消息，不另建一套事项数据。
 
 完成后在 [实施入口](README.md) 更新本项状态、提交编号和验证结果。只完成本篇范围，下一部分单独实施。
+
+## 已实现接口
+
+- `TaskRepository(store, authenticated_user_id)` 是新链路的事项存储入口。身份只能由认证后的服务端上下文传入，不能取模型输出或请求正文中的用户编号。
+- `create` 创建事项；`get` 按编号读取；`list` 按用户或关联会话分页；`update` 检查预期版本后更新；`history` 按事项版本读取修改来源和前后值。
+- `update` 中未提供的字段保持原值；提供 `details` 时替换整个细节对象。读取、合并后必须带读取时的版本提交，冲突后重新读取。`waiting_for=None` 明确清空待答内容。
+- 每次创建或修改使用稳定的 `change_id`，并引用已保存的用户消息，或同一用户 Case 中已保存的工具结果。原话与工具结果只是来源，不自动授予业务操作权限。
+- 重试相同变更返回该次原始结果，内容不同则拒绝。需要事项最新状态时调用 `get`，不能把重试回执当成最新版本。
+- 版本 10 迁移复用 `conversation_tasks`、`support_events` 和 `support_task_messages`，新增会话关联和变更索引。新记录使用 `storage_mode=durable`；旧记录仍由原入口维护，新接口只读呈现旧记录，在第 14 部分迁移执行入口。
+- 本部分没有新增公开 HTTP 接口。测试直接调用内部接口；默认会话入口不会执行新事项，也不会因为新消息而暂停新事项。
+
+验证入口为 `tests/test_task_storage.py`。默认运行 SQLite；启动 `deploy/compose.integration.yml` 并设置 `ECOM_INTEGRATION=1` 后，同一组测试也在独立 PostgreSQL schema 上执行，结束时清理测试 schema。
