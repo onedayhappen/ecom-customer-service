@@ -31,7 +31,7 @@
 
 | 编号 | 小方案 | 状态 | 提交与验证 |
 | --- | --- | --- | --- |
-| 01 | [保存事项与修改来源](01-task-storage.md) | 未开始 | — |
+| 01 | [保存事项与修改来源](01-task-storage.md) | 已完成 | `refactor-task-storage` / `1a13aea`；完整回归 913 通过、49 跳过；隔离 PostgreSQL/SQLite 与原并发集成 38 通过。覆盖迁移重试、用户隔离、原子回滚和多进程版本竞争。 |
 | 02 | [持续接收消息并记录处理位置](02-message-intake.md) | 未开始 | — |
 | 03 | [找出可能相关的事项](03-task-candidates.md) | 未开始 | — |
 | 04 | [判断消息归属并处理不明确的回答](04-message-association.md) | 未开始 | — |
