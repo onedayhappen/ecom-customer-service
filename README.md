@@ -11,7 +11,7 @@
 - FastAPI API、JWT/HttpOnly Cookie 登录、PostgreSQL 会话、Redis 队列与独立 Worker。
 - MySQL 订单数据访问层、Chroma RAG、MCP 工具服务和 React 客服工作台。
 
-后续重构以 [Agent 重构实施方案](docs/AGENT_REFACTOR_PLAN.md) 为唯一设计入口，按其中的实施顺序和验收标准推进。本文描述当前运行方式；部署与故障处理见 [运行手册](docs/CONCURRENCY_RUNBOOK.md)，代码目录见 [项目结构](docs/PROJECT_STRUCTURE.md)。
+后续重构的总体规则见 [Agent 重构实施方案](docs/AGENT_REFACTOR_PLAN.md)，每次实现从 [分步实施入口](docs/refactoring/README.md) 选择当前小方案。本文描述当前运行方式；部署与故障处理见 [运行手册](docs/CONCURRENCY_RUNBOOK.md)，代码目录见 [项目结构](docs/PROJECT_STRUCTURE.md)。
 
 当前分类器保留 28 个业务意图，加问候、收尾、其他共 31 类标签；原 Workflow / ReAct 分流已退出默认运行链路。分类器输出仍只有意图标签，训练数据格式不变。接待全部意图不代表所有业务动作都已实现；本地演示发票不连接税务系统。
 
