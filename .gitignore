@@ -43,6 +43,12 @@ data/**
 !data/fine_tuning/multiturn_intent_sft/train_v4.jsonl
 !data/fine_tuning/multiturn_intent_sft/dev_v4.jsonl
 !data/fine_tuning/multiturn_intent_sft/test_v4.jsonl
+!data/fine_tuning/multiturn_intent_sft/train_v4_sharegpt.jsonl
+!data/fine_tuning/multiturn_intent_sft/dev_v4_sharegpt.jsonl
+!data/fine_tuning/multiturn_intent_sft/test_v4_sharegpt.jsonl
+!data/fine_tuning/multiturn_intent_sft/dataset_info.json
+!data/fine_tuning/multiturn_intent_sft/llamafactory_data_args.yaml
+!data/fine_tuning/multiturn_intent_sft/sharegpt_export_report_v4.json
 !data/fine_tuning/multiturn_intent_sft/seed_dialogues_v4.txt
 !data/fine_tuning/multiturn_intent_sft/sources_v4.json
 !data/fine_tuning/multiturn_intent_sft/dataset_report_v4.json
@@ -79,3 +85,8 @@ model/
 !data/fine_tuning/csds_extracted/
 !data/fine_tuning/csds_extracted/README.md
 !data/fine_tuning/csds_extracted/extraction_report.json
+
+# 淘宝 ECD 提取说明与统计；原始语料、对话及标注索引保留在本地
+!data/fine_tuning/ecd_extracted/
+!data/fine_tuning/ecd_extracted/README.md
+!data/fine_tuning/ecd_extracted/extraction_report.json

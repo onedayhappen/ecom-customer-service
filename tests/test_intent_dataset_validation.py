@@ -6,32 +6,46 @@ import pytest
 
 from app.data_plan.taxonomy import VALID_INTENTS
 from app.prompts.intent_system import SYSTEM_PROMPT
-from scripts.build_intent_datasets import DIRECTORY, build_rows, model_input, validate_splits
+from scripts.intent_dataset_validation import model_input, validate_splits
 from scripts.eval_intent_model import classification_metrics, prepare_example, strict_output_valid
 from scripts.train_intent_lora import IntentDataset, validate_dataset_pair, validate_training_row
 
 
 @pytest.fixture(scope='module')
 def corpus():
-    return build_rows()
+    """In-memory test inputs only; no dependency on a retired training corpus."""
+    splits = {split: [] for split in ('train', 'dev', 'test')}
+    for split, rows in splits.items():
+        for intent in sorted(VALID_INTENTS):
+            row = {
+                'id': f'{split}-{intent}', 'split': split,
+                'family_id': f'{split}-{intent}',
+                'messages': [
+                    {'role': 'user', 'content': f'{split} {intent} 测试上下文'},
+                    {'role': 'assistant', 'content': '请补充您的需求。'},
+                    {'role': 'user', 'content': '这是补充信息。'},
+                    {'role': 'assistant', 'content': '还有其他要求吗？'},
+                    {'role': 'user', 'content': '请继续处理。'},
+                ],
+            }
+            if split == 'test':
+                row['expected_intent'] = intent
+            else:
+                row['messages'].append({'role': 'assistant', 'content': json.dumps({'intent': intent})})
+            rows.append(row)
+    return splits
 
 
-def test_every_split_is_multiturn_and_single_label(corpus):
-    for split, rows in corpus.items():
-        saved = [json.loads(line) for line in (DIRECTORY / f'{split}_v4.jsonl').read_text(encoding='utf-8').splitlines()]
-        assert rows == saved
-        targets = set()
-        for row in rows:
-            context, target = prepare_example(row)
-            assert len(context) >= 3 and len(context) % 2 == 1
-            assert context[-1]['role'] == 'user'
-            assert all(m['content'].strip() for m in context)
-            assert not any('"intent"' in m['content'] for m in context)
-            targets.add(target)
-            assert 'synthetic_context' not in context[-1]
-            assert row['source']['license'] == 'Apache-2.0'
-            assert len(row['source']['sha256']) == 64
-        assert targets == VALID_INTENTS
+def test_split_validator_requires_full_labels_and_unique_ids(corpus):
+    validate_splits(corpus)
+    bad = copy.deepcopy(corpus)
+    bad['train'].pop()
+    with pytest.raises(ValueError, match='missing canonical labels'):
+        validate_splits(bad)
+    bad = copy.deepcopy(corpus)
+    bad['test'][0]['id'] = bad['train'][0]['id']
+    with pytest.raises(ValueError, match='duplicate id'):
+        validate_splits(bad)
 
 
 def test_no_source_family_or_input_can_cross_splits(corpus):

@@ -1,6 +1,6 @@
 # 并发平台运行手册
 
-本分支将受理、投递、执行、推送和维护分别部署。PostgreSQL 保存业务事实与执行记录，Redis 负责调度、共享额度和通知。测试只使用独立测试库、Redis namespace 和合成订单。
+本手册说明现有服务的部署、运维和恢复方式。PostgreSQL 保存会话、事项和执行记录，MySQL 保存订单等业务数据，Redis 负责调度、共享额度和通知。后续代码改造以 [Agent 重构实施方案](AGENT_REFACTOR_PLAN.md) 为准；方案中的目标能力需要实现并验收后才能用于生产。测试只使用独立测试库、Redis namespace 和合成订单。
 
 ## 进程与扩容
 
@@ -26,7 +26,7 @@ nginx 在启动/重载时解析 backend 的多个地址；每次副本数或容�
 ## 升级和旧数据
 
 1. 备份 PostgreSQL 和原 Case 目录；停止接收新请求并停止旧 API、Worker、Dispatcher。
-2. 保留相同数据库和队列前缀。设置 PostgreSQL 连接后运行 `python -m scripts.init_support_db`。当前 schema version 为 7，采用增量建表/索引，并为旧任务消息关联补数据。迁移可能持有 DDL 锁，升级阶段执行，不在业务流量中启动多个新旧版本混跑。
+2. 保留相同数据库和队列前缀。设置 PostgreSQL 连接后运行 `python -m scripts.init_support_db`。数据库版本以 `app/support/store.py` 的 `SCHEMA_VERSION` 和数据库迁移记录为准，采用增量建表/索引，并为旧任务消息关联补数据。迁移可能持有 DDL 锁，升级阶段执行，不在业务流量中启动多个新旧版本混跑。
 3. 若原 Case 使用 JSON，先运行下面的验证，再执行导入。导入以用户为事务单位；相同数据可重跑，已有不同状态会拒绝覆盖。源文件始终保留。导入必须在所有 Case 写进程停止后进行。
 4. 设置 `CASE_STORAGE_BACKEND=postgres`，启动 Dispatcher、Worker、API 和网关；观察 ready、指标与队列年龄后恢复流量。
 
@@ -36,6 +36,24 @@ python -m scripts.migrate_cases_to_postgres --source data/sessions/cases --apply
 ```
 
 切换共享存储后，回滚到只支持 JSON 的版本前必须重新规划状态迁移，不能直接切回旧目录：新确认令牌和幂等结果已写入 PostgreSQL。旧版本任务已开始或写入结果未知时，保持人工核实流程。
+
+## 人工客服初始化与使用
+
+1. 在 `API_AUTH_USERS` 中配置登录身份，并设置 `API_JWT_SECRET`。客服角色由数据库保存，不接受前端或 JWT 自报角色。
+2. API、Worker 和维护进程使用同一 PostgreSQL。`SUPPORT_DATABASE_URL` 留空时使用 `API_SESSION_POSTGRES_DSN`；SQLite 仅用于本地开发。先备份，再执行下面的初始化与授权命令，用户名须对应已有登录身份。
+
+```sh
+python -m scripts.init_support_db
+python -m scripts.support_staff manager admin
+python -m scripts.support_staff agent1 agent
+```
+
+3. 前端 `VITE_API_BASE_URL` 指向实际 API，默认 `http://localhost:8010`；`CORS_ORIGINS` 配置前端来源。生产同域反向代理可设置 `VITE_API_BASE_URL=/`，并按部署配置 HTTPS Cookie。
+4. 用户申请转人工后，检查工单已进入队列。客服登录工作台领取并处理，管理员可分配工单、管理客服权限。结束服务时填写结果，并检查待办和未决操作。
+
+标记工单解决后仍保持人工模式；用户取消排队或结束人工服务后才恢复机器人。用户在等待或解决后继续发消息，当前工单会重新进入处理状态。
+
+结果未知的业务操作必须先核实下游流水，并确认原执行进程已经停止，再由有权限的管理员登记处置结果；不能仅凭工单关闭就认定退款等业务已完成。
 
 ## 额度和连接预算
 

@@ -11,7 +11,9 @@
 - FastAPI API、JWT/HttpOnly Cookie 登录、PostgreSQL 会话、Redis 队列与独立 Worker。
 - MySQL 订单数据访问层、Chroma RAG、MCP 工具服务和 React 客服工作台。
 
-当前架构见 [统一对话 Agent 方案](docs/ASSISTANT_JUST_REACT.md)。[业务场景评审稿](docs/BUSINESS_SCENARIOS_REVIEW.md)保留 28 个业务意图，加问候、收尾、其他共 31 类的分类边界；其中原 19 类 Workflow / 12 类 ReAct 分流已退出默认运行链路。分类器输出仍只有意图标签，训练数据格式不变。接待全部意图不代表所有业务动作都已实现；本地演示发票不连接税务系统。
+后续重构以 [Agent 重构实施方案](docs/AGENT_REFACTOR_PLAN.md) 为唯一设计入口，按其中的实施顺序和验收标准推进。本文描述当前运行方式；部署与故障处理见 [运行手册](docs/CONCURRENCY_RUNBOOK.md)，代码目录见 [项目结构](docs/PROJECT_STRUCTURE.md)。
+
+当前分类器保留 28 个业务意图，加问候、收尾、其他共 31 类标签；原 Workflow / ReAct 分流已退出默认运行链路。分类器输出仍只有意图标签，训练数据格式不变。接待全部意图不代表所有业务动作都已实现；本地演示发票不连接税务系统。
 
 ## 架构
 
@@ -100,38 +102,16 @@ npm run dev
 
 ## LoRA 意图分类器
 
-旧 17 类训练/评测数据保留为历史基线，不能直接用于新版训练：
+当前分类器采用 `ecom-intent-v4-31` 契约：结合多轮历史，只识别最后一条用户输入当前提出或继续推进的一个意图。标签只作为 Agent 的参考，不承担多事项关联。完整 31 类描述由 `app/data_plan/taxonomy.py` 注入 `app/prompts/intent_system.py`，训练和推理共用；输出仅为 `{"intent":"refund_service"}`。
 
-- data/fine_tuning/multiturn_intent_sft/data_v3.jsonl
-- data/fine_tuning/multiturn_intent_sft/data_v3_sharegpt.jsonl
-- data/evaluation/multiturn_intent_eval_v3.jsonl
+数据处理入口：
 
-当前分类器采用 `ecom-intent-v4-31` 契约：结合多轮历史，**只识别最后一条用户输入当前提出或继续推进的一个意图**。每次输入聚焦一个订单、订单商品或完整咨询目标；推荐、比价等售前咨询不要求虚构订单。多订单拆分及状态机不属于本次训练任务。完整 31 类描述由 `app/data_plan/taxonomy.py` 注入 `app/prompts/intent_system.py`，训练和推理共用。仅输出 `{"intent":"refund_service"}`，不预测订单号、任务列表、解释或置信度。
+- [ECD 提取脚本](scripts/extract_ecd_dialogues.py)与 [CSDS 提取脚本](scripts/extract_csds_dialogues.py)：提取已有对话，提取结果需要完成标注与审核后才能训练。
+- [训练脚本](scripts/train_intent_lora.py)：显式指定符合当前标签契约的训练集和验证集。
+- [评测脚本](scripts/eval_intent_model.py)：通过 `--eval-file` 显式选择评测数据。
+- [ShareGPT 导出](scripts/export_intent_sharegpt.py)：转换已标注的 train/dev/test，不生成新对话；[公共校验](scripts/intent_dataset_validation.py)检查标签覆盖、重复输入和来源交叉。
 
-目前按用户要求改为**从已有公开多轮对话提取后逐轮标注**，不使用种子集或补写历史。
-
-当前已提取 **CSDS 的 9,910 段买家多轮对话**，保持原 train/val/test 分集（8,413/750/747），另生成 112,752 个待标注用户轮次索引。仅保留对话原文、角色、轮次和来源，未使用摘要补写对话。**尚未打意图标签，不能直接用于微调。** 统计、数据文件及复现方式见 [CSDS 提取说明](data/fine_tuning/csds_extracted/README.md)。
-
-已核查 ECom-Bench 官方仓库版本 `bc5018daaf45eea12330941bce68cebd293cfa85`：公开内容包含任务定义、模拟器和业务数据库，没有找到可直接提取的对话日志。论文附录 A.2/A.3 有两段已公开的英文模拟轨迹，已提取为 **9 个多轮前缀，覆盖 4/31 类，仅 1 个独立任务组**。这是该 ECom-Bench 版本可取得材料的提取结果，独立于上述 CSDS 数据，不足以建立正式 train/dev/test。
-
-- [原文与标注说明](data/fine_tuning/ecom_bench_extracted/README.md)
-- [9 条逐轮标注](data/fine_tuning/ecom_bench_extracted/annotated_pool.jsonl)
-- [原始对话](data/fine_tuning/ecom_bench_extracted/source_dialogues.json)
-- [来源审计与缺失类别](data/fine_tuning/ecom_bench_extracted/source_audit.json)
-
-样本保留截至当前用户轮的历史，`expected_intent` 仅标最后一轮；标注理由和来源不进入模型输入。相同任务的两段轨迹及其前缀不能跨集合，因此全部保持 `split=unassigned`，没有凑数生成 train/dev/test。原文为英文，尚未经过独立标注审核，也没有训练或评测真实模型。
-
-~~~powershell
-python scripts/extract_ecom_bench_dialogues.py --download
-python scripts/extract_ecom_bench_dialogues.py --check
-python scripts/eval_intent_model.py `
-  --eval-file data/fine_tuning/ecom_bench_extracted/annotated_pool.jsonl `
-  --validate-only
-~~~
-
-**旧 527 条改编种子已弃用**：`multiturn_intent_sft/train_v4.jsonl`、`dev_v4.jsonl`、`test_v4.jsonl` 及 `seed_dialogues_v4.txt` 仅保留历史，不用于本轮训练或验收。`scripts/build_intent_datasets.py` 是旧数据复现脚本，本轮不运行。`eval_intent_model.py` 现要求显式指定 `--eval-file`，不再默认加载旧种子集。
-
-正式训练仍需补充可追溯的已有对话并完成 31 类覆盖、任务/会话级隔离和标签复核。得到合格 train/dev/test 后，训练使用 train，选模使用 dev，最后再评测 test；不将 test 传给训练的 `--eval-file`。0.5B 是否够用需据独立中文测试集的 macro-F1、逐类召回和混淆项判断，当前 9 条不能支持这一结论。
+旧 17 类数据和改编种子不用于当前训练或验收，相关生成与修补脚本已移除。训练使用 train，选模使用 dev，最终评测使用 test；同一来源对话不能跨集合。模型是否满足要求以独立中文测试集的 macro-F1、逐类召回和混淆项为准。
 
 原有 76 条规则回归样例继续单独使用：
 `python scripts/eval_intent_model.py --rules --eval-file data/evaluation/multiturn_intent_eval_v4.jsonl`。
@@ -169,7 +149,7 @@ $env:RUN_COMMERCE_MYSQL_TESTS = "1"
 python -m pytest tests/test_commerce_mysql.py
 ~~~
 
-MySQL 测试使用随机订单/用户和独立记录，结束后按精确 ID 清理，不修改已有业务订单。详细工具路径、契约和实现范围见 [业务场景评审稿](docs/BUSINESS_SCENARIOS_REVIEW.md)。
+MySQL 测试使用随机订单/用户和独立记录，结束后按精确 ID 清理，不修改已有业务订单。工具入口与参数契约见 [commerce.py](app/tools/commerce.py) 和 [commerce_models.py](app/tools/commerce_models.py)。
 
 ## 配置与认证
 
@@ -191,13 +171,13 @@ python scripts/hash_password.py admin "your-password"
 
 ## API
 
-短期记忆设计、数据边界和回归方案见 [短期上下文方案](docs/SHORT_TERM_MEMORY.md)。默认启用 `SHORT_TERM_MEMORY_ENABLED`，每次模型请求的估算输入上限由 `CONTEXT_REQUEST_INPUT_TOKENS` 控制（默认 12000，包含工具定义）。`CONTEXT_MODEL_WINDOW_TOKENS` 按实际提供商模型配置后，会额外扣除输出预算与安全余量。
+默认启用 `SHORT_TERM_MEMORY_ENABLED`，每次模型请求的估算输入上限由 `CONTEXT_REQUEST_INPUT_TOKENS` 控制（默认 12000，包含工具定义）。`CONTEXT_MODEL_WINDOW_TOKENS` 按实际提供商模型配置后，会额外扣除输出预算与安全余量。
 
 后台摘要复用 Docker 的 `maintenance` 服务；本地可执行 `python -m scripts.platform_maintenance --once`。摘要模型调用在数据库事务之外；没有模型配置或摘要失败时仍可使用近期对话、任务状态和历史检索。摘要与模型窗口不会删除公开聊天记录。
 
 长期记忆已接入公开用户事件、后台维护和认证请求。公开原话异步提取为有来源的用户事实，同一用户的新会话可以通过自动上下文或 `recall_user_memory` 召回。`MEMORY_ENABLED` 控制读写，`MEMORY_CONTEXT_TOKENS` 默认 1200；提取默认防抖 30 秒，实际延迟还取决于维护进程轮询和积压。Docker 的 `maintenance` 与 API/Worker 使用同一个长期记忆存储。
 
-接入细节、验证边界及后续原子事实提取、冲突更新、冷热压缩和混合检索方案见 [长期记忆升级方案](docs/LONG_TERM_MEMORY.md)。文档明确区分本轮接通的功能与后续算法计划。
+当前实现见 [app/memory](app/memory/)。记忆、历史事项检索和纠错后的记忆清理统一按 [Agent 重构实施方案](docs/AGENT_REFACTOR_PLAN.md) 改造。
 
 公开接口：GET /health、GET /ready、GET /metrics 和 POST /api/v1/auth/login。其余业务接口需要登录 Cookie 或 Authorization: Bearer <jwt>。
 
@@ -213,8 +193,6 @@ python scripts/hash_password.py admin "your-password"
 python -m pytest -q
 Set-Location frontend
 npm run build
-~~~
-
 ~~~
 
 发布前确认以下内容不存在于提交中：.env、API Key、JWT/MCP 密钥、模型权重、日志、会话/记忆、数据库文件、个人路径和真实客户数据。如果曾经把密钥提交过，请先撤销并重新生成，再整理 Git 历史。

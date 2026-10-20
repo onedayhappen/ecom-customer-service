@@ -2,6 +2,8 @@
 
 仓库按运行边界组织，提交到 GitHub 的内容只包含源代码、配置模板、测试、文档和意图识别数据集。密钥、模型权重、数据库文件、会话和日志留在本地或 Docker 挂载目录中。
 
+后续实现统一依据 [Agent 重构实施方案](AGENT_REFACTOR_PLAN.md)；部署、人工客服初始化和故障处理见 [运行手册](CONCURRENCY_RUNBOOK.md)。本文只说明现有目录用途。
+
 ```text
 ecom-customer-service/
 ├── app/

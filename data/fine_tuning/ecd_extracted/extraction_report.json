@@ -1,0 +1,238 @@
+{
+  "extraction_version": "ecd-last-user-unlabeled-v1",
+  "source_repository": "https://github.com/cooelf/DeepUtteranceAggregation",
+  "source_paper": "https://aclanthology.org/C18-1317/",
+  "source_download_url": "https://drive.google.com/uc?export=download&id=154J-neBo20ABtSmJDvm7DK0eTuieAuvw",
+  "archive_sha256": "41f09f0312b7611863794fb46d9f7f4061d8171901232ac3c17929295e4878b2",
+  "archive_bytes": 54000633,
+  "splits": {
+    "test": {
+      "source_rows": 10000,
+      "positive_rows": 1000,
+      "kept_windows": 827,
+      "kept_context_messages": 5465,
+      "negative_rows": 9000,
+      "single_turn": 172,
+      "duplicate_context_in_split": 1,
+      "source_member": "E-commerce dataset/test.txt",
+      "source_bytes": 2810240,
+      "source_sha256": "7c5d5c60fee198e6855a714e1161ed165b564ccb96b4a9db36593e5f854319e6",
+      "positive_context_length_distribution": {
+        "1": 172,
+        "3": 370,
+        "5": 164,
+        "7": 73,
+        "9": 75,
+        "11": 58,
+        "13": 19,
+        "15": 21,
+        "17": 9,
+        "19": 10,
+        "21": 7,
+        "23": 4,
+        "25": 4,
+        "27": 2,
+        "29": 4,
+        "31": 3,
+        "33": 1,
+        "37": 1,
+        "41": 1,
+        "47": 1,
+        "49": 1
+      }
+    },
+    "dev": {
+      "source_rows": 10000,
+      "positive_rows": 5000,
+      "kept_windows": 4018,
+      "kept_context_messages": 25956,
+      "negative_rows": 5000,
+      "single_turn": 927,
+      "prefix_containment_across_splits": 47,
+      "duplicate_context_in_split": 8,
+      "source_member": "E-commerce dataset/dev.txt",
+      "source_bytes": 2556423,
+      "source_sha256": "7ee4da6a7144040337b0f3dc999641255d5ef19a035d939ae4a6eafd3cadd7a3",
+      "positive_context_length_distribution": {
+        "1": 927,
+        "3": 1835,
+        "5": 804,
+        "7": 390,
+        "9": 382,
+        "11": 274,
+        "13": 104,
+        "15": 65,
+        "17": 43,
+        "19": 41,
+        "21": 33,
+        "23": 23,
+        "25": 17,
+        "27": 13,
+        "29": 10,
+        "31": 7,
+        "33": 4,
+        "35": 6,
+        "37": 4,
+        "39": 2,
+        "41": 4,
+        "43": 4,
+        "47": 2,
+        "49": 2,
+        "63": 1,
+        "79": 1,
+        "85": 1,
+        "111": 1
+      }
+    },
+    "train": {
+      "source_rows": 1000000,
+      "positive_rows": 500000,
+      "single_turn": 91097,
+      "negative_rows": 500000,
+      "kept_windows": 327968,
+      "kept_context_messages": 2052260,
+      "prefix_containment_across_splits": 15690,
+      "duplicate_context_across_splits": 1398,
+      "duplicate_context_in_split": 63847,
+      "source_member": "E-commerce dataset/train.txt",
+      "source_bytes": 257254049,
+      "source_sha256": "7f7923594f2c4efec272850a21ec3c96b3259fae9e3fbb5d20bd4c1ca4199c3d",
+      "positive_context_length_distribution": {
+        "1": 91097,
+        "3": 187204,
+        "5": 82340,
+        "7": 34798,
+        "9": 35789,
+        "11": 30377,
+        "13": 9111,
+        "15": 6612,
+        "17": 5004,
+        "19": 3754,
+        "21": 2850,
+        "23": 2148,
+        "25": 1666,
+        "27": 1346,
+        "29": 1087,
+        "31": 859,
+        "33": 700,
+        "35": 571,
+        "37": 449,
+        "39": 361,
+        "41": 289,
+        "43": 235,
+        "45": 207,
+        "47": 174,
+        "49": 153,
+        "51": 128,
+        "53": 108,
+        "55": 89,
+        "57": 81,
+        "59": 70,
+        "61": 64,
+        "63": 47,
+        "65": 40,
+        "67": 33,
+        "69": 27,
+        "71": 19,
+        "73": 17,
+        "75": 14,
+        "77": 10,
+        "79": 7,
+        "81": 8,
+        "83": 8,
+        "85": 6,
+        "87": 7,
+        "89": 6,
+        "91": 4,
+        "93": 3,
+        "95": 4,
+        "97": 4,
+        "99": 4,
+        "101": 2,
+        "103": 2,
+        "105": 2,
+        "107": 1,
+        "109": 1,
+        "115": 1,
+        "117": 1,
+        "119": 1
+      }
+    }
+  },
+  "outputs": {
+    "test_dialogues.jsonl": {
+      "rows": 827,
+      "sha256": "f5ad81ed594d67388fc8a702b9411bfdf273deefc50e9d81a65aeae59e7d1b82"
+    },
+    "test_candidates.jsonl": {
+      "rows": 827,
+      "sha256": "c22e94bb133444cd7d10c556ce6170b57654eb0f0e7b4cc9430e59f4bdc35c05"
+    },
+    "test_annotation_preview.jsonl": {
+      "rows": 20,
+      "sha256": "169dd49ac231b2b2dc303e709b35d88f1e3531cc973a9b7f91c1a5c5f446b5a1"
+    },
+    "dev_dialogues.jsonl": {
+      "rows": 4018,
+      "sha256": "ee62649da89f1854814e94d2dc4a8e943791eee3b14534fca0ca5b43c200ba83"
+    },
+    "dev_candidates.jsonl": {
+      "rows": 4018,
+      "sha256": "f85660c6e06c6185f290a3ec6f4e67d4478f817a38379d2b166bba28d9f8d215"
+    },
+    "dev_annotation_preview.jsonl": {
+      "rows": 20,
+      "sha256": "22731b97480a5b7ed56dccaae42f42a799a733e0d226a67a1031da18fd3f1a39"
+    },
+    "train_dialogues.jsonl": {
+      "rows": 327968,
+      "sha256": "f7852d3fe7f76272bcb9da4d58aaa01a422c8ec38f82c24d2a5bd02dbf9f40c4"
+    },
+    "train_candidates.jsonl": {
+      "rows": 327968,
+      "sha256": "98f44435137a3bfa5ed36659a636a78c5384e3f3dd9479098ac41743ff1bb238"
+    },
+    "train_annotation_preview.jsonl": {
+      "rows": 20,
+      "sha256": "6694b6ecf4bb170dadcb1909c5ef1bd394ab4b94cb4aafb3ff61d7040cd01f95"
+    },
+    "excluded_positive_windows.jsonl": {
+      "rows": 173187,
+      "sha256": "c35e54bc418e17ff31b1ccbf7214ea84b35f1166a9e23d674bdeadf93e3490be"
+    }
+  },
+  "total_kept_windows": 332813,
+  "intent_labels_assigned": 0,
+  "training_ready": false,
+  "checks": {
+    "original_text_preserved": true,
+    "source_binary_label_counts_verified": true,
+    "negative_responses_excluded": true,
+    "single_turn_contexts_excluded": true,
+    "unique_whitespace_normalized_contexts": true,
+    "cross_split_exact_prefix_containment_removed": true,
+    "retained_original_split": true,
+    "target_is_last_user": true,
+    "reference_response_excluded_from_preview": true
+  },
+  "policies": {
+    "dedup_priority": [
+      "test",
+      "dev",
+      "train"
+    ],
+    "within_split": "first source line wins",
+    "comparison": "whitespace-normalized utterance sequences; source text unchanged",
+    "target": "one final user target per retained conversation window",
+    "roles": "inferred user/assistant alternation; not explicit source annotations"
+  },
+  "limitations": [
+    "Windows are not necessarily independent or complete source sessions; no session IDs are provided.",
+    "Exact context/prefix checks cannot exclude shared partial histories, suffix windows or semantic duplicates.",
+    "Roles must be reviewed before training; odd context length does not prove correct speaker assignment.",
+    "Current-turn intent and single-order/product scope are unlabelled; no class coverage is asserted.",
+    "Reference response is future information and must not be shown to intent annotators or classifiers.",
+    "Source 0/1 labels measure response matching, not intent or whether the user's request is valid.",
+    "No separately verified data license was supplied in the archive; corpus remains local and Git-ignored."
+  ]
+}
