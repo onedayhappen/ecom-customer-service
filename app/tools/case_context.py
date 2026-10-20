@@ -49,6 +49,9 @@ def _public(case):
 
 
 def read_case_memory(**arguments):
+    from app.tasks.runtime import current_task
+    if current_task() is not None:
+        return current_task().read_progress(arguments)
     try:
         q = ReadCase.model_validate(arguments)
         manager = _manager()
@@ -63,6 +66,9 @@ def read_case_memory(**arguments):
 
 
 def save_case_context(**arguments):
+    from app.tasks.runtime import current_task
+    if current_task() is not None:
+        return current_task().save_progress(arguments)
     try:
         q = SaveCase.model_validate(arguments)
         if q.intent not in CLASSIFICATION_INTENTS or any(len(k) > 80 or len(v) > 1000 for k, v in q.fields.items()):

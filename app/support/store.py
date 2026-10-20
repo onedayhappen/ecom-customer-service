@@ -73,7 +73,7 @@ SCHEMA = (
     """CREATE TABLE IF NOT EXISTS support_bot_runs (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
 ) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + CASE_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA + MEMORY_RUNTIME_SCHEMA
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 class Tx:
@@ -159,6 +159,9 @@ class SupportStore:
                         if (applied or 0) < 13:
                             from app.tasks.migrations import migrate_corrections
                             migrate_corrections(tx)
+                        if (applied or 0) < 14:
+                            from app.tasks.migrations import migrate_task_execution
+                            migrate_task_execution(tx)
                         tx.execute('CREATE TABLE IF NOT EXISTS support_schema_versions (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
                         tx.execute('INSERT INTO support_schema_versions VALUES (?,?) ON CONFLICT(version) DO NOTHING', (SCHEMA_VERSION, now()))
                 self._initialized = True
@@ -255,6 +258,10 @@ class SupportStore:
         return tx.one("SELECT * FROM support_tickets WHERE ticket_id=?", (c["ticket_id"],)) if c["ticket_id"] else None
 
     def _handoff(self, tx, c, reason, actor):
+        # Serialize task progress commits against cross-session handoff without
+        # taking other conversations' locks after a task lock.
+        from app.tasks.provenance import revision
+        revision(tx, c["user_id"], lock=True)
         ticket = self._ticket(tx, c)
         if ticket and c["mode"] != "bot":
             return ticket

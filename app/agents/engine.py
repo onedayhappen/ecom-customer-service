@@ -60,6 +60,11 @@ class AgentEngine:
             raise ValueError("Association requires the configured conversation client")
         return propose(self.client, self.model, context)
 
+    def execute_task(self, store, authenticated_user_id, request, *, tools=None, scope=None):
+        """Advance one durable matter through this Agent's existing tool loop."""
+        from app.tasks.execution import TaskExecutor
+        return TaskExecutor(store, authenticated_user_id, tools=tools, scope=scope).run(request, self)
+
     # ------------------------------------------------------------------
     # 执行
     # ------------------------------------------------------------------

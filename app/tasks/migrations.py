@@ -126,3 +126,9 @@ def migrate_corrections(tx):
         operation_id TEXT NOT NULL, task_id TEXT NOT NULL,
         PRIMARY KEY(operation_id,task_id))""")
 
+
+def migrate_task_execution(tx):
+    task = "(payload::jsonb->>'task_id')" if tx.postgres else "json_extract(payload,'$.task_id')"
+    tx.execute(f"""CREATE UNIQUE INDEX runtime_one_task_execution ON runtime_jobs({task})
+        WHERE kind='task_execution' AND status='running'""")
+

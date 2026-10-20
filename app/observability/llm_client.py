@@ -365,6 +365,9 @@ class LlmClient:
     def _raw_create(self, **kwargs: Any) -> Any:
         from app.support.runtime import check_bot
         check_bot()
+        from app.tasks.runtime import current_task
+        if current_task() is not None:
+            current_task().model_request(kwargs)
         from app.observability.tracer import suspend_active_tracer
         from app.config.settings import settings
 
@@ -387,6 +390,9 @@ class LlmClient:
     async def _raw_acreate(self, **kwargs: Any) -> Any:
         from app.support.runtime import check_bot
         await asyncio.to_thread(check_bot)
+        from app.tasks.runtime import current_task
+        if current_task() is not None:
+            await asyncio.to_thread(current_task().model_request, kwargs)
         from app.observability.tracer import suspend_active_tracer
         from app.config.settings import settings
 

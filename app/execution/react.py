@@ -117,6 +117,7 @@ class ReactExecutor:
         execute: ToolExecutor | None = None,
         chat_completion_options: dict | None = None,
         convergence_detector=None,
+        question_fields: tuple[str, ...] | None = None,
     ):
         self.client = client
         self.model = model
@@ -127,6 +128,7 @@ class ReactExecutor:
         # Harness 测试 / 生产可注入 ConvergenceDetector，触发后终止循环并返回
         # CONVERGENCE_REPLY（不经过 LLM，保证语义稳定）。
         self.convergence_detector = convergence_detector
+        self.question_fields = question_fields
         # 第12期：若传入 LlmClient，绑定 react 场景（与查询改写/主生成分开统计 token）
         if hasattr(client, "bind_scene"):
             from app.observability.llm_client import SCENE_REACT
@@ -248,6 +250,8 @@ class ReactExecutor:
                 'name': 'ask_user', 'description': '缺少必要信息时向用户提问并暂停当前任务。回答不会授权退款等写操作。',
                 'parameters': {'type': 'object', 'properties': {
                     'prompt': {'type': 'string', 'minLength': 1, 'maxLength': 1000},
+                    'field': {'type': 'string', 'minLength': 1, 'maxLength': 100,
+                              **({'enum': list(self.question_fields)} if self.question_fields else {})},
                     'options': {'type': 'array', 'maxItems': 5, 'items': {'type': 'string', 'minLength': 1, 'maxLength': 200}},
                 }, 'required': ['prompt'], 'additionalProperties': False},
             }}]
@@ -324,7 +328,9 @@ class ReactExecutor:
 
                 if name == 'ask_user':
                     prompt, options = args.get('prompt'), args.get('options', [])
+                    field = args.get('field', 'details')
                     if (not isinstance(prompt, str) or not 0 < len(prompt.strip()) <= 1000
+                            or not isinstance(field, str) or not 0 < len(field.strip()) <= 100
                             or not isinstance(options, list) or len(options) > 5
                             or any(not isinstance(o, str) or not 0 < len(o.strip()) <= 200 for o in options)):
                         return make_result('提问信息不完整，需要人工协助核实。', needs_human=True)
@@ -339,7 +345,7 @@ class ReactExecutor:
                     options = [option for option in dict.fromkeys(options)
                                if all(order.upper() in known_orders for order in ORDER.findall(option))]
                     result = make_result(prompt)
-                    result.question = {'field': 'details', 'prompt': result.reply,
+                    result.question = {'field': field, 'prompt': result.reply,
                                        'options': [{'value': option, 'label': option} for option in options]}
                     return result
 
