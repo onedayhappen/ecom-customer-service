@@ -47,6 +47,24 @@ class TaskRuns:
             raise SupportError("相关业务操作需先核实状态")
         return control
 
+    def controls(self, tx, request):
+        return {r["session_id"]: r["control_version"] for r in tx.all("""SELECT c.session_id,c.control_version
+            FROM support_conversations c WHERE c.user_id=? AND (c.session_id=? OR EXISTS (
+                SELECT 1 FROM task_sessions t WHERE t.session_id=c.session_id AND t.task_id=?))""",
+            (self.user, request.session_id, request.task_id))}
+
+    def require_controls(self, tx, request, payload):
+        current = self.controls(tx, request)
+        if any(current.get(sid) != version for sid, version in payload.get("controls", {}).items()):
+            raise SupportError("相关会话控制已改变")
+
+    def control_versions_valid(self, tx, stamp):
+        if not isinstance(stamp, dict) or not stamp:
+            return False
+        return all(tx.one("""SELECT session_id FROM support_conversations
+            WHERE user_id=? AND session_id=? AND control_version=?""", (self.user, sid, version))
+            for sid, version in stamp.items())
+
     def begin(self, request):
         fingerprint = self.repo._fingerprint(request.model_dump())
         with self.store.transaction() as tx:
@@ -78,6 +96,10 @@ class TaskRuns:
             if record.storage_mode != "durable" or record.version != request.expected_version:
                 raise VersionConflict()
             control = self._control(tx, request)
+            if previous and previous["control_version"] != control["control_version"]:
+                raise SupportError("会话控制已改变")
+            if previous:
+                self.require_controls(tx, request, json.loads(previous["payload"]))
             self.repo._source(tx, request.source)
             if not tx.one("SELECT task_id FROM support_task_messages WHERE task_id=? AND session_id=? AND sequence=?",
                           (record.task_id, request.source.session_id, request.source.sequence)):
@@ -99,13 +121,21 @@ class TaskRuns:
             if active:
                 tx.execute("UPDATE runtime_jobs SET status='interrupted',finished_at=?,error='expired_execution' WHERE job_id=?",
                            (timestamp, active["job_id"]))
+            from app.tasks.scheduling import admit_execution
+            admit_execution(tx, self, previous)
             decisions = [r["decision_id"] for r in tx.all("""SELECT decision_id FROM association_decisions
                 WHERE user_id=? AND task_id=?""", (self.user, request.task_id))
                          if not invalid(tx, self.user, "decision", r["decision_id"])]
             stamp = self.guard.capture([record.task_id], decisions, tx=tx)
             payload = {"request": request.model_dump(), "request_hash": fingerprint, "task_id": record.task_id,
                        "provenance": stamp, "owner": str(uuid4()),
+                       "controls": self.controls(tx, request),
                        "scope": {key: record.details.get(key) for key in vars(self.candidates.scope)}}
+            if previous:
+                queued = json.loads(previous["payload"])
+                if queued.get("schedule"):
+                    payload["schedule"] = queued["schedule"]
+                    payload["scope"] = queued["scope"]
             if previous:
                 tx.execute("""UPDATE runtime_jobs SET payload=?,status='running',started_at=?,run_deadline=?
                     WHERE job_id=?""", (json.dumps(payload), timestamp, timestamp + request.budget.seconds, request.job_id))
@@ -128,20 +158,52 @@ class TaskRuns:
             raise SupportError("执行租约已失效")
         self.guard.require_current(payload["provenance"], tx=tx, lock=lock)
         self._scope(tx, request.task_id)
-        self._control(tx, request)
+        control = self._control(tx, request)
+        if row["control_version"] != control["control_version"]:
+            raise SupportError("会话控制已改变")
+        self.require_controls(tx, request, current)
+        if current.get("schedule"):
+            from app.tasks.scheduling import dependencies_ready
+            dependencies_ready(tx, self, current["schedule"])
         record = self.repo._record(self.repo._row(tx, request.task_id))
         if not allow_wait and record.status not in {"in_progress", "waiting_external"}:
             raise SupportError("事项已停止或等待用户")
         return record
 
-    def save_tool(self, request, payload, call_index, name, arguments, result):
+    def save_tool(self, request, payload, call_index, name, arguments, result, *, original=None):
         with self.store.transaction() as tx:
             control = self.store._control(tx, request.session_id, self.user)
-            record = self.check(tx, request, payload, lock=True)
+            if original is None:
+                record = self.check(tx, request, payload, lock=True)
+            else:
+                # A query already in flight may still be useful after an ordinary
+                # detail edit. Keep its OLD provenance; never finish the old model
+                # run or stamp that answer as having seen the new message.
+                revision(tx, self.user, lock=True)
+                row = self._row(tx, request.job_id)
+                self._control(tx, request)
+                self.require_controls(tx, request, payload)
+                self._scope(tx, request.task_id)
+                record = self.repo._record(self.repo._row(tx, request.task_id, lock=True))
+                if (name not in {"query_order", "query_logistics"} or not result.get("success")
+                        or record.version <= original.version
+                        or row["status"] != "running" or row["run_deadline"] <= clock(tx)
+                        or json.loads(row["payload"]).get("owner") != payload["owner"]
+                        or row["control_version"] != control["control_version"]
+                        or record.status != "in_progress" or record.goal != original.goal
+                        or object_key(record) != object_key(original)
+                        or record.details.get("tracking_number") != original.details.get("tracking_number")
+                        or any(invalid(tx, self.user, "decision", did) for did in payload["provenance"]["decisions"])):
+                    raise VersionConflict()
+                if payload.get("schedule"):
+                    from app.tasks.scheduling import dependencies_ready
+                    dependencies_ready(tx, self, payload["schedule"])
+                record = original
             eid = _id(request.job_id, "tool:" + str(call_index))
             evidence = {"event_id": eid, "tool": name, "arguments": arguments, "result": result,
                         "task_id": record.task_id, "task_version": record.version, "object": object_key(record),
-                        "provenance": payload["provenance"], "observed_at": now(), "observed_epoch": clock(tx)}
+                        "provenance": payload["provenance"], "controls": payload.get("controls"),
+                        "observed_at": now(), "observed_epoch": clock(tx)}
             self.store._event(tx, control, "task_tool_result", "system", evidence, private=True, key="task-tool:" + eid)
             # Same transaction and same Case evidence format; do not write a
             # parallel conversation draft or reinterpret a query as an action.
@@ -169,6 +231,7 @@ class TaskRuns:
             cutoff = clock(tx) - seconds
             return [e for r in reversed(rows) if (e := json.loads(r["payload"]))["object"] == object_key(record)
                     and e["observed_epoch"] >= cutoff and e["result"].get("success")
+                    and self.control_versions_valid(tx, e.get("controls"))
                     and not any(invalid(tx, self.user, "decision", did) for did in e["provenance"]["decisions"])]
 
     def save_progress(self, request, payload, progress, index):
@@ -199,7 +262,7 @@ class TaskRuns:
             if not interrupted:
                 self.check(tx, request, payload, lock=True, allow_wait=True)
             result = {**result, "job_id": request.job_id, "task_id": request.task_id,
-                      "provenance": payload["provenance"]}
+                      "provenance": payload["provenance"], "controls": payload.get("controls", {})}
             tx.execute("""UPDATE runtime_jobs SET status=?,response=?,finished_at=? WHERE job_id=?""",
                        ("interrupted" if interrupted else "completed", json.dumps(result, ensure_ascii=False), clock(tx), request.job_id))
             return result

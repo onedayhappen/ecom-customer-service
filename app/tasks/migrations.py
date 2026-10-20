@@ -132,3 +132,11 @@ def migrate_task_execution(tx):
     tx.execute(f"""CREATE UNIQUE INDEX runtime_one_task_execution ON runtime_jobs({task})
         WHERE kind='task_execution' AND status='running'""")
 
+
+def migrate_task_scheduling(tx):
+    # Requests and dependencies remain in the existing Outbox. This index also
+    # covers pending versions; the running-only unique index still fences workers.
+    task = "(payload::jsonb->>'task_id')" if tx.postgres else "json_extract(payload,'$.task_id')"
+    tx.execute(f"""CREATE INDEX runtime_task_pending ON runtime_jobs({task},created_at)
+        WHERE kind='task_execution' AND status IN ('pending','dispatched')""")
+

@@ -1,5 +1,6 @@
 """Single-task harness around the existing Agent/ReAct loop."""
 from copy import deepcopy
+from contextlib import nullcontext
 from dataclasses import replace
 import json
 import threading
@@ -21,6 +22,7 @@ from app.session.request_budget import request_input_limit
 from app.support.store import SupportError
 from app.tasks.execution_models import ProgressInput, QUESTION_FIELDS, READ_SCHEMAS, TASK_PROMPT, TASK_TOOLS, TaskExecutionInput
 from app.tasks.execution_store import TaskRuns
+from app.tasks.repository import VersionConflict
 from app.tasks.runtime import task_scope
 from app.tools.request_context import reset_current_user_id, set_current_user_id
 
@@ -228,7 +230,6 @@ class _TaskContext:
             raise ExecutionStopped("tool_timeout_or_capacity") from None
         except Exception:
             result = {"success": False, "error_code": "transient_failure", "error": "read_tool_unavailable"}
-        self.check()
         expected = str(self.record.details.get("order_id", "")).upper()
         if _order_ids(result) - ({expected} if expected else set()):
             result = _failure("tool_result_object_mismatch")
@@ -238,7 +239,11 @@ class _TaskContext:
             if not isinstance(entity, dict) or any(value is not None and entity.get(key, result.get(key)) != value
                                                   for key, value in scope.items()):
                 result = _failure("tool_result_scope_unverified")
-        evidence = self.runs.save_tool(self.request, self.payload, self.tool_calls, name, args, result)
+        try:
+            evidence = self.runs.save_tool(self.request, self.payload, self.tool_calls, name, args, result)
+        except VersionConflict:
+            self.runs.save_tool(self.request, self.payload, self.tool_calls, name, args, result, original=self.record)
+            raise
         self.receipts.append(evidence)
         result = deepcopy(result)
         result["_task_evidence"] = {"event_id": evidence["event_id"], "observed_at": evidence["observed_at"]}
@@ -258,6 +263,10 @@ class TaskExecutor:
         reservation, replay = self.runs.begin(request)
         if replay is not None:
             return replay
+        return self.run_reserved(request, engine, reservation)
+
+    def run_reserved(self, request, engine, reservation):
+        """Internal Worker continuation of a DB reservation; not an HTTP input."""
         context = _TaskContext(self.runs, request, reservation, self.tools)
         plan = replace(build_conversation_plan(engine.intent), tools=tuple(sorted(TASK_TOOLS)), skills=())
         definitions = [{"type": "function", "function": {"name": name, "description": name,
@@ -273,7 +282,11 @@ class TaskExecutor:
         identity = set_current_user_id(self.runs.user)
         result, stop_reason = None, None
         try:
-            with task_scope(context), agent_partition(self.runs.user):
+            # Scheduled runs already own all three database quotas, which survive
+            # Redis loss. Direct compatibility calls retain their existing lease.
+            partition = nullcontext() if context.payload.get("schedule") else agent_partition(self.runs.user)
+            with task_scope(context), partition:
+                context.check()
                 try:
                     result = executor.run(context.messages(), plan, max_steps=request.budget.model_calls,
                         tool_definitions=definitions, historical_evidence=[e["result"] for e in context.historical])

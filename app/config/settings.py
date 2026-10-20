@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     assistant_just_react: bool = True
     # 重构中的持续消息接口，仅在隔离测试中开启；尚不启动 Agent 执行。
     task_intake_enabled: bool = False
+    task_worker_enabled: bool = False
+    task_global_concurrency: int = Field(default=8, ge=1, le=64)
+    task_user_concurrency: int = Field(default=2, ge=1, le=16)
 
     # ReAct 循环
     max_react_steps: int = 5
