@@ -52,3 +52,9 @@ class TaskChange(StrictModel):
     change_id: str = Field(min_length=1, max_length=200)
     source: Source
 
+
+class QuestionSpec(StrictModel):
+    prompt: str = Field(min_length=1, max_length=2000)
+    field: str = Field(min_length=1, max_length=100)
+    options: list[dict[str, JsonValue]] = Field(default_factory=list, max_length=30)
+

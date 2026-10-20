@@ -7,13 +7,13 @@ All mutations commit the task, source links, event and retry receipt together.
 import hashlib
 import json
 from contextlib import nullcontext
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from pydantic import ValidationError
 
 from app.support.store import SupportError, now
 from app.tasks.migrations import encoded, json_value
-from app.tasks.models import MessageSource, TaskChange, TaskContent, TaskPatch, TaskRecord
+from app.tasks.models import MessageSource, QuestionSpec, TaskChange, TaskContent, TaskPatch, TaskRecord
 
 
 class VersionConflict(SupportError):
@@ -223,3 +223,16 @@ class TaskRepository:
                 raise VersionConflict()
             self._save_event(tx, control, change, before, after)
             return after
+
+    def ask(self, task_id, session_id, *, expected_version, change_id, source, question, tx=None):
+        """Save a version-bound question; publishing it is a separate step."""
+        if type(expected_version) is not int or expected_version < 1:
+            raise SupportError("事项版本不合法", 422)
+        question = self._validate(QuestionSpec, question)
+        question_id = str(uuid5(NAMESPACE_URL, json.dumps([self.user_id, task_id, change_id])))
+        return self.update(task_id, session_id, expected_version=expected_version,
+                           change_id=change_id, source=source, tx=tx, patch={
+                               "status": "waiting_user",
+                               "waiting_for": {**question.model_dump(), "kind": "question",
+                                               "question_id": question_id, "task_version": expected_version + 1},
+                           })

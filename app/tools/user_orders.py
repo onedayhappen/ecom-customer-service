@@ -14,7 +14,7 @@ STATUS_LABELS = {
 }
 
 
-def list_user_orders(status: str | None = None) -> dict:
+def list_user_orders(status: str | None = None, platform_code: str = "pdd") -> dict:
     """查询当前用户的所有订单概要列表；status 指定时仅返回该状态的订单。
 
     ``status`` 使用与下游一致的展示标签（待发货/已发货/已签收/退款中），
@@ -23,12 +23,13 @@ def list_user_orders(status: str | None = None) -> dict:
     """
     from app.data.order_service import list_user_orders as _list_user_orders
 
-    data = _list_user_orders()
+    data = _list_user_orders(platform_code=platform_code)
     if not data["success"]:
         return data
     orders = [
         {
             "order_id": order["order_id"],
+            "platform_code": platform_code,
             "status": STATUS_LABELS.get(order.get("status", ""), order.get("status", "")),
             "items_summary": "、".join(item["name"] for item in order.get("items", [])),
             "total": order.get("total", 0),

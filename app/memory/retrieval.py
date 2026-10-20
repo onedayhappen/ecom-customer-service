@@ -45,6 +45,11 @@ def tokenize(text: str) -> list[str]:
     return tokens
 
 
+def lexical_scores(query: str, texts: list[str]) -> dict[int, float]:
+    """Share the Chinese/Latin lexical ranking with task candidate retrieval."""
+    return MemoryRetriever._bm25(query, texts)
+
+
 def slot_hints(query: str) -> tuple[set[str], dict]:
     from app.memory.atomic import query_slots
     return query_slots(query)
