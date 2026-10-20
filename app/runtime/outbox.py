@@ -39,7 +39,7 @@ class DurableJobs:
     def __init__(self, store):
         self.store = store
 
-    def admit(self, tx, c, job_id, message, confirmation_token, *, max_pending, queue_timeout, run_timeout):
+    def admit(self, tx, c, job_id, message, confirmation_token, *, max_pending, queue_timeout, run_timeout, kind="conversation"):
         from app.support.store import SupportError
         # Bound the durable backlog even when Redis is unavailable. Serialize
         # only this short count+insert section, never network/LLM work.
@@ -52,15 +52,15 @@ class DurableJobs:
         payload = dict(job_id=job_id, session_id=c['session_id'], user_id=c['user_id'],
                        control_version=c['control_version'], message=message, confirmation_token=confirmation_token)
         tx.execute('''INSERT INTO runtime_jobs
-            (job_id,session_id,user_id,control_version,payload,status,created_at,queue_deadline,run_timeout,next_delivery)
-            VALUES (?,?,?,?,?,'pending',?,?,?,?)''',
+            (job_id,session_id,user_id,control_version,payload,status,created_at,queue_deadline,run_timeout,next_delivery,kind)
+            VALUES (?,?,?,?,?,'pending',?,?,?,?,?)''',
                    (job_id, c['session_id'], c['user_id'], c['control_version'], json.dumps(payload, ensure_ascii=False),
-                    timestamp, timestamp + queue_timeout, run_timeout, timestamp))
+                    timestamp, timestamp + queue_timeout, run_timeout, timestamp, kind))
 
     def get(self, job_id, user):
         from app.support.store import SupportError
         with self.store.transaction(read_only=True) as tx:
-            row = tx.one('SELECT * FROM runtime_jobs WHERE job_id=? AND user_id=?', (job_id, user))
+            row = tx.one("SELECT * FROM runtime_jobs WHERE job_id=? AND user_id=? AND kind='conversation'", (job_id, user))
             if not row:
                 return None
             response = row['response']
@@ -74,7 +74,7 @@ class DurableJobs:
         with self.store.transaction() as tx:
             timestamp = clock(tx)
             row = tx.one("""SELECT * FROM runtime_jobs WHERE status IN ('pending','dispatched')
-                AND next_delivery<=? AND delivery_lease<=? ORDER BY next_delivery,created_at LIMIT 1""" +
+                AND kind='conversation' AND next_delivery<=? AND delivery_lease<=? ORDER BY next_delivery,created_at LIMIT 1""" +
                 (' FOR UPDATE SKIP LOCKED' if tx.postgres else ''), (timestamp, timestamp))
             if not row:
                 return None
@@ -103,7 +103,7 @@ class DurableJobs:
         if row is None:  # Synchronous compatibility path.
             return
         timestamp = clock(tx)
-        if row['status'] not in {'pending', 'dispatched'} or row['queue_deadline'] <= timestamp:
+        if row['kind'] != 'conversation' or row['status'] not in {'pending', 'dispatched'} or row['queue_deadline'] <= timestamp:
             raise BotInterrupted()
         tx.execute("UPDATE runtime_jobs SET status='running',started_at=?,run_deadline=?,error=NULL WHERE job_id=?",
                    (timestamp, timestamp + row['run_timeout'], job_id))
@@ -120,7 +120,7 @@ class DurableJobs:
         """Persist non-message outcomes (handoff/suppression/errors), too."""
         with self.store.transaction() as tx:
             c = self.store._control(tx, job.session_id, job.user_id)
-            row = tx.one('SELECT status FROM runtime_jobs WHERE job_id=?', (job.job_id,))
+            row = tx.one("SELECT status FROM runtime_jobs WHERE job_id=? AND kind='conversation'", (job.job_id,))
             if not row or row['status'] in TERMINAL:
                 return
             if response is not None:
@@ -147,7 +147,7 @@ class DurableJobs:
         # record cannot authorize a replay; execution tombstones remain in DB.
         with self.store.transaction(read_only=True) as tx:
             rows = tx.all("""SELECT job_id FROM runtime_jobs WHERE
-                status IN ('completed','failed','expired','interrupted','superseded') AND next_delivery>0
+                kind='conversation' AND status IN ('completed','failed','expired','interrupted','superseded') AND next_delivery>0
                 ORDER BY finished_at LIMIT ?""", (limit,))
         for row in rows:
             queue.retire(row['job_id'])
@@ -163,9 +163,9 @@ class DurableJobs:
         """
         with self.store.transaction(read_only=True) as tx:
             timestamp = clock(tx)
-            rows = tx.all("""SELECT job_id,session_id,user_id FROM runtime_jobs WHERE
+            rows = tx.all("""SELECT job_id,session_id,user_id FROM runtime_jobs WHERE kind='conversation' AND (
                 (status IN ('pending','dispatched') AND queue_deadline<=?) OR
-                (status='running' AND run_deadline<=?) ORDER BY created_at LIMIT ?""", (timestamp, timestamp, limit))
+                (status='running' AND run_deadline<=?)) ORDER BY created_at LIMIT ?""", (timestamp, timestamp, limit))
         recovered = 0
         for row in rows:
             with self.store.transaction() as tx:

@@ -75,3 +75,19 @@ def migrate_task_storage(tx):
         SELECT task_id,session_id,created_at FROM conversation_tasks WHERE user_id IS NOT NULL
         ON CONFLICT DO NOTHING""")
 
+
+def migrate_message_intake(tx):
+    tx.execute("ALTER TABLE runtime_jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'conversation'")
+    tx.execute("""CREATE INDEX runtime_jobs_kind ON runtime_jobs(kind,status,created_at)""")
+    tx.execute("""CREATE TABLE message_intake_sessions (
+        session_id TEXT PRIMARY KEY, received_sequence INTEGER NOT NULL DEFAULT 0,
+        associated_sequence INTEGER NOT NULL DEFAULT 0,
+        active_job_id TEXT, lease_owner TEXT)""")
+    tx.execute("""CREATE TABLE message_intake_items (
+        user_id TEXT NOT NULL, request_id TEXT NOT NULL, session_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL, request_hash TEXT NOT NULL,
+        association_status TEXT NOT NULL DEFAULT 'pending', decision_id TEXT,
+        PRIMARY KEY(user_id,request_id), UNIQUE(session_id,sequence))""")
+    tx.execute("""CREATE INDEX message_intake_pending
+        ON message_intake_items(session_id,sequence) WHERE association_status='pending'""")
+

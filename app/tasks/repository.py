@@ -6,6 +6,7 @@ All mutations commit the task, source links, event and retry receipt together.
 """
 import hashlib
 import json
+from contextlib import nullcontext
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -165,13 +166,13 @@ class TaskRepository:
         tx.execute("UPDATE task_changes SET sequence=? WHERE user_id=? AND change_id=?",
                    (sequence, self.user_id, change.change_id))
 
-    def create(self, session_id, *, change_id, source, goal, details=None, waiting_for=None, status="in_progress"):
+    def create(self, session_id, *, change_id, source, goal, details=None, waiting_for=None, status="in_progress", tx=None):
         change = self._validate(TaskChange, dict(change_id=change_id, source=source))
         content = self._validate(TaskContent, dict(goal=goal, details=details if details is not None else {},
                                                  waiting_for=waiting_for, status=status))
         fingerprint = self._fingerprint(dict(action="create", session_id=session_id,
                                             change=change.model_dump(), content=content.model_dump()))
-        with self.store.transaction() as tx:
+        with (nullcontext(tx) if tx is not None else self.store.transaction()) as tx:
             control = self.store._control(tx, session_id, self.user_id)
             task_id, timestamp = str(uuid4()), now()
             replay = self._reserve(tx, change, fingerprint, task_id, session_id, 1)
@@ -190,14 +191,14 @@ class TaskRepository:
             self._save_event(tx, control, change, None, record)
             return record
 
-    def update(self, task_id, session_id, *, expected_version, change_id, source, patch):
+    def update(self, task_id, session_id, *, expected_version, change_id, source, patch, tx=None):
         if type(expected_version) is not int or expected_version < 1:
             raise SupportError("事项版本不合法", 422)
         change = self._validate(TaskChange, dict(change_id=change_id, source=source))
         patch = self._validate(TaskPatch, patch).model_dump(exclude_unset=True)
         fingerprint = self._fingerprint(dict(action="update", task_id=task_id, session_id=session_id,
                                             expected_version=expected_version, change=change.model_dump(), patch=patch))
-        with self.store.transaction() as tx:
+        with (nullcontext(tx) if tx is not None else self.store.transaction()) as tx:
             control = self.store._control(tx, session_id, self.user_id)
             replay = self._reserve(tx, change, fingerprint, task_id, session_id, expected_version + 1)
             if replay is not None:

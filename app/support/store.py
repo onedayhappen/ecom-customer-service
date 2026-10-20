@@ -73,7 +73,7 @@ SCHEMA = (
     """CREATE TABLE IF NOT EXISTS support_bot_runs (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
 ) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + CASE_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA + MEMORY_RUNTIME_SCHEMA
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 class Tx:
@@ -150,6 +150,9 @@ class SupportStore:
                         from app.tasks.migrations import migrate_task_storage
                         if (applied or 0) < 10:
                             migrate_task_storage(tx)
+                        if (applied or 0) < 11:
+                            from app.tasks.migrations import migrate_message_intake
+                            migrate_message_intake(tx)
                         tx.execute('CREATE TABLE IF NOT EXISTS support_schema_versions (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
                         tx.execute('INSERT INTO support_schema_versions VALUES (?,?) ON CONFLICT(version) DO NOTHING', (SCHEMA_VERSION, now()))
                 self._initialized = True
@@ -315,6 +318,8 @@ class SupportStore:
         """Append once; return routing version. Delivery to the bot queue is separate."""
         with self.transaction() as tx:
             c = self._control(tx, sid, user)
+            if tx.one("SELECT session_id FROM message_intake_sessions WHERE session_id=?", (sid,)):
+                raise SupportError("该会话使用持续消息入口，请从该入口继续")
             if tx.one("SELECT job_id FROM support_bot_runs WHERE job_id=? AND session_id<>?", (message_id, sid)):
                 raise SupportError("消息 ID 已用于其他会话")
             old = tx.one("SELECT payload FROM support_events WHERE session_id=? AND event_key=?", (sid, f"user:{message_id}"))

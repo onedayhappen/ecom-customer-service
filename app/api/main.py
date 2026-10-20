@@ -420,6 +420,8 @@ app.add_middleware(
 # 登录认证路由（POST /api/v1/auth/login：用户名密码 → JWT）。
 app.include_router(auth_router)
 app.include_router(support_router)
+from app.api.task_messages import router as task_messages_router
+app.include_router(task_messages_router)
 
 
 @app.exception_handler(SupportError)

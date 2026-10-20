@@ -56,6 +56,8 @@ class Settings(BaseSettings):
 
     # 统一对话入口；False 仅用于旧版本回滚和历史流程回归。
     assistant_just_react: bool = True
+    # 重构中的持续消息接口，仅在隔离测试中开启；尚不启动 Agent 执行。
+    task_intake_enabled: bool = False
 
     # ReAct 循环
     max_react_steps: int = 5
