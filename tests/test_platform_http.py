@@ -63,7 +63,7 @@ def platform(tmp_path_factory):
         'MEMORY_REDIS_URL': '', 'ORDER_DB_DSN': '', 'ORDER_CACHE_REDIS_URL': '',
         'API_CONCURRENCY_REDIS_URL': REDIS, 'API_CHAT_QUEUE_PREFIX': prefix,
         'API_CHAT_WORKER_CONCURRENCY': '2',
-        'API_JWT_SECRET': SECRET, 'INTENT_MODEL_ENABLED': 'false', 'MCP_ENABLED': 'false',
+        'API_JWT_SECRET': SECRET, 'MCP_ENABLED': 'false',
         'OBSERVABILITY_ENABLED': 'false', 'OBSERVABILITY_TRACE_ENABLED': 'false', 'AUDIT_ENABLED': 'false',
         'DEEPSEEK_API_KEY': 'fixture-provider-key', 'OPENAI_API_KEY': '', 'DASHSCOPE_API_KEY': '', 'ROUTER_API_KEY': '',
         'DEEPSEEK_BASE_URL': f'http://127.0.0.1:{model_port}/v1', 'DEEPSEEK_MODEL_NAME': 'fixture',

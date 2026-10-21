@@ -111,7 +111,7 @@ def ready() -> Response:
 
 @app.get("/metrics", include_in_schema=False)
 def metrics_endpoint() -> Response:
-    """Prometheus 指标出口：LLM/工具/FSM/RT 指标由埋点体系发射，抓取端读取。
+    """Prometheus 指标出口：LLM/工具/RT 指标由埋点体系发射，抓取端读取。
 
     ``prometheus_client`` 未安装时返回 503（观测降级，不影响业务接口）。
     """

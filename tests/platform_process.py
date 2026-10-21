@@ -16,12 +16,7 @@ role, port = sys.argv[1], int(sys.argv[2])
 
 
 def fixture_business():
-    from app.api import main
     from app.tools import registry
-    from app.agents.engine import AgentEngine
-    from app.data_plan.enums import Intent
-    import app.intent
-    app.intent.recognize = lambda *args, **kw: Intent.GREETINGS
     registry._TOOL_MAP['query_order'] = lambda order_id: {'success': True, 'order': {'order_id': order_id, 'status': 'pending', 'items': []}}
     registry._TOOL_MAP['list_user_orders'] = lambda **kw: {'success': True, 'orders': [{'order_id': 'ORD-A', 'status': 'pending', 'items_summary': 'fixture item'}]}
     def refund(**kw):

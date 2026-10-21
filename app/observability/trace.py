@@ -1,32 +1,7 @@
-"""Trace/Span 核心：一条用户请求一条 trace，内部拆多个 span（内存中构建）。
+"""Trace/Span records for model calls, tools and task stages.
 
-设计动机（第12期埋点体系的基础设施）：
-
-- 每一条用户请求 = 一条 ``trace``，内部拆多个 ``span``：
-  状态流转 span（fsm）、LLM 生成 span（llm）、工具调用 span（tool）；
-  阶段事件（stage）与 RAG 检索（rag）也以 span 形态参与，供 RT 拆分。
-- 埋点字段全部放在**内存**（:class:`TraceContext` + ContextVar），请求结束时
-  统一序列化落盘 / 发射指标，避免每个埋点都做一次 IO。
-- 线程隔离：ContextVar 存放当前活跃 trace；FastAPI 的 ``asyncio.to_thread``
-  会复制调用方 context，因此同步业务线程中同样能拿到活跃 trace（与
-  ``tracer.py`` 的 ``_active_tracer`` 同一机制）。
-
-span 树示例::
-
-    trace
-    ├── fsm/INTENT
-    ├── fsm/REWRITE
-    │   └── llm/rewrite_disambiguator
-    ├── fsm/PLAN
-    ├── fsm/EXECUTE
-    │   ├── tool/query_order
-    │   ├── llm/react_step
-    │   └── tool/search_knowledge   (RAG 检索耗时由该 tool span 承担)
-    └── fsm/RESPONSE
-
-:class:`TraceManager` 是本模块对外门面：``begin`` / ``start_span`` /
-``end_span`` / ``finish``。客户端（llm_client / mcp_client）与观测器（fsm）
-都通过它采集，业务代码无感知。
+ContextVar isolates concurrent execution; finish serializes the collected spans.
+The legacy FSM kind remains readable for historical audit records only.
 """
 
 from __future__ import annotations

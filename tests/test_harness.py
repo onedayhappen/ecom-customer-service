@@ -3,8 +3,8 @@
 覆盖点：
 - FaultInjector：9 类故障（超时/连接失败/抖动/非法 JSON/缺字段/错误业务码/
   脏数据/429 限流/延迟）+ 工具名过滤 + 概率触发 + 挂到 McpToolClient
-- ConvergenceDetector：轮次阈值 / 工具指纹 / 状态震荡 / 收敛提示 / 开关
-- 生产集成：ReactExecutor 收敛终止返回固定回复；BaseStateMachine 震荡优雅停止
+- ConvergenceDetector：轮次阈值 / 工具指纹 / 收敛提示 / 开关
+- 生产集成：ReactExecutor 收敛终止返回固定回复
 - ForkRunner：正常回传 / 错误回传 / 死循环超时 kill / 资源指标采集
 """
 
@@ -181,14 +181,6 @@ class TestConvergenceDetector:
         detector.record_tool_call("query_order", {"order_id": "B"})  # 参数变了 → 重置
         assert detector.record_tool_call("query_order", {"order_id": "B"}) is None
 
-    def test_state_oscillation(self):
-        detector = ConvergenceDetector(oscillation_threshold=2)
-        assert detector.record_state_transition("A", "B") is None
-        assert detector.record_state_transition("B", "A") is None
-        assert detector.record_state_transition("A", "B") is None  # 第 1 次 A→B→A 回跳
-        report = detector.record_state_transition("B", "A")        # 第 2 次连续回跳
-        assert report is not None
-        assert report.reason == ConvergenceReason.STATE_OSCILLATION
 
     def test_disabled_passes_through(self):
         detector = ConvergenceDetector(enabled=False, max_steps=1)
@@ -248,10 +240,10 @@ class TestReactConvergenceIntegration:
         )
 
     def _plan(self):
-        from app.data_plan import build_data_plan
+        from app.data_plan import build_task_plan
         from app.data_plan.enums import Intent
 
-        return build_data_plan(Intent.ORDER_INQUIRY)
+        return build_task_plan(Intent.ORDER_INQUIRY, allowed_tools={"query_order"})
 
     def test_react_terminates_with_convergence_reply(self):
         detector = ConvergenceDetector(max_same_tool_calls=3)
@@ -267,44 +259,8 @@ class TestReactConvergenceIntegration:
 
 
 # ---------------------------------------------------------------------------
-# 生产集成：BaseStateMachine 震荡终止
+# 事项执行与进程隔离
 # ---------------------------------------------------------------------------
-
-
-class TestFSMConvergenceIntegration:
-    def test_machine_stops_on_oscillation(self):
-        detector = ConvergenceDetector(oscillation_threshold=2)
-        from app.observability.fsm import BaseStateMachine
-
-        class OscillatingMachine(BaseStateMachine):
-            def step(self, state: str):
-                # A→B→A 来回跳转
-                return None, "B" if state == "A" else "A"
-
-        machine = OscillatingMachine(name="osc", convergence_detector=detector)
-        machine.run()
-        assert machine.converged  # 优雅停止，不抛异常
-        assert "state_oscillation" in machine._convergence_reason  # noqa: SLF001
-
-    def test_machine_without_detector_runs_forever_budget(self):
-        # 无检测器时，用内置步数限制避免测试挂死（正常状态机不设限）
-        from app.observability.fsm import BaseStateMachine
-
-        class OscillatingMachine(BaseStateMachine):
-            def __init__(self):
-                super().__init__(name="osc")
-                self.n = 0
-
-            def step(self, state: str):
-                self.n += 1
-                if self.n > 10:
-                    return None, BaseStateMachine.STOP
-                return None, "B" if state == "A" else "A"
-
-        machine = OscillatingMachine()
-        machine.run()
-        assert not machine.converged
-        assert machine.n == 11  # 跑到内置上限（检测器未启用）
 
 
 # ---------------------------------------------------------------------------

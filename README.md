@@ -189,7 +189,7 @@ npm ci
 npm run dev
 ```
 
-只启动 API，消息可以被接收，但后台事项不会自动完成。本地意图分类模型不是运行主链路的必需项，默认保持 `INTENT_MODEL_ENABLED=false`；这不代表自动办理可以不配置对话模型。
+只启动 API，消息可以被接收，但后台事项不会自动完成。自动办理需要启动事项 Worker，并配置对话模型。
 
 ## 演示数据与规则知识库
 
@@ -231,7 +231,7 @@ docker compose exec backend python scripts/init_commerce_db.py --seed-demo
 python -m app.rag.commands.policy_index publish
 ```
 
-本地向量模型由 `LOCAL_EMBEDDING_MODEL_PATH` 指定；Docker 默认将 `INTENT_MODEL_DIR` 对应的主机目录（默认 `./model`）挂载到 `/app/model`。使用远程服务时配置 `EMBEDDING_PROVIDER=openai`、`EMBEDDING_API_KEY`、`EMBEDDING_BASE_URL` 和 `EMBEDDING_MODEL`。完整选项见[配置模板](.env.example)。
+本地向量模型由 `LOCAL_EMBEDDING_MODEL_PATH` 指定；Docker 默认将 `MODEL_DIR` 对应的主机目录（默认 `./model`）挂载到 `/app/model`。使用远程服务时配置 `EMBEDDING_PROVIDER=openai`、`EMBEDDING_API_KEY`、`EMBEDDING_BASE_URL` 和 `EMBEDDING_MODEL`。完整选项见[配置模板](.env.example)。
 
 Docker 镜像会复制知识目录；修改资料后需要重新构建相关镜像，并在容器内执行发布命令。缺少审核资料、索引、向量模型或适用条件时，规则检索会明确失败，不应把失败解释为“没有这条限制”。
 

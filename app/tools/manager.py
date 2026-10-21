@@ -9,7 +9,6 @@ from typing import Optional
 
 from app.tools.registry import TOOL_DEFINITIONS as LOCAL_TOOL_DEFINITIONS
 from app.tools.registry import execute_tool as local_execute_tool
-from app.tools.task_registry import tools_for_task
 
 
 class ToolManager:
@@ -73,7 +72,7 @@ class ToolManager:
             self._init_local()
 
     def _filter_tools(self, allowed: set):
-        """只保留白名单中的工具，用于子 Agent 工具隔离。"""
+        """只保留服务端明确允许的工具。"""
         self._tool_defs = [
             d for d in self._tool_defs
             if d["function"]["name"] in allowed
@@ -90,20 +89,6 @@ class ToolManager:
     @property
     def tool_names(self) -> set[str]:
         return set(self._tool_source)
-
-    def get_tools(self, *, domain: str, task_type: str) -> list[dict]:
-        """Return task-pruned tool definitions within this manager's whitelist."""
-        selection = tools_for_task(
-            domain=domain,
-            task_type=task_type,
-            available_tools=self.tool_names,
-        )
-        if not selection.names:
-            return list(self._tool_defs)
-        return [
-            definition for definition in self._tool_defs
-            if definition["function"]["name"] in selection.names
-        ]
 
     def filter_tool_definitions(self, names: set[str] | frozenset[str]) -> list[dict]:
         """Return definitions for explicit tool names, still bounded by this manager."""

@@ -175,22 +175,20 @@ class ReactExecutor:
         system_prompt = self.system_prompt or default_system_prompt(plan)
         tools = tool_definitions if tool_definitions is not None else self._tools_for(plan)
         # 工具 schema 只是给模型的提示，不能当作授权边界：模型可能返回
-        # 未在 schema 中声明的函数名。真正的白名单来自静态 DataPlan。
+        # 未在 schema 中声明的函数名。真正的白名单来自事项 Harness 提供的 DataPlan。
         allowed_tool_names = set(plan.prompt_tool_names)
-        from app.support.runtime import current_scope
-        if current_scope() or plan.conversational:
-            # This is a conversation control tool, not a business capability.
-            tools = [*tools, {'type': 'function', 'function': {
-                'name': 'ask_user', 'description': '缺少必要信息时向用户提问并暂停当前任务。回答不会授权退款等写操作。',
-                'parameters': {'type': 'object', 'properties': {
-                    'prompt': {'type': 'string', 'minLength': 1, 'maxLength': 1000},
-                    'field': {'type': 'string', 'minLength': 1, 'maxLength': 100,
-                              **({'enum': list(self.question_fields)} if self.question_fields else {})},
-                    'options': {'type': 'array', 'maxItems': 5, 'items': {'type': 'string', 'minLength': 1, 'maxLength': 200}},
-                }, 'required': ['prompt'], 'additionalProperties': False},
-            }}]
-            allowed_tool_names.add('ask_user')
-            system_prompt += '\n缺少必要信息时调用 ask_user 提问并暂停，支持选项和自由回答。不可将回答问题视为写操作确认。'
+        # This is a conversation control tool, not a business capability.
+        tools = [*tools, {'type': 'function', 'function': {
+            'name': 'ask_user', 'description': '缺少必要信息时向用户提问并暂停当前任务。回答不会授权退款等写操作。',
+            'parameters': {'type': 'object', 'properties': {
+                'prompt': {'type': 'string', 'minLength': 1, 'maxLength': 1000},
+                'field': {'type': 'string', 'minLength': 1, 'maxLength': 100,
+                          **({'enum': list(self.question_fields)} if self.question_fields else {})},
+                'options': {'type': 'array', 'maxItems': 5, 'items': {'type': 'string', 'minLength': 1, 'maxLength': 200}},
+            }, 'required': ['prompt'], 'additionalProperties': False},
+        }}]
+        allowed_tool_names.add('ask_user')
+        system_prompt += '\n缺少必要信息时调用 ask_user 提问并暂停，支持选项和自由回答。不可将回答问题视为写操作确认。'
         policy = ReActPolicy(mutating_tools=frozenset(MUTATING_CAPABILITIES))
 
         working: list[dict] = [{"role": "system", "content": system_prompt}, *messages]

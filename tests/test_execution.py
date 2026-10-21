@@ -1,8 +1,4 @@
-"""执行层单元测试：Workflow 确定性脚本、确认门控、未实现降级、ReAct 循环、三路分发。
-
-测试通过注入 fake 工具执行器模拟已实现的 7 个能力，不依赖真实 registry
-（registry 会拉入 pydantic/chromadb 等重依赖），使执行层逻辑可独立、快速验证。
-"""
+"""ReAct tool boundaries, business-write blocking and evidence checks."""
 
 from __future__ import annotations
 
@@ -11,14 +7,15 @@ import json
 import pytest
 
 
-from app.agents.engine import AgentEngine
-from app.data_plan import DataPlan, build_data_plan
-from app.data_plan.enums import Execution
+from app.data_plan import DataPlan, build_task_plan
 from app.execution import ReactExecutor
 
 
 def _plan(intent: str) -> DataPlan:
-    return build_data_plan(intent)
+    allowed = {"query_order", "list_user_orders", "search_knowledge"}
+    if intent == "after_sale_request":
+        allowed.add("apply_refund")
+    return build_task_plan(intent, allowed_tools=allowed)
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +128,7 @@ def test_react_knowledge_unavailable_fails_closed():
 
 
 def test_react_tools_pruned_by_plan():
-    # 工具裁剪由 DataPlan 负责（已在 test_intentspec 验证），这里验证 plan 层契约
+    # 工具范围由服务端明确提供，模型不能通过标签扩大范围。
     plan = _plan("complaint")
     assert "apply_refund" not in plan.prompt_tool_names
     assert "query_order" in plan.prompt_tool_names
@@ -152,7 +149,7 @@ def test_react_confirmation_gate_blocks_mutating_tool():
 
 
 def test_react_readonly_tool_not_gated():
-    # READ_ONLY 意图（issue_report）的读操作不受确认门控影响
+    # 只读操作无需业务提交确认。
     script = [
         _Msg(content="", tool_calls=[_TC("c1", "query_order", {"order_id": "ORD-20240118-004"})]),
         _Msg(content="已核实订单状态"),
@@ -165,3 +162,17 @@ def test_react_readonly_tool_not_gated():
     )
     assert result.needs_confirmation is False
     assert result.tool_steps[0].name == "query_order"
+
+
+@pytest.mark.parametrize('intent', ['order_inquiry', 'refund_service', 'confirmation'])
+def test_label_and_model_schema_cannot_expand_task_whitelist(intent):
+    calls = []
+    script = [_Msg(tool_calls=[_TC('c1', 'query_order', {'order_id': 'ORD-A'})])]
+    executor = ReactExecutor(client=_Client(script), model='test',
+                             execute=lambda name, args: calls.append(name) or '{}')
+    result = executor.run(messages=[{'role': 'user', 'content': '查订单'}],
+        plan=build_task_plan(intent, allowed_tools=set()),
+        tool_definitions=[{'type': 'function', 'function': {'name': 'query_order',
+                          'parameters': {'type': 'object'}}}])
+    assert result.blocked and result.needs_human
+    assert calls == []

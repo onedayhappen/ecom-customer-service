@@ -185,15 +185,6 @@ class Settings(BaseSettings):
     model_max_output_tokens: int = Field(default=2048, ge=1)
     model_queue_wait_seconds: float = Field(default=3, ge=0)
 
-    # 可选的本地意图分类器。模型权重不随仓库分发；缺失或关闭时使用规则回退。
-    intent_model_enabled: bool = False
-    intent_base_model_path: str = "model/Qwen2.5-0.5B-Instruct"
-    intent_adapter_path: str = "model/train_2026-08-15-18-54-17"
-    intent_max_new_tokens: int = 32
-    intent_model_device: str = ""  # 留空自动选择 cuda / cpu
-    # 送入分类器的最大上下文轮数（用户设计：最近 5 轮足够，更多历史是噪音）。
-    intent_max_context_turns: int = 5
-
     # 业务链日志监控（第11期）：线上 chat 请求全链路观测轨迹。
     # 每条请求一个 JSON 对象（事件流 + LLM 调用 + 工具步骤），按天追加写 JSONL。
     observability_enabled: bool = True

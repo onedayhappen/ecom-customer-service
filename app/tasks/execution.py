@@ -1,7 +1,6 @@
 """Single-task harness around the existing Agent/ReAct loop."""
 from copy import deepcopy
 from contextlib import nullcontext
-from dataclasses import replace
 import json
 import threading
 import time
@@ -10,7 +9,7 @@ from types import SimpleNamespace
 from pydantic import ValidationError
 from app.config.settings import settings
 
-from app.data_plan.builder import build_conversation_plan
+from app.data_plan.builder import build_task_plan
 from app.data_plan.enums import Execution
 from app.execution.react import ReactExecutor
 from app.execution.types import ExecutionResult
@@ -361,7 +360,7 @@ class TaskExecutor:
     def run_reserved(self, request, engine, reservation):
         """Internal Worker continuation of a DB reservation; not an HTTP input."""
         context = _TaskContext(self.runs, request, reservation, self.tools)
-        plan = replace(build_conversation_plan(engine.intent), tools=tuple(sorted(context.allowed_tools)), skills=())
+        plan = build_task_plan(engine.intent, allowed_tools=context.allowed_tools)
         definitions = [{"type": "function", "function": {"name": name, "description": name,
                         "parameters": schema.model_json_schema()}} for name, schema in READ_SCHEMAS.items()]
         from app.tools.task_context import ReadTaskContext

@@ -1,14 +1,7 @@
-"""工具能力全集目录（单一事实源）。
+"""工具能力目录：描述实现状态与业务副作用。
 
-IntentSpec 引用的是**工具能力 ID**，而非直接绑定某个实现。每个能力标注
-`implemented`（是否已在 `app/tools/registry.py` 落地）与 `side_effect`
-（是否写操作，决定 permission 等级）。Data Plan 装配时只把 `implemented=True`
-的能力真正放进 prompt，未实现的进入 `pending_tools`，供执行层显式降级
-（澄清 / 转人工），避免模型调用一个不存在的工具。
-
-已实现集合由下方 implemented 标记派生，meta 工具 load_skill 单独装配。
-新增业务工具已按 MySQL / 本地计算 / 会话状态实现；implemented 表示代码已注册，
-不代表数据库已初始化或 Workflow 已接入。
+实际可调用工具由事项 Harness 的白名单决定；能力名称和标签不授予权限。
+未接入的能力只用于明确边界，不能作为可执行工具提供给模型。
 """
 
 from __future__ import annotations
@@ -22,7 +15,7 @@ from app.data_plan.enums import CapabilityCategory
 class ToolCapability:
     """一个工具能力的静态描述。"""
 
-    name: str                     # 能力 ID，IntentSpec 引用它
+    name: str                     # 稳定的能力 ID
     category: CapabilityCategory  # 所属类别
     side_effect: bool             # True = 写操作（执行前须确认）
     implemented: bool             # True = 已在 registry 实现
@@ -117,7 +110,7 @@ for _name, _description in (
 ):
     CAPABILITIES[_name] = ToolCapability(_name, _ENGINE, False, True, _description)
 
-# meta 工具：装配 Skill 剧本，不计入业务能力全集（IntentSpec.skills 引用 skill 名）。
+# meta 工具：装配 Skill 剧本，不计入业务能力全集。
 LOAD_SKILL = "load_skill"
 
 # 已实现能力（供 Data Plan 装配器与 registry 交叉校验）
@@ -139,5 +132,5 @@ def is_implemented(name: str) -> bool:
 
 
 def get_capability(name: str) -> ToolCapability:
-    """按能力 ID 取描述；未知能力抛 KeyError（保证 IntentSpec 引用合法）。"""
+    """按能力 ID 取描述；未知能力抛 KeyError。"""
     return CAPABILITIES[name]

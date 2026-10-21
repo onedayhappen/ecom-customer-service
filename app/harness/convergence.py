@@ -1,29 +1,4 @@
-"""收敛提示（Harness 核心能力之二）：检测 Agent 死循环 / ReAct 无限循环 /
-FSM 来回跳转。
-
-解决的三种死循环形态：
-
-1. **ReAct**：LLM 反复调用同一个工具，得不到结果不停循环；
-2. **FSM 状态机**：A→B→A 来回跳转，状态震荡死锁；
-3. **不停重试工具**，没有退出路径。
-
-内置收敛判定规则（:class:`ConvergenceDetector`）：
-
-1. **最大轮次阈值**：限制「思考 + 工具调用」总轮数，超过即判定不收敛；
-2. **状态循环检测**：记录 FSM 状态流转序列，出现重复环（stateA→stateB→
-   stateA）判定震荡；
-3. **工具调用指纹检测**：连续多次调用相同工具 + 相同参数，判定无效循环；
-4. **收敛提示**：检测到即将循环时输出收敛提示（:data:`CONVERGENCE_PROMPT`），
-   强制 Agent 跳出循环，引导它向用户澄清 / 终止流程，而不是无限调用工具。
-
-区分两个使用场景：
-
-- **测试时**：检测到循环 → 测试用例失败，输出报告，定位 bug；
-- **生产运行时**：ReAct 执行器 / 状态机基类复用同一套检测逻辑
-  （``react.ReactExecutor(convergence_detector=...)`` /
-  ``fsm.BaseStateMachine(convergence_detector=...)``），触发后追加收敛提示、
-  终止循环，避免服务卡死。
-"""
+"""Bound ReAct loops by model steps and repeated tool calls."""
 
 from __future__ import annotations
 
@@ -50,7 +25,6 @@ class ConvergenceReason(str, Enum):
 
     MAX_STEPS = "max_steps"                  # 超过最大轮次阈值
     TOOL_LOOP = "tool_loop"                  # 相同工具 + 相同参数连续重复
-    STATE_OSCILLATION = "state_oscillation"  # FSM 状态 A→B→A 震荡
 
 
 @dataclass
@@ -77,12 +51,11 @@ def _fingerprint(arguments: dict[str, Any]) -> str:
 
 
 class ConvergenceDetector:
-    """收敛检测器：三类规则的统一入口。
+    """收敛检测器：限制轮次和重复工具调用。
 
     :param max_steps: 最大「思考 + 工具调用」轮次阈值（默认 8）。
     :param max_same_tool_calls: 相同工具 + 相同参数的连续次数阈值（默认 3）。
-    :param oscillation_threshold: 状态 A→B→A 回跳的连续出现次数阈值（默认 2）。
-    :param enabled: False 时全部检测直接放行（生产默认不启用，测试按需开启）。
+    :param enabled: False 时关闭检测；事项执行默认开启。
 
     用法（ReAct 执行器每轮）：:
 
@@ -94,9 +67,6 @@ class ConvergenceDetector:
             report = detector.record_tool_call(name, args) # 工具指纹
             if report: break
 
-    用法（FSM 状态机每次跳转）：:
-
-        detector.record_state_transition(from_state, to_state)  # 状态震荡
     """
 
     def __init__(
@@ -104,20 +74,16 @@ class ConvergenceDetector:
         *,
         max_steps: int = 8,
         max_same_tool_calls: int = 3,
-        oscillation_threshold: int = 2,
         enabled: bool = True,
     ):
         self.max_steps = max(1, int(max_steps))
         self.max_same_tool_calls = max(2, int(max_same_tool_calls))
-        self.oscillation_threshold = max(1, int(oscillation_threshold))
         self.enabled = enabled
 
         self.steps = 0
         self.tool_calls: list[tuple[str, str]] = []      # (name, fingerprint)
-        self.state_seq: list[str] = ["INIT"]             # 状态流转序列
         self._same_streak = 0
         self._last_fingerprint: tuple[str, str] | None = None
-        self._oscillation_streak = 0
         self._triggered: Optional[ConvergenceReport] = None
 
     # ------------------------------------------------------------------
@@ -136,7 +102,7 @@ class ConvergenceDetector:
         return None
 
     # ------------------------------------------------------------------
-    # 规则 3：工具调用指纹检测
+    # 规则 2：工具调用指纹检测
     # ------------------------------------------------------------------
 
     def record_tool_call(self, name: str, arguments: dict[str, Any] | None = None) -> Optional[ConvergenceReport]:
@@ -158,28 +124,6 @@ class ConvergenceDetector:
         return None
 
     # ------------------------------------------------------------------
-    # 规则 2：状态循环检测（A→B→A 震荡）
-    # ------------------------------------------------------------------
-
-    def record_state_transition(self, from_state: str, to_state: str) -> Optional[ConvergenceReport]:
-        """记录一次状态跳转；连续出现 A→B→A 回跳判定状态震荡。"""
-        if self._triggered is not None or not self.enabled:
-            return None
-        self.state_seq.append(to_state)
-        seq = self.state_seq
-        if len(seq) >= 3 and seq[-3] == seq[-1]:
-            self._oscillation_streak += 1
-        else:
-            self._oscillation_streak = 0
-        if self._oscillation_streak >= self.oscillation_threshold:
-            return self._trigger(
-                ConvergenceReason.STATE_OSCILLATION,
-                f"状态震荡：{'→'.join(seq[-4:])} 连续 {self._oscillation_streak} 次 A→B→A 回跳",
-                streak=self._oscillation_streak,
-            )
-        return None
-
-    # ------------------------------------------------------------------
     # 汇总 / 提示
     # ------------------------------------------------------------------
 
@@ -197,10 +141,8 @@ class ConvergenceDetector:
         """重置检测状态（新用例 / 新一轮前调用）。"""
         self.steps = 0
         self.tool_calls.clear()
-        self.state_seq = ["INIT"]
         self._same_streak = 0
         self._last_fingerprint = None
-        self._oscillation_streak = 0
         self._triggered = None
 
     # ------------------------------------------------------------------

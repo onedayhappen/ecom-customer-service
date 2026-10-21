@@ -74,13 +74,12 @@ services:
       ORDER_DB_DSN: mysql://ecom:ecom_dev_password@mysql:3306/ecom_agent_orders
       ORDER_CACHE_REDIS_URL: redis://redis:6379/0
       API_CONCURRENCY_REDIS_URL: redis://redis:6379/0
-      INTENT_MODEL_ENABLED: "false"
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     expose: ["8010"]
     volumes:
       - ./.docker-data/app:/app/data
       - ./.docker-data/logs:/app/logs
-      - ${INTENT_MODEL_DIR:-./model}:/app/model:ro
+      - ${MODEL_DIR:-./model}:/app/model:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -123,14 +122,13 @@ services:
       ORDER_DB_DSN: mysql://ecom:ecom_dev_password@mysql:3306/ecom_agent_orders
       ORDER_CACHE_REDIS_URL: redis://redis:6379/0
       API_CONCURRENCY_REDIS_URL: redis://redis:6379/0
-      INTENT_MODEL_ENABLED: "false"
       RUNTIME_METRICS_PORT: "9101"
       RUNTIME_METRICS_HOST: "0.0.0.0"
     command: ["python", "-m", "scripts.task_worker"]
     volumes:
       - ./.docker-data/app:/app/data
       - ./.docker-data/logs:/app/logs
-      - ${INTENT_MODEL_DIR:-./model}:/app/model:ro
+      - ${MODEL_DIR:-./model}:/app/model:ro
     depends_on:
       backend:
         condition: service_healthy
@@ -184,7 +182,7 @@ services:
     command: ["python", "-m", "uvicorn", "app.services.retrieval:app", "--host", "0.0.0.0", "--port", "8020"]
     volumes:
       - ./.docker-data/app:/app/data
-      - ${INTENT_MODEL_DIR:-./model}:/app/model:ro
+      - ${MODEL_DIR:-./model}:/app/model:ro
     depends_on:
       redis:
         condition: service_healthy

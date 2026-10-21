@@ -1,9 +1,4 @@
-"""意图装配层的枚举定义。
-
-本模块是 `app/data_plan/` 的类型基础。所有枚举的字符串值都是稳定的
-契约：当前分类器只输出 taxonomy 中的 31 类标签；5 个旧值保留用于
-读取持久化任务，不能作为新版分类器输出。所有值均可查询 IntentSpec。
-"""
+"""Stable labels for execution results and stored records; labels grant no authority."""
 
 from __future__ import annotations
 
@@ -11,12 +6,9 @@ from enum import Enum
 
 
 class Intent(str, Enum):
-    """31 类分类标签和 5 个旧任务兼容值。
+    """Business labels, including values still present in historical records."""
 
-    有效分类输出以 taxonomy.CLASSIFICATION_INTENTS 为准。
-    """
-
-    # v4 分类标签：28 个业务目标 + greetings/closure/others。
+    # 业务标签，仅用于描述与记录，不决定执行路径。
     PRODUCT_COMPARISON = "product_comparison"
     INVENTORY_INQUIRY = "inventory_inquiry"
     DELIVERY_INQUIRY = "delivery_inquiry"
@@ -55,7 +47,7 @@ class Intent(str, Enum):
     INVOICE = "invoice"                              # 发票管理
     COMPLAINT = "complaint"                          # 投诉
 
-    # 对话流（不发起业务任务，走决策规则填槽）
+    # 对话标签（不代表业务授权）
     CONFIRMATION = "confirmation"                    # 确认/认可
     ANSWER_QUESTION = "answer_question"              # 回答客服提问（填槽）
     CLOSURE = "closure"                              # 收尾（感谢 + 告别）
@@ -65,50 +57,10 @@ class Intent(str, Enum):
     OTHERS = "others"                                # 其他/无法归类
 
 
-class Domain(str, Enum):
-    """业务域，用于子 Agent 路由与工具域裁剪。"""
-
-    PRESALE = "presale"        # 售前
-    ORDER = "order"            # 订单
-    AFTER_SALE = "after_sale"  # 售后
-    DIALOG = "dialog"          # 对话流
-    FALLBACK = "fallback"      # 兜底
-
-
 class Execution(str, Enum):
-    """执行路径。
+    """The single supported execution loop."""
 
-    - WORKFLOW：步骤与分支可枚举的确定性脚本，查表走固定流程。
-    - REACT：下一步依赖理解与判断，交给 Agent 动态规划（ReAct 循环）。
-    - RULE：对话流类，不发起任务，由决策规则（intent × pending_slots）推进。
-    """
-
-    WORKFLOW = "workflow"
     REACT = "react"
-    RULE = "rule"
-
-
-class Permission(str, Enum):
-    """工具调用权限等级。
-
-    - READ_ONLY：仅只读查询，无副作用，直接装配并调用。
-    - CONFIRM_REQUIRED：含写操作（改址/取消/退款/换货/价保/加急/开票），执行前须用户确认。
-    - ESCALATE：升级型意图（投诉），走工单/转人工流程，不由普通执行直接落库。
-    """
-
-    READ_ONLY = "read_only"
-    CONFIRM_REQUIRED = "confirm_required"
-    ESCALATE = "escalate"
-
-
-class Fallback(str, Enum):
-    """未满足执行前置条件时的降级策略。"""
-
-    CLARIFY = "clarify"        # 澄清追问（缺信息/多候选/检索未命中）
-    EXPLAIN = "explain"        # 说明无法满足（已发货不可改/超期不可退等硬约束）
-    ESCALATE = "escalate"      # 转人工/工单（诊断无果、投诉升级）
-    NORMAL_REPLY = "normal_reply"  # 无活跃流程时的普通对话回应（对话流类）
-    NONE = "none"              # 无降级（closure / greetings）
 
 
 class CapabilityCategory(str, Enum):

@@ -165,23 +165,6 @@ def test_existing_invalid_protocol_fails_predictably(messages):
     assert captured.value.reason == "invalid_tool_protocol"
 
 
-def test_workflow_projection_preserves_every_step_and_error(monkeypatch):
-    monkeypatch.setattr(settings, "context_request_input_tokens", 5000)
-    steps = [{"name": "query_order", "arguments": {"order_id": str(i)}, "blocked": False,
-              "result": json.dumps({"success": i != 9, "order_id": str(i), "error": "denied" if i == 9 else None,
-                                    "description": "x" * 10000})} for i in range(10)]
-    params = {"messages": [{"role": "system", "content": "rules"},
-                           {"role": "system", "name": "workflow_evidence", "content": json.dumps(steps)},
-                           {"role": "user", "content": "结果"}]}
-    result = apply_request_budget(params)
-    projected = json.loads(result["messages"][1]["content"])["result"]
-    assert len(projected) == 10
-    assert projected[9]["result"]["success"] is False
-    assert projected[9]["result"]["error"] == "denied"
-    assert projected[9]["result"]["order_id"] == "9"
-    assert estimate_request_tokens(result) <= 5000
-
-
 def test_disable_budget_is_explicit_and_still_returns_independent_copy(monkeypatch):
     monkeypatch.setattr(settings, "context_request_budget_enabled", False)
     params = {"messages": [{"role": "user", "content": "large" * 5000}]}

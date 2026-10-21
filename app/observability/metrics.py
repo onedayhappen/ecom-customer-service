@@ -1,15 +1,12 @@
 """Prometheus 指标定义（第12期）：所有埋点的指标出口。
 
-四组指标，与三类 span + RT 一一对应：
+三组指标，与三类 span + RT 一一对应：
 
 - **LLM**（``agent_llm_*``）：调用次数、token 消耗（按 prompt/completion）、
-  耗时直方图、异常计数——均带 ``scene`` 标签（rewrite=查询改写 /
-  main=主回答 / workflow_reply=Workflow 表述 / react=ReAct 规划），
+  耗时直方图、异常计数——均带 ``scene`` 标签（事项归属、事项执行、回复与记忆等场景），
   场景分开统计，定位「哪个环节 token 暴涨」。
 - **工具**（``agent_tool_*``）：调用次数（按状态 success/error/timeout/
   blocked）、耗时直方图、重试次数。
-- **FSM**（``agent_fsm_*``）：状态流转计数器（from_state/to_state/result）、
-  每个状态执行耗时直方图。
 - **RT**（``agent_rt_*``）：整条 query 总 RT 与各阶段 RT（rewrite / llm_generate /
   tool / rag）直方图，供监控大盘聚合 P50/P95/P99。
 
@@ -65,7 +62,7 @@ _DURATION_BUCKETS = (
 )
 
 # ---------------------------------------------------------------------------
-# LLM 指标（scene: rewrite / main / workflow_reply / react）
+# LLM 指标（scene: association / task_execution / reply / memory）
 # ---------------------------------------------------------------------------
 
 LLM_CALLS = Counter(
@@ -95,19 +92,6 @@ TOOL_DURATION = Histogram(
 )
 TOOL_RETRIES = Counter(
     "agent_tool_retries_total", "工具重试次数", ["tool"],
-)
-
-# ---------------------------------------------------------------------------
-# FSM 状态流转指标
-# ---------------------------------------------------------------------------
-
-FSM_TRANSITIONS = Counter(
-    "agent_fsm_state_transition_total", "状态流转次数",
-    ["from_state", "to_state", "result"],  # result: ok / error / timeout
-)
-FSM_DURATION = Histogram(
-    "agent_fsm_state_duration_seconds", "状态执行耗时", ["state"],
-    buckets=_DURATION_BUCKETS,
 )
 
 # ---------------------------------------------------------------------------
@@ -168,21 +152,6 @@ def emit_tool(
     TOOL_DURATION.labels(tool=tool).observe(cost_ms / 1000.0)
     if attempts > 1:
         TOOL_RETRIES.labels(tool=tool).inc(attempts - 1)
-
-
-def emit_fsm_transition(
-    *,
-    from_state: str,
-    to_state: str,
-    result: str,
-    cost_ms: float,
-    state: str | None = None,
-) -> None:
-    """发射一组状态流转指标。result: ok / error / timeout。"""
-    if not PROMETHEUS_AVAILABLE:
-        return
-    FSM_TRANSITIONS.labels(from_state=from_state, to_state=to_state, result=result).inc()
-    FSM_DURATION.labels(state=state or from_state).observe(cost_ms / 1000.0)
 
 
 def emit_rt(*, total_ms: float, stages: dict[str, float]) -> None:

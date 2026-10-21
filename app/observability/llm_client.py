@@ -38,13 +38,9 @@ from app.observability.trace import SpanKind, TraceManager
 logger = logging.getLogger(__name__)
 
 #: LLM 场景标签：分开统计的维度
-SCENE_REWRITE = "rewrite"          # 查询改写（指代消歧子模型）
 SCENE_MAIN = "main"                # 主回答生成
-SCENE_WORKFLOW_REPLY = "workflow_reply"  # Workflow 成功路径的 LLM 表述层
 SCENE_REACT = "react"              # ReAct 循环的动态规划
 
-#: 主生成类场景（RT 拆分时归入 llm_generate 阶段）
-_MAIN_SCENES = frozenset({SCENE_MAIN, SCENE_WORKFLOW_REPLY, SCENE_REACT})
 
 
 # ---------------------------------------------------------------------------
@@ -237,9 +233,8 @@ class LlmClient:
     def bind_scene(self, scene: str) -> "LlmClient":
         """返回绑定指定场景的客户端视图（共享底层 client 与模型配置）。
 
-        用于「同一底层 client 在不同调用点标注不同场景」：ReAct 循环标
-        ``react``、Workflow 表述层标 ``workflow_reply``，与查询改写/主生成
-        分开统计 token。未显式调用时沿用构造时的 ``default_scene``。
+        事项归属、事项执行、回复和记忆使用不同标签，分别统计 token。
+        未显式调用时沿用构造时的 ``default_scene``。
         """
         view = LlmClient(
             raw_client=self._raw_client,
@@ -515,7 +510,5 @@ __all__ = [
     "LlmClient",
     "SCENE_MAIN",
     "SCENE_REACT",
-    "SCENE_REWRITE",
-    "SCENE_WORKFLOW_REPLY",
     "llm_observation",
 ]
