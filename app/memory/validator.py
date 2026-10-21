@@ -68,6 +68,9 @@ class MemoryValidator:
         这里偏保守：宁可少写一条记忆，也不要把模型猜测、临时状态或缺少证据的内容
         存进长期层。被拒绝的内容仍可能存在于会话摘要/case 状态里，不会直接丢失业务上下文。
         """
+        from app.memory.source_policy import memory_safe
+        if not memory_safe(fact.content) or not memory_safe(fact.source_span):
+            return MemoryValidationResult(False, "sensitive_or_authorization_content")
         content = fact.content.strip()
         if not content:
             return MemoryValidationResult(False, "empty_content")

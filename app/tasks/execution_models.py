@@ -28,6 +28,10 @@ class TaskExecutionInput(StrictModel):
     budget: ExecutionBudget = Field(default_factory=ExecutionBudget)
 
 
+class MemoryRecall(StrictModel):
+    query: str = Field(min_length=1, max_length=1000)
+
+
 class ProgressInput(StrictModel):
     expected_version: int = Field(ge=1)
     state: Literal["in_progress", "waiting_user", "waiting_external"]

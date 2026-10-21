@@ -42,8 +42,10 @@ def env(tmp_path, monkeypatch):
             tx.execute(sql)
     memories = {}
 
-    def manager(user):
-        return SimpleNamespace(ltm=memories.setdefault(user, FakeMemory()))
+    def manager(user, *, store=None):
+        from app.memory.source_policy import SourcePolicy
+        return SimpleNamespace(ltm=memories.setdefault(user, FakeMemory()),
+                               source_policy=SourcePolicy(store, user) if store else None)
 
     monkeypatch.setattr(runtime, 'build_memory_manager', manager)
     return store, memories, config

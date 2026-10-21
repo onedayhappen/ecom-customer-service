@@ -58,8 +58,9 @@ class CandidateContext:
         if input_limit is not None:
             limit = min(limit, input_limit)
         def render():
+            from app.memory.source_policy import safe_context
             params["messages"] = original_messages + [{
-                "role": "user", "content": json.dumps(context.data(), ensure_ascii=False, separators=(",", ":")),
+                "role": "user", "content": json.dumps(safe_context(context.data()), ensure_ascii=False, separators=(",", ":")),
             }]
             return estimate_request_tokens(params) <= limit
         if render():

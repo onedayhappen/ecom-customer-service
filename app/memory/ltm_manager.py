@@ -55,6 +55,7 @@ class LongTermMemoryManager:
         self.client = client
         self.model = model
         self.memory_enabled = memory_enabled
+        self.source_policy = None
         self.prompt_tokens = prompt_tokens
         self.query_router = MemoryQueryRouter()
         self._injected_ids: set[str] = set()
@@ -218,9 +219,12 @@ class LongTermMemoryManager:
                 json.dumps({"view": "historical" if history or as_of else "current", "as_of": as_of,
                             "facts": [self.fact_record(f) for f in facts]}, ensure_ascii=False, default=str)}
 
-    @staticmethod
-    def _allowed(fact) -> bool:
-        return (fact.category in {"identity", "preference", "behavior", "other"}
+    def _allowed(self, fact) -> bool:
+        from app.memory.source_policy import memory_safe
+        return (not fact.metadata.get('reset')
+                and memory_safe(fact.content) and memory_safe(fact.source_span)
+                and (self.source_policy is None or self.source_policy.allows(fact))
+                and fact.category in {"identity", "preference", "behavior", "other"}
                 and fact.scope in {"user_preference", "user_profile"}
                 and fact.source_type == "user_explicit"
                 and bool(fact.source_session and fact.source_event_id and fact.source_span)
@@ -235,6 +239,8 @@ class LongTermMemoryManager:
         return self.derived_views
 
     def topic_summary(self, topic: str) -> dict | None:
+        if self.source_policy is not None:
+            self.ltm.load()
         view = self.derived_views.get("topics", {}).get(topic)
         eligible = [fact for fact in self.ltm.facts if self._allowed(fact)]
         return view if view and resolve_view(view, eligible) else None
@@ -243,6 +249,10 @@ class LongTermMemoryManager:
         """Read bounded user-scope facts; never return case progress or ungrounded legacy facts."""
         if not self.memory_enabled:
             return []
+        if self.source_policy is not None:
+            # A manager may outlive a correction, reset or another session's
+            # preference update. Do not retrieve from its old in-memory list.
+            self.ltm.load()
         decision = self.query_router.decide(query)
         if decision.route in {"events", "realtime"}:
             return []

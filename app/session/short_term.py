@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.config.settings import settings
 from app.session.context_budget import estimate_message_tokens, estimate_text_tokens
+from app.memory.source_policy import memory_safe
 
 
 SCHEMA = (
@@ -96,7 +97,7 @@ def _messages(tx, sid, task_id, *, ceiling, after=0, before=None, limit=128, des
         if not context_event_valid(tx, sid, row['sequence']):
             continue
         value = json.loads(row['payload'])
-        if value.get('role') in {'user', 'assistant', 'agent'} and isinstance(value.get('content'), str):
+        if value.get('role') in {'user', 'assistant', 'agent'} and memory_safe(value.get('content')):
             result.append({'sequence': row['sequence'], 'role': 'assistant' if value['role'] == 'agent' else value['role'],
                            'content': value['content']})
     if descending:
@@ -148,10 +149,17 @@ def _recent(messages):
 
 def _named(name, note, items, budget):
     kept = []
+    omitted = []
     for item in items:
         message = {'role': 'system', 'name': name, 'content': note + _json({'items': kept + [item]})}
         if estimate_message_tokens([message]) <= budget:
             kept.append(item)
+        elif isinstance(item, dict) and type(item.get('sequence')) is int:
+            omitted.append(item['sequence'])
+    if not kept and omitted:
+        return [{'role': 'system', 'name': name, 'content': note + _json({
+            'items': [], 'omitted_sequences': omitted[:10],
+            'note': '相关完整原话超出当前预算，未截取局部内容；需要缩小查询范围或向用户核实。'})}]
     return ([{'role': 'system', 'name': name, 'content': note + _json({'items': kept})}]
             if kept else [])
 
@@ -196,14 +204,11 @@ def _recall(tx, sid, task_id, query, cutoff):
                     for term in terms if term.casefold() in content.casefold())
         if not score:
             continue
-        # Return an exact window around a hit when the original event is huge.
-        # Its sequence still allows the full original to be inspected.
+        if not memory_safe(content):
+            continue
+        # A local hit can omit a distant condition or negation. Return the
+        # complete message or omit the whole optional recall item by budget.
         quote = content
-        if estimate_text_tokens(quote) > settings.short_term_recall_tokens // 2:
-            hit = next((content.casefold().find(t.casefold()) for t in terms
-                        if t.casefold() in content.casefold()), 0)
-            radius = max(60, settings.short_term_recall_tokens // 5)
-            quote = content[max(0, hit-radius):hit+radius]
         ranked.append((score, row['sequence'], {'sequence': row['sequence'],
             'role': 'assistant' if message['role'] == 'agent' else message['role'], 'quote': quote}))
     ranked.sort(key=lambda item: (-item[0], -item[1]))
@@ -257,7 +262,7 @@ class ContextService:
                 try:
                     payload = json.loads(snapshot['payload'])
                     result += _named('short_term_summary', SUMMARY_NOTE,
-                                     payload['items'], settings.short_term_summary_tokens)
+                                     _current_summary(tx, sid, payload['items']), settings.short_term_summary_tokens)
                 except (ValueError, KeyError, TypeError):
                     # Derived cache failures cannot make raw conversation unreadable.
                     pass
@@ -266,6 +271,27 @@ class ContextService:
                              _recall(tx, sid, task_id, query, cutoff), settings.short_term_recall_tokens)
             result += raw_context(recent)
             return result
+
+
+def _current_summary(tx, sid, items, *, expand=True):
+    """A saved summary is an index into originals, not independent evidence."""
+    from app.tasks.provenance import context_event_valid
+    result = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        sequence = item.get('sequence')
+        if type(sequence) is not int or not context_event_valid(tx, sid, sequence):
+            continue
+        row = tx.one("""SELECT payload FROM support_events WHERE session_id=? AND sequence=?
+            AND kind='message' AND visibility='public'""", (sid, sequence))
+        p = json.loads(row['payload']) if row else {}
+        content = p.get('content')
+        role = 'assistant' if p.get('role') == 'agent' else p.get('role')
+        if (memory_safe(content) and role == item.get('role') and item.get('quote')
+                and item['quote'] in content):
+            result.append({**item, 'quote': content if expand else item['quote']})
+    return result
 
 
 def _validate_summary(value, previous, messages):
@@ -287,7 +313,7 @@ def _validate_summary(value, previous, messages):
             raise ValueError('Invalid summary source or kind')
         if (kind == 'agent_commitments' and role != 'assistant') or (kind == 'user_request' and role != 'user'):
             raise ValueError('Summary kind contradicts source role')
-        if not isinstance(quote, str) or not quote.strip() or not any(
+        if not memory_safe(quote) or not quote.strip() or not any(
                 quote in source for source in sources.get((seq, role), [])):
             raise ValueError('Summary quote has no exact public source')
         key = (seq, role, kind, quote)
@@ -336,6 +362,7 @@ def _read_work(store, job):
         ceiling = min(control['sequence'], job['requested_sequence'])
         snapshot = tx.one('SELECT * FROM support_context_snapshots WHERE session_id=? AND scope_key=?', (sid, scope_key))
         previous = json.loads(snapshot['payload']) if snapshot else {'items': []}
+        previous = {'items': _current_summary(tx, sid, previous.get('items', []), expand=False)}
         through = snapshot['through_sequence'] if snapshot else 0
         recent = _messages(tx, sid, task_id, ceiling=ceiling, descending=True)
         retained = _recent(recent)

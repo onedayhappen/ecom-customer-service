@@ -124,6 +124,7 @@ class LongTermMemory:
         self.version = 0
         # facts 包含全部当前有效事实，冷热 tier 不决定事实是否有效。
         self.facts: list[MemoryFact] = []
+        self.source_filter = None
 
     @property
     def memory_path(self) -> Path:
@@ -220,6 +221,8 @@ class LongTermMemory:
             seen_events = {event for event in events
                            if self.store.batch_processed(self.user_id, 'event:' + event)}
             for fact in prepared:
+                if self.source_filter is not None and not self.source_filter(fact):
+                    continue
                 event = fact.source_event_id
                 if event in seen_events:
                     continue

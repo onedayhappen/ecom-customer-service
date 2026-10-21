@@ -55,11 +55,11 @@ def enqueue_memory_job(tx, control, payload):
         (control['session_id'], control['user_id'], control['sequence'], available.isoformat(), timestamp.isoformat()))
 
 
-def build_memory_manager(user_id):
+def build_memory_manager(user_id, *, store=None):
     """Create a fresh manager for the authenticated user, without a model call."""
     from app.memory.ltm_manager import LongTermMemoryManager
 
-    return LongTermMemoryManager(
+    manager = LongTermMemoryManager(
         client=None, model=settings.model_name, user_id=user_id,
         memory_dir=settings.memory_dir, memory_enabled=settings.memory_enabled,
         max_ltm_facts=settings.max_ltm_facts, preference_ttl_days=settings.preference_memory_ttl_days,
@@ -73,6 +73,11 @@ def build_memory_manager(user_id):
         semantic_retrieval_top_k=settings.semantic_memory_retrieval_top_k,
         prompt_tokens=settings.memory_context_tokens,
     )
+    if store is not None:
+        from app.memory.source_policy import SourcePolicy
+        manager.source_policy = SourcePolicy(store, user_id)
+        manager.ltm.source_filter = manager.source_policy.allows
+    return manager
 
 
 def _claim(store, candidate):
@@ -90,6 +95,8 @@ def _claim(store, candidate):
 
 
 def _read_messages(store, job):
+    from app.memory.source_policy import SourcePolicy
+    policy = SourcePolicy(store, job['user_id'])
     with store.transaction(read_only=True) as tx:
         control = store._control(tx, job['session_id'], job['user_id'])
         ceiling = min(control['sequence'], job['requested_sequence'],
@@ -101,13 +108,18 @@ def _read_messages(store, job):
             ORDER BY sequence LIMIT ?''', (job['session_id'], job['through_sequence'], ceiling,
                                           job['user_id'], 128 if job.get('batch_through_sequence')
                                           else settings.memory_extraction_batch_messages))
-    messages = []
-    for row in rows:
-        content = json.loads(row['payload']).get('content')
-        if not isinstance(content, str):
-            raise MemoryExtractionError('Source event has invalid content')
-        messages.append(dict(role='user', content=content, sequence=row['sequence'],
-                             event_key=row['event_key'], created_at=row['created_at']))
+        messages = []
+        task_channel = bool(tx.one('SELECT session_id FROM message_intake_sessions WHERE session_id=?',
+                                   (job['session_id'],)))
+        for row in rows:
+            source = policy.source(tx, job['session_id'], row['sequence'])
+            if source is not None:
+                messages.append(dict(role='user', content=source['content'], sequence=row['sequence'],
+                    event_key=row['event_key'], created_at=row['created_at'], source_proof=source['proof'],
+                    whole_source_required=task_channel))
+        # Filtering must not advance past unread source events in a full batch.
+        if rows:
+            ceiling = rows[-1]['sequence']
     return messages, ceiling
 
 
@@ -160,6 +172,12 @@ def _extraction_segments(messages, existing_facts):
                for index, message in enumerate(messages)]
     if _input_cost(indexed, existing_facts) <= limit:
         return [(indexed, existing_facts)]
+    if any(m.get('whole_source_required') for m in messages):
+        # New task inputs may contain distant conditions or negations. Narrow
+        # optional hints first, but never feed a local text window to the model.
+        if _input_cost(indexed, []) <= limit:
+            return [(indexed, [])]
+        raise MemoryExtractionError('Whole task source exceeds extraction request capacity')
     result = []
     for message in indexed:
         content, start = message['content'], 0
@@ -244,6 +262,9 @@ def _ground_facts(facts, messages, sid):
         if source is None:
             raise MemoryExtractionError('Candidate has no exact public user source')
         fact = deepcopy(candidate)
+        fact.metadata.pop('source_proof', None)
+        if 'source_proof' in source:
+            fact.metadata['source_proof'] = deepcopy(source['source_proof'])
         timestamp = datetime.fromisoformat(source['created_at'])
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
@@ -307,7 +328,7 @@ def process_memory_jobs(store, extract_fn=None, limit=20):
             continue
         try:
             messages, ceiling = _read_messages(store, job)
-            manager = build_memory_manager(job['user_id'])
+            manager = build_memory_manager(job['user_id'], store=store)
             if job.get('batch_through_sequence'):
                 # A previously started batch keeps the same identity through a
                 # retry, even if existing memory or batch settings have changed.
@@ -315,7 +336,10 @@ def process_memory_jobs(store, extract_fn=None, limit=20):
                 if not use_atomic_model and _input_cost(batch, existing) > request_input_limit(settings.chat_completion_options):
                     raise MemoryExtractionError('Pending extraction batch exceeds request capacity')
             else:
-                batch, existing = _bounded_batch(messages, manager.ltm.facts, allow_segments=use_atomic_model)
+                # Duplicate-avoidance hints are model input too. Do not send an
+                # invalidated or private old fact back to the extractor.
+                existing_facts = [f for f in manager.ltm.facts if manager.source_policy.allows(f)]
+                batch, existing = _bounded_batch(messages, existing_facts, allow_segments=use_atomic_model)
             through = batch[-1]['sequence'] if batch else ceiling
             with store.transaction() as tx:
                 pinned = tx.execute('''UPDATE support_memory_jobs SET batch_through_sequence=?
@@ -334,7 +358,8 @@ def process_memory_jobs(store, extract_fn=None, limit=20):
                     raise MemoryLeaseLost('Extraction worker no longer owns its lease')
 
             extracted = (extract_fn(batch, existing, on_segment=renew_lease) if use_atomic_model else extract_fn(batch, existing)) if batch else []
-            facts = _ground_facts(extracted, batch, job['session_id'])
+            facts = [f for f in _ground_facts(extracted, batch, job['session_id'])
+                     if manager.source_policy.allows(f)]
             # Renew the ownership fence before crossing into the memory store.
             with store.transaction() as tx:
                 owned = tx.execute('''UPDATE support_memory_jobs SET lease_until=?

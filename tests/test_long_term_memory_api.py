@@ -91,6 +91,22 @@ def test_chat_extracts_then_recalls_in_another_chat_for_the_same_user(memory_api
     assert get_current_user_id() is None
 
 
+def test_deleted_source_is_excluded_from_existing_chat_api_before_cleanup(memory_api):
+    from app.memory.maintenance import forget_source
+    api, calls = memory_api
+    client, headers, sid, send, _, _ = api
+    assert send('我长期喜欢黑色耳机').status_code == 200
+    assert process_memory_jobs(get_store(), extract_fn=lambda messages, existing: [fact()])['facts'] == 1
+    manager = build_memory_manager('user', store=get_store())
+    saved = manager.ltm.facts[0]
+    forget_source(get_store(), 'user', sid, int(saved.source_event_id.rsplit(':', 1)[1]))
+    result = client.post('/api/v1/chat', headers=headers(), json={
+        'message': '还记得我喜欢黑色耳机吗', 'session_id': str(uuid4()), 'request_id': str(uuid4())})
+    assert result.status_code == 200
+    assert not any(m.get('name') == 'long_term_memory' for m in calls[-1]['messages'])
+    assert calls[-1]['recall'].get('long_term_facts') == []
+
+
 def test_memory_load_failure_does_not_fail_chat(memory_api, monkeypatch):
     from app.memory import runtime
     api, calls = memory_api

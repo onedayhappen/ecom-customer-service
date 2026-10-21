@@ -857,7 +857,8 @@ def _handle_chat_inner(
     try:
         if settings.memory_enabled:
             try:
-                set_memory_manager(build_memory_manager(user_id))
+                from app.support.runtime import get_store
+                set_memory_manager(build_memory_manager(user_id, store=get_store()))
             except Exception as exc:
                 import logging
                 logging.getLogger(__name__).warning("Long-term memory load unavailable: %s", type(exc).__name__)

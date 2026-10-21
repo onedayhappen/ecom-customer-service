@@ -144,6 +144,12 @@ def apply_request_budget(params: dict, scene: str = "", model: str = "") -> dict
     if fits():
         return request
 
+    if scene == 'task_execution':
+        # Task inputs and read-tool results can carry conditions and negations
+        # anywhere in their text. The task harness stops explicitly instead of
+        # applying the legacy tool-content projection to these requests.
+        raise ContextBudgetExceeded(estimate_request_tokens(request), limit, reason='task_context')
+
     for name in ("short_term_recall", "long_term_memory", "short_term_summary"):
         messages[:] = [message for message in messages if not (
             message.get("role") == "system" and message.get("name") == name)]
