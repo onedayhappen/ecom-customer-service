@@ -95,13 +95,13 @@ python -m scripts.task_worker
 
 ## 独立分支复验
 
-再次在 `refactor-coordinated-replies` 分支、基线 `d5a2bcc` 上完成以下验证，结果全部通过。本次仅补充验收记录，没有修改业务代码。
+2026-10-21 在 `refactor-coordinated-replies` 分支的独立工作目录、基线 `85886bb` 上重新完成以下验证，结果全部通过。本次仅更新验收记录，没有修改业务代码。测试使用本分支源码，不包含后续模块的实现。
 
 | 检查 | 结果 |
 | --- | --- |
-| `tests/test_coordinated_replies.py` 与 `tests/test_coordinated_replies_http.py`，启用 `ECOM_INTEGRATION=1` | 57 通过，耗时 234.44 秒；覆盖 SQLite、隔离 PostgreSQL/Redis、多进程发布和真实 HTTP/SSE 补拉 |
+| `tests/test_coordinated_replies.py` 与 `tests/test_coordinated_replies_http.py`，启用 `ECOM_INTEGRATION=1` | 57 通过，无跳过，耗时 80.23 秒；覆盖 SQLite、隔离 PostgreSQL/Redis、多进程发布和真实 HTTP/SSE 补拉 |
 | 前端 `npm test` | 3 通过 |
-| 前端 `npm run test:browser` | Edge 浏览器 3 通过，耗时 45.4 秒 |
+| 前端 `npm run test:browser` | Edge 浏览器 3 通过，耗时 21.2 秒 |
 | `VITE_TASK_PIPELINE_ENABLED=false` 与 `true` 分别执行 `npm run build` | 两次构建通过 |
 
 浏览器验证包括请求未返回时继续发送、迟到响应保留输入、相同请求编号重试、快慢结果分别显示、重复及乱序通知去重和刷新恢复；已查看测试生成的页面截图。模型及业务查询仍使用受控替身，本次复验不代表线上模型准确率或真实业务提交验收。

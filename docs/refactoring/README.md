@@ -38,7 +38,7 @@
 | 05 | [修正错误关联并阻止错误继续传播](05-association-correction.md) | 已完成 | `refactor-association-correction` / `47672d9`；完整回归 986 通过、119 跳过；相关 SQLite/PostgreSQL 测试 138 通过，补充后的最新纠错测试 40 通过。覆盖字段级恢复、后续修改保留、来源失效、摘要重建竞争、重复纠错和业务状态未知时转人工。 |
 | 06 | [通过统一执行入口推进一个事项](06-task-execution.md) | 已完成 | `refactor-task-execution` / `b5cc58b`；完整回归 1017 通过、149 跳过；最新模块 SQLite/PostgreSQL 测试 59 通过，实际模型配受控工具 4/4 通过。覆盖工具与对象隔离、共享调用预算、超时、旧结果失效、等待释放资源、查询复用及真实模型提示注入。 |
 | 07 | [让独立事项并行处理](07-parallel-scheduling.md) | 已完成 | `refactor-task-scheduling` / `85d2e2e`；完整回归 1045 通过、179 跳过；06/07 相关 SQLite/PostgreSQL 测试 112 通过、1 跳过。覆盖同 session 并行查询、跨进程唯一执行与额度、条件等待、退出恢复、Redis 实际重启、迟到证据及跨会话转人工后恢复时的旧执行失效。 |
-| 08 | [协调回复并支持持续输入](08-coordinated-replies.md) | 已完成 | `refactor-coordinated-replies` / `335d75f`；完整回归 1073 通过、208 跳过；相关存储/API/执行/纠错及真实 HTTP 集成 266 通过、1 跳过，最终 08 专项 SQLite/PostgreSQL 共 56 通过。前端状态与浏览器测试共 6 通过，两种开关构建通过。覆盖持续输入、快慢结果、发布前后纠错、原子发布、多进程去重、SSE 跨实例补拉、页面刷新及重试恢复。 |
+| 08 | [协调回复并支持持续输入](08-coordinated-replies.md) | 已完成 | `refactor-coordinated-replies` / `335d75f`；实现时完整回归 1073 通过、208 跳过，相关集成 266 通过、1 跳过。2026-10-21 在独立模块分支复验：后端专项 57 通过、无跳过，前端状态与 Edge 浏览器测试共 6 通过，两种开关构建通过。覆盖持续输入、快慢结果、发布前后纠错、原子发布、多进程去重、SSE 跨实例补拉、页面刷新及重试恢复；详见本篇验收记录。 |
 | 09 | [确认具体内容后提交业务操作](09-confirmed-operations.md) | 未开始 | — |
 | 10 | [维护跨会话记忆和上下文](10-memory-maintenance.md) | 未开始 | — |
 | 11 | [按业务条件检索适用规则](11-policy-retrieval.md) | 未开始 | — |
