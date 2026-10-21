@@ -26,7 +26,7 @@ from app.data_plan.enums import Intent
 from app.data_plan.taxonomy import VALID_INTENTS, validate_manifest
 from app.prompts.intent_system import SYSTEM_PROMPT, with_intent_system
 
-# torch 为可选依赖（见 requirements-intent.txt）：缺失时分类器整体不可用，
+# torch 为可选依赖：缺失时分类器整体不可用，
 # 由 recognize 回退规则；模块导入不受影响。
 try:  # pragma: no cover - 环境依赖
     import torch  # noqa: F401

@@ -36,8 +36,7 @@ ecom-customer-service/
 ├── docs/                 架构、开发和发布说明
 ├── Dockerfile            后端镜像
 ├── docker-compose.yml    完整本地环境（PostgreSQL、Redis、MySQL、后端、前端）
-├── requirements.txt      主服务依赖
-└── requirements-intent.txt  意图模型训练的可选依赖
+└── requirements.txt      主服务依赖
 ```
 
 训练和评估的入口文件：
