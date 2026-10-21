@@ -1,17 +1,17 @@
 """IntentSpec 静态定义：每个意图需要哪些数据、工具、权限、执行路径。
 
 IntentSpec 是**静态定义层**（intent → 需求），与运行时的 Data Plan
-（结合 Case 上下文实例化）分离。装配差异显著且稳定的意图独立成类；
+（结合事项上下文实例化）分离。装配差异显著且稳定的意图独立成类；
 退款、换货和价保分别分类；旧任务规格保留用于兼容既有记录。
 
 字段说明：
 - ``tools``      引用 :mod:`app.data_plan.capabilities` 的能力 ID（按装配优先级排序）。
 - ``skills``     引用 ``app/skills/definitions/*`` 的 skill 名。
-- ``memory``     需要装配的数据源（会话/Case/画像/订单库/商品库/政策库）。
+- ``memory``     需要装配的数据源（会话/事项/画像/订单库/商品库/政策库）。
 - ``permission`` 权限等级：只读 / 执行前确认 / 升级转人工。
-- ``required_slots`` 执行前必须解析的实体/槽位，用于初始化 ``case.pending_slots``。
+- ``required_slots`` 执行前必须解析的实体/槽位，用于初始化待填字段清单。
 - ``fallback``   前置条件不满足时的降级策略。
-- ``execution``  workflow（确定性脚本）/ react（动态规划）。
+- ``execution``  历史规格中的执行方式；当前事项统一使用受控 ReAct 循环。
 - ``execution_ready`` 是否已经接入执行路径；False 时显式返回能力未接入。
 - ``retrievable`` 派生：是否需检索外部数据源（对应已废弃的 requires_retrieval）。
 """
@@ -30,7 +30,7 @@ class MemorySpec:
     """意图需要装配的数据源（均为布尔开关）。"""
 
     session: bool = False        # 会话记忆（短期上下文，指代消解）
-    case: bool = False           # Case 记忆（跨会话业务事实）
+    task_context: bool = False   # 事项进度与有来源的历史记录
     user_profile: bool = False   # 用户长期记忆 / 偏好画像
     order_db: bool = False       # 订单库
     product_db: bool = False     # 商品库
@@ -40,7 +40,7 @@ class MemorySpec:
         """返回已开启的数据源名（按固定顺序），用于装配与观测。"""
         order = (
             ("session", self.session),
-            ("case", self.case),
+            ("task_context", self.task_context),
             ("user_profile", self.user_profile),
             ("order_db", self.order_db),
             ("product_db", self.product_db),
@@ -113,7 +113,7 @@ _SPECS: tuple[IntentSpec, ...] = (
         execution=Execution.WORKFLOW,
         description="订单查询：状态/明细/金额；未提供订单号则列订单澄清",
         tools=("query_order", "list_user_orders"),
-        memory=MemorySpec(session=True, case=True, order_db=True),
+        memory=MemorySpec(session=True, task_context=True, order_db=True),
         required_slots=("order_id",),
         fallback=Fallback.CLARIFY,
     ),
@@ -123,7 +123,7 @@ _SPECS: tuple[IntentSpec, ...] = (
         execution=Execution.WORKFLOW,
         description="物流查询：快递公司/轨迹/到哪；缺订单号先查订单",
         tools=("query_order", "query_logistics", "list_user_orders"),
-        memory=MemorySpec(session=True, case=True, order_db=True),
+        memory=MemorySpec(session=True, task_context=True, order_db=True),
         required_slots=("order_id",),
         fallback=Fallback.CLARIFY,
     ),
@@ -133,7 +133,7 @@ _SPECS: tuple[IntentSpec, ...] = (
         execution=Execution.WORKFLOW,
         description="修改地址：校验订单未发货 + 新地址合法性后写入",
         tools=("query_order", "list_user_orders", "validate_address", "update_address"),
-        memory=MemorySpec(session=True, case=True, order_db=True),
+        memory=MemorySpec(session=True, task_context=True, order_db=True),
         permission=Permission.CONFIRM_REQUIRED,
         required_slots=("order_id", "new_address"),
         fallback=Fallback.EXPLAIN,
@@ -144,7 +144,7 @@ _SPECS: tuple[IntentSpec, ...] = (
         execution=Execution.WORKFLOW,
         description="取消订单：校验可取消状态后执行，并告知退款去向",
         tools=("query_order", "list_user_orders", "cancel_order"),
-        memory=MemorySpec(session=True, case=True, order_db=True),
+        memory=MemorySpec(session=True, task_context=True, order_db=True),
         permission=Permission.CONFIRM_REQUIRED,
         required_slots=("order_id",),
         fallback=Fallback.EXPLAIN,
@@ -155,7 +155,7 @@ _SPECS: tuple[IntentSpec, ...] = (
         execution=Execution.WORKFLOW,
         description="催发货/加急：校验未发货后触发仓库加急",
         tools=("query_order", "expedite_logistics"),
-        memory=MemorySpec(session=True, case=True, order_db=True),
+        memory=MemorySpec(session=True, task_context=True, order_db=True),
         permission=Permission.CONFIRM_REQUIRED,
         required_slots=("order_id",),
         fallback=Fallback.EXPLAIN,
@@ -169,7 +169,7 @@ _SPECS: tuple[IntentSpec, ...] = (
         description="售后申请：退/换/价保（槽位路由到 apply_refund/exchange/price_protect）",
         tools=("query_order", "list_user_orders", "search_knowledge",
                "apply_refund", "apply_exchange", "apply_price_protect"),
-        memory=MemorySpec(session=True, case=True, order_db=True, policy_kb=True),
+        memory=MemorySpec(session=True, task_context=True, order_db=True, policy_kb=True),
         permission=Permission.CONFIRM_REQUIRED,
         required_slots=("order_id", "reason"),
         fallback=Fallback.EXPLAIN,
@@ -180,7 +180,7 @@ _SPECS: tuple[IntentSpec, ...] = (
         execution=Execution.WORKFLOW,
         description="退款进度：退款单状态/到账节点；无退款单则说明",
         tools=("query_refund", "query_order", "list_user_orders"),
-        memory=MemorySpec(session=True, case=True, order_db=True),
+        memory=MemorySpec(session=True, task_context=True, order_db=True),
         required_slots=("order_id",),
         fallback=Fallback.EXPLAIN,
     ),
@@ -190,7 +190,7 @@ _SPECS: tuple[IntentSpec, ...] = (
         execution=Execution.REACT,
         description="问题反馈：故障/货损/货不对板诊断 + 售后条件判断，诊断无果升级",
         tools=("query_order", "list_user_orders", "search_knowledge", "analyze_image"),
-        memory=MemorySpec(session=True, case=True, order_db=True, policy_kb=True),
+        memory=MemorySpec(session=True, task_context=True, order_db=True, policy_kb=True),
         required_slots=("order_id",),
         fallback=Fallback.ESCALATE,
     ),
@@ -200,7 +200,7 @@ _SPECS: tuple[IntentSpec, ...] = (
         execution=Execution.WORKFLOW,
         description="发票管理：开票/查票/重开；需订单号 + 抬头类型 + 抬头信息",
         tools=("invoice_service", "query_order"),
-        memory=MemorySpec(session=True, case=True, order_db=True),
+        memory=MemorySpec(session=True, task_context=True, order_db=True),
         permission=Permission.CONFIRM_REQUIRED,
         required_slots=("order_id", "invoice_type", "title"),
         fallback=Fallback.EXPLAIN,
@@ -211,7 +211,7 @@ _SPECS: tuple[IntentSpec, ...] = (
         execution=Execution.REACT,
         description="投诉：安抚 + 核实 + 工单/转人工升级",
         tools=("query_order", "search_knowledge", "recall_user_memory", "escalate_to_human"),
-        memory=MemorySpec(session=True, case=True, user_profile=True, order_db=True, policy_kb=True),
+        memory=MemorySpec(session=True, task_context=True, user_profile=True, order_db=True, policy_kb=True),
         permission=Permission.ESCALATE,
         required_slots=("order_id",),
         fallback=Fallback.ESCALATE,
@@ -222,16 +222,16 @@ _SPECS: tuple[IntentSpec, ...] = (
         intent=Intent.CONFIRMATION,
         domain=Domain.DIALOG,
         execution=Execution.WORKFLOW,
-        description="确认/认可：触发决策规则执行待确认动作（case.pending_slots == confirmation）",
-        memory=MemorySpec(session=True, case=True),
+        description="确认/认可：结合事项和待答问题理解回应；业务提交仍需有效确认凭证",
+        memory=MemorySpec(session=True, task_context=True),
         fallback=Fallback.NORMAL_REPLY,
     ),
     IntentSpec(
         intent=Intent.ANSWER_QUESTION,
         domain=Domain.DIALOG,
         execution=Execution.WORKFLOW,
-        description="回答客服提问：填 case.pending_slots 槽位；无活跃流程则普通回应",
-        memory=MemorySpec(session=True, case=True),
+        description="回答客服提问：结合待答问题补充事项信息，归属不明时先澄清",
+        memory=MemorySpec(session=True, task_context=True),
         fallback=Fallback.NORMAL_REPLY,
     ),
     IntentSpec(
@@ -312,7 +312,7 @@ for _intent, (_title, _description) in DEFINITIONS.items():
     SPECS[_intent] = IntentSpec(
         intent=_intent, domain=_domain, execution=DEFAULT_EXECUTION[_intent],
         description=_description, tools=_NEW_TOOLS[_intent],
-        memory=MemorySpec(session=True, case=_intent in _NEW_AFTER_SALE,
+        memory=MemorySpec(session=True, task_context=_intent in _NEW_AFTER_SALE,
                           order_db=_intent in _NEW_AFTER_SALE | _NEW_ORDER,
                           product_db=_domain == Domain.PRESALE, policy_kb=True),
         permission=(Permission.CONFIRM_REQUIRED if _intent in _NEW_WRITES

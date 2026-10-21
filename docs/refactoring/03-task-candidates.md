@@ -6,7 +6,7 @@
 
 ## 改动位置
 
-`app/tasks`、`app/session/short_term.py`、`app/memory/case_manager.py`、`app/tools/user_orders.py`、`app/session/request_budget.py`。
+`app/tasks`、`app/session/short_term.py`、`app/memory/task_context.py`、`app/tools/user_orders.py`、`app/session/request_budget.py`。
 
 ## 实施步骤
 

@@ -57,7 +57,6 @@ def order_result(name, args):
 def local_budgets(monkeypatch):
     from app.config.settings import settings
     monkeypatch.setattr(settings, "api_concurrency_redis_url", "")
-    monkeypatch.setattr(settings, "case_storage_backend", "postgres")
 
 
 def test_reuses_agent_loop_saves_evidence_and_retry_receipt_without_publishing(store):
@@ -73,9 +72,8 @@ def test_reuses_agent_loop_saves_evidence_and_retry_receipt_without_publishing(s
         evidence = json.loads(tx.one("SELECT payload FROM support_events WHERE kind='task_tool_result'")["payload"])
         assert evidence["object"] == {"order_id": "ORD-A"}
         assert evidence["task_version"] == 1 and evidence["arguments"] == {"order_id": "ORD-A"}
-        case = json.loads(tx.one("SELECT payload FROM case_snapshots")["payload"])
-        assert case["events"][0]["event_id"] == result["evidence_ids"][0]
-        assert case["cases"] == []
+        assert tx.one("SELECT COUNT(*) AS n FROM support_events WHERE kind='task_tool_result'")["n"] == 1
+
     assert engine(Client()).execute_task(SupportStore(store.dsn), "alice", req, tools=order_result) == result
 
 
@@ -92,11 +90,11 @@ def test_ask_user_is_saved_and_waiting_does_not_call_model_again(store):
         assert tx.one("SELECT COUNT(*) AS n FROM runtime_jobs WHERE status='running'")["n"] == 0
 
 
-def test_save_case_context_writes_only_task_and_external_wait_releases_run(store):
+def test_save_task_progress_writes_only_task_and_external_wait_releases_run(store):
     record, source = task(store, "s")
     def wait(args):
         returned = json.loads(next(m["content"] for m in reversed(args["messages"]) if m["role"] == "tool"))
-        return response(calls=[("save_case_context", {"expected_version": 1, "state": "waiting_external",
+        return response(calls=[("save_task_progress", {"expected_version": 1, "state": "waiting_external",
                          "wait_reason": "等待物流更新", "evidence_id": returned["_task_evidence"]["event_id"]})])
     result = engine(Client(response(calls=[("query_order", {"order_id": "ORD-A"})]), wait)).execute_task(
         store, "alice", request(record, source), tools=order_result)
@@ -104,8 +102,7 @@ def test_save_case_context_writes_only_task_and_external_wait_releases_run(store
     current = TaskRepository(store, "alice").get(record.task_id)
     assert current.waiting_for["kind"] == "external" and current.version == 2
     with store.transaction(read_only=True) as tx:
-        case = json.loads(tx.one("SELECT payload FROM case_snapshots")["payload"])
-        assert case["cases"] == [] and "dialogue_draft" not in json.dumps(case)
+        assert tx.one("SELECT COUNT(*) AS n FROM support_events WHERE kind='task_tool_result'")["n"] == 1
 
 
 @pytest.mark.parametrize("action", ["apply_refund", "text_to_sql", "run_shell"])
@@ -327,13 +324,13 @@ def test_repeat_calls_and_tool_budget_have_finite_exit(store):
 
 def test_progress_tool_cannot_change_object_or_import_legacy_draft_fields(store):
     record, source = task(store, "s")
-    client = Client(response(calls=[("save_case_context", {
+    client = Client(response(calls=[("save_task_progress", {
         "expected_version": 1, "state": "in_progress", "order_id": "ORD-B", "fields": {"reason": "fake"},
     })]), response("请核对要修改的内容。"))
     engine(client).execute_task(store, "alice", request(record, source))
     assert TaskRepository(store, "alice").get(record.task_id) == record
     with store.transaction(read_only=True) as tx:
-        assert not tx.one("SELECT payload FROM case_snapshots")
+        assert not tx.one("SELECT payload FROM support_events WHERE kind='task_tool_result'")
 
 
 def test_unsupported_sensitive_question_is_not_saved_or_returned(store):
@@ -344,25 +341,19 @@ def test_unsupported_sensitive_question_is_not_saved_or_returned(store):
     assert "密码" not in result["reply"] and TaskRepository(store, "alice").get(record.task_id) == record
 
 
-def test_existing_case_evidence_remains_readable_without_drafts_or_tokens(store):
+def test_task_context_reads_only_current_task_sources_and_evidence(store):
     record, source = task(store, "s")
-    with store.transaction() as tx:
-        tx.execute("INSERT INTO case_snapshots VALUES (?,?)", ("alice", json.dumps({
-            "cases": [{"case_id": "case-a", "user_id": "alice", "order_ids": ["ORD-A"], "business_state": "historical",
-                       "conversation_state": {"dialogue_draft": {"secret": "obsolete draft"},
-                                              "pending_mutation": {"token_hash": "never-show"},
-                                              "idempotency": {"operation": {"action": "refund", "status": "succeeded", "token": "never-show"}}}}],
-            "events": [{"event_id": "old-tool", "event_type": "tool_result", "user_id": "alice",
-                        "payload": {"tool": "query_order", "evidence": {"success": True, "order": {"order_id": "ORD-A"}}}},
-                       {"event_id": "other-tool", "event_type": "tool_result", "user_id": "bob",
-                        "payload": {"tool": "query_order", "evidence": {"success": True, "order": {"order_id": "ORD-A"}, "secret": "foreign"}}}],
-        })))
-    client = Client(response(calls=[("read_case_memory", {"order_id": "ORD-A"})]), response("请重新查询当前状态。"))
+    other, _ = task(store, "other", user="bob", details={"order_id": "ORD-B"})
+    engine(Client(response(calls=[("query_order", {"order_id": "ORD-A"})]), response("已查到订单"))).execute_task(
+        store, "alice", request(record, source), tools=order_result)
+    client = Client(response(calls=[("read_task_context", {"order_id": "ORD-A"})]), response("请核对订单。"))
     engine(client).execute_task(store, "alice", request(record, source))
     feedback = json.loads(next(m["content"] for m in client.requests[-1]["messages"] if m["role"] == "tool"))
-    assert feedback["historical_tool_evidence"][0]["event_id"] == "old-tool"
-    assert feedback["historical_cases"][0]["operations"] == [{"action": "refund", "status": "succeeded"}]
-    assert all(word not in json.dumps(feedback) for word in ["never-show", "obsolete draft", "foreign"])
+    assert feedback["task"]["task_id"] == record.task_id
+    assert feedback["recent_tool_evidence"][0]["task_id"] == record.task_id
+    assert feedback["sources"]
+    assert other.task_id not in json.dumps(feedback)
+    assert "ORD-B" not in json.dumps(feedback)
 
 
 def test_canonical_arguments_reuse_success_but_expired_evidence_is_refreshed(store):

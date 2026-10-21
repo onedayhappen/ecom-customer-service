@@ -6,7 +6,7 @@ Agent 工作时仍能接收后续消息，并能在重启后找到未处理的�
 
 ## 改动位置
 
-`app/api/main.py`、`app/support/store.py`、`app/runtime/outbox.py`、`app/runtime/chat_queue.py`。
+`app/api/task_messages.py`、`app/tasks/intake.py`、`app/support/store.py`、`app/runtime/outbox.py`。
 
 ## 实施步骤
 

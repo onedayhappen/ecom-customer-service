@@ -89,7 +89,7 @@ def test_prepare_confirm_and_duplicate_recover_same_receipt(store):
     assert current.status == "waiting_external" and current.waiting_for["operation_id"] == card["operation_id"]
     with store.transaction(read_only=True) as tx:
         assert tx.one("SELECT COUNT(*) AS n FROM support_operations")["n"] == 1
-        assert tx.one("SELECT COUNT(*) AS n FROM case_snapshots")["n"] == 1
+        assert tx.one("SELECT COUNT(*) AS n FROM support_events WHERE kind='task_operation_result'")["n"] == 1
         assert not tx.one("SELECT * FROM task_operation_resources")
     assert sum("退款申请已登记" in m["content"] for m in store.public_history("s", "alice")) == 1
 
@@ -347,7 +347,7 @@ def test_atomic_receipt_failure_rolls_back_progress_and_public_message(store, mo
         confirm(service, card)
     assert TaskRepository(store, "alice").get(record.task_id).version == 1
     with store.transaction(read_only=True) as tx:
-        assert not tx.one("SELECT * FROM case_snapshots")
+        assert not tx.one("SELECT * FROM support_events WHERE kind='task_operation_result'")
         assert tx.one("SELECT status FROM support_operations")["status"] == "running"
     monkeypatch.setattr(store, "_event", original)
     with store.transaction() as tx:

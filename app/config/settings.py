@@ -91,9 +91,6 @@ class Settings(BaseSettings):
     # Memory 配置（第7期）
     memory_enabled: bool = True
     memory_dir: str = "data/sessions/memory"
-    # Case 是跨会话的业务事项；与用户画像记忆分开保存，保留审计事件。
-    case_dir: str = "data/sessions/cases"
-    case_storage_backend: str = 'json'
     memory_user_id: str = "default"
     max_ltm_facts: int = 50
     preference_memory_ttl_days: int = 90
@@ -145,8 +142,7 @@ class Settings(BaseSettings):
     order_cache_ttl_seconds: int = 300
     # 平台白名单（逗号分隔）：platform_code 只允许在列出的值内，防任意字符串路由。
     order_platform_codes: str = "pdd"
-    # API 对话按消息行写入 PostgreSQL；json 仅保留给 CLI 与离线兼容测试。
-    api_session_storage_backend: str = "postgres"
+    # 共享支持数据库的默认 PostgreSQL 地址；SUPPORT_DATABASE_URL 可覆盖。
     api_session_postgres_dsn: str = "postgresql://postgres:postgres@127.0.0.1:5432/ecom_agent"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
@@ -168,13 +164,10 @@ class Settings(BaseSettings):
     api_concurrency_redis_url: str = ""
     api_distributed_lease_seconds: float = Field(default=90.0, ge=6)
     api_queue_wait_seconds: float = Field(default=30.0, ge=0)
-    # async：API 入队后由 Agent Worker 执行；sync 仅用于本地兼容调试。
+    # 持续消息由事项 Worker 执行，共享容量与通知命名空间。
     api_chat_worker_concurrency: int = Field(default=2, ge=1)
     api_chat_queue_prefix: str = "ecom:chat"
     api_chat_queue_max_depth: int = Field(default=1000, ge=1)
-    api_chat_job_ttl_seconds: int = Field(default=3600, ge=60)
-    api_chat_queue_timeout_seconds: int = Field(default=120, ge=1)
-    api_chat_run_timeout_seconds: int = Field(default=600, ge=1)
     api_sse_max_connections: int = Field(default=2000, ge=1)
     api_sse_per_user: int = Field(default=5, ge=1)
     api_sse_send_timeout_seconds: float = Field(default=10, gt=0)
@@ -191,10 +184,6 @@ class Settings(BaseSettings):
     model_token_budget_per_minute: int = Field(default=1000000, ge=1)
     model_max_output_tokens: int = Field(default=2048, ge=1)
     model_queue_wait_seconds: float = Field(default=3, ge=0)
-
-    # Skill 配置（第8期）
-    skills_enabled: bool = True
-    skills_dir: str = "app/skills/definitions"
 
     # 可选的本地意图分类器。模型权重不随仓库分发；缺失或关闭时使用规则回退。
     intent_model_enabled: bool = False
@@ -222,20 +211,8 @@ class Settings(BaseSettings):
     # 统一工具客户端：瞬时失败自动重试次数（默认 0，ReAct 层负责重试策略）
     tool_retries: int = 0
 
-    # Evaluation 配置（第9期，离线评估工具，无聊天开关）
-    eval_dataset_path: str = "app/evaluation/cases.json"
-    # 评估报告默认落在测试产物目录，便于比较回归结果。
-    eval_output_path: str = "data/evaluation/eval_report.json"
-    eval_use_judge: bool = True  # 是否启用 LLM-as-judge（质量/幻觉/过程合理性）
-    eval_pass_threshold: float = 0.6  # 单维度通过阈值（judge 归一化到 0-1 后比较）
 
-    # 多轮对话管理：应用层不会把模型的理论上下文窗口用满。
-    session_path: str = "data/sessions/session.json"
-    context_input_budget_tokens: int = 192_000
-    context_compaction_trigger_ratio: float = 0.70
-    context_compaction_retain_ratio: float = 0.40
-
-    # 生产客服事件的短期上下文；与旧 JSON 会话压缩设置独立。
+    # 从当前客服事件构造工作记忆与摘要。
     short_term_memory_enabled: bool = True
     short_term_recent_tokens: int = Field(default=4000, ge=256)
     short_term_summary_tokens: int = Field(default=1200, ge=128)
@@ -289,7 +266,6 @@ class Settings(BaseSettings):
             # ReAct 当前不持久化 reasoning_content，关闭思考模式以保证工具循环兼容。
             return {"extra_body": {"thinking": {"type": "disabled"}}}
         return {}
-
 
 
 settings = Settings()

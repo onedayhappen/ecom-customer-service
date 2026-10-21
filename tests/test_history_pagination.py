@@ -1,4 +1,5 @@
 """Bounded history, cursor continuity, and historical ticket access boundaries."""
+from tests.legacy_fixtures import create_legacy_task
 import pytest
 
 from app.support.store import SupportStore, SupportError
@@ -45,7 +46,7 @@ def test_task_history_seeks_stably_and_rejects_other_user(store):
         with store.transaction() as tx:
             control = store._control(tx, 's', 'u')
             for _ in range(count):
-                task = store.tasks.create(tx, control, {'intent': 'logistics_inquiry', 'text': '查询物流'}, 'u')
+                task = create_legacy_task(store, tx, control, {'intent': 'logistics_inquiry', 'text': '查询物流'}, 'u')
                 task['status'] = 'completed'
                 store.tasks.save(tx, control, task, 'bot')
     completed_tasks(12)

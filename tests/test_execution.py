@@ -11,11 +11,10 @@ import json
 import pytest
 
 
-
 from app.agents.engine import AgentEngine
 from app.data_plan import DataPlan, build_data_plan
 from app.data_plan.enums import Execution
-from app.execution import ReactExecutor, ToolRunner, dispatch
+from app.execution import ReactExecutor
 
 
 def _plan(intent: str) -> DataPlan:
@@ -71,52 +70,6 @@ def _fake_execute(name: str, args: dict) -> str:
     if name == "search_knowledge":
         return json.dumps({"success": True, "results": [{"text": "支持七天无理由退货"}], "query": args.get("query")}, ensure_ascii=False)
     return json.dumps({"success": False, "error": f"unknown tool {name}"}, ensure_ascii=False)
-
-
-def _runner() -> ToolRunner:
-    return ToolRunner(execute=_fake_execute)
-
-
-# ---------------------------------------------------------------------------
-# Workflow：查询类（只读）
-# ---------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ---------------------------------------------------------------------------
-# Workflow：写操作（确认门控 + 未实现降级）
-# ---------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -185,38 +138,17 @@ def test_react_tools_pruned_by_plan():
 
 
 def test_react_confirmation_gate_blocks_mutating_tool():
-    # CONFIRM_REQUIRED 意图（after_sale_request）的写操作未确认 → 不执行、等待确认
+    # Even a plan containing a write tool cannot authorize a direct mutation.
     script = [_Msg(content="", tool_calls=[_TC("c1", "apply_refund", {"order_id": "ORD-20240120-002", "reason": "不想要了"})])]
     executor = ReactExecutor(client=_Client(script), model="test", execute=_fake_execute)
     result = executor.run(
         messages=[{"role": "user", "content": "帮我退款"}],
         plan=_plan("after_sale_request"),
         tool_definitions=[],
-        confirmed=False,
     )
-    assert result.needs_confirmation is True
+    assert result.blocked is True
     assert result.tool_steps == []          # 写操作未真正执行
     assert "确认" in result.reply
-
-
-def test_react_confirmation_gate_executes_when_confirmed():
-    # 用户确认后 → 写操作正常执行并进入证据包
-    script = [
-        _Msg(content="", tool_calls=[_TC("c1", "query_order", {"order_id": "ORD-20240120-002"})]),
-        _Msg(content="", tool_calls=[_TC("c2", "apply_refund", {"order_id": "ORD-20240120-002", "reason": "不想要了"})]),
-        _Msg(content="退款申请已提交"),
-    ]
-    executor = ReactExecutor(client=_Client(script), model="test", execute=_fake_execute)
-    result = executor.run(
-        messages=[{"role": "user", "content": "确认退款"}],
-        plan=_plan("after_sale_request"),
-        tool_definitions=[],
-        confirmed=True,
-    )
-    assert result.needs_confirmation is False
-    assert [s.name for s in result.tool_steps] == ["query_order", "apply_refund"]
-    assert result.tool_steps[-1].success
-    assert result.reply == "退款申请已提交"
 
 
 def test_react_readonly_tool_not_gated():
@@ -230,78 +162,6 @@ def test_react_readonly_tool_not_gated():
         messages=[{"role": "user", "content": "我收到的货有问题"}],
         plan=_plan("issue_report"),
         tool_definitions=[],
-        confirmed=False,
     )
     assert result.needs_confirmation is False
     assert result.tool_steps[0].name == "query_order"
-
-
-# ---------------------------------------------------------------------------
-# dispatch 三路分发
-# ---------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-def test_dispatch_react_requires_executor():
-    with pytest.raises(ValueError):
-        dispatch(_plan("complaint"), user_input="我要投诉")
-
-
-# ---------------------------------------------------------------------------
-# Workflow 回复生成器（确定性工具编排 + LLM 表述）
-# ---------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ---------------------------------------------------------------------------
-# ReAct system prompt：行为准则注入（改编自旧子 Agent prompt）
-# ---------------------------------------------------------------------------
-
-def test_react_system_prompt_injects_guideline_by_intent():
-    from app.execution.react import default_system_prompt
-
-    # 动态装配：任务描述 + DataPlan 裁剪的工具清单
-    prompt = default_system_prompt(_plan("complaint"))
-    assert "当前任务" in prompt
-    assert "可用工具" in prompt
-    # 静态准则：投诉 → 先安抚后处理 + 强制升级
-    assert "先安抚后处理" in prompt
-    assert "转人工" in prompt
-
-
-def test_react_system_prompt_guidelines_for_presale():
-    from app.execution.react import default_system_prompt
-
-    prompt = default_system_prompt(_plan("product_inquiry"))
-    assert "购物顾问" in prompt
-    assert "不编造" in prompt
-
-
-def test_react_system_prompt_without_guideline():
-    """对话流意图无 ReAct 准则（不走 ReAct，本函数不适用）；兜底意图有兜底准则。"""
-    from app.execution.react import default_system_prompt
-
-    prompt = default_system_prompt(_plan("others"))
-    assert "无法明确归类" in prompt

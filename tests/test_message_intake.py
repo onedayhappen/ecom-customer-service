@@ -78,13 +78,6 @@ def test_expired_association_lease_recovers_and_rejects_old_completion(store):
     first = intake.claim_next()
     with store.transaction() as tx:
         tx.execute("UPDATE runtime_jobs SET run_deadline=0 WHERE job_id=?", (first.job_id,))
-    # Legacy recovery never applies its business-side-effect rules to association.
-    assert store.jobs.recover() == 0
-    assert store.jobs.claim_delivery() is None
-    assert store.jobs.get(first.job_id, "alice") is None
-    with pytest.raises(SupportError):
-        with store.transaction() as tx:
-            store.jobs.started(tx, store._control(tx, "s", "alice"), first.job_id)
     second = MessageIntake(SupportStore(store.dsn)).claim_next()
     assert second.owner != first.owner and second.job_id == first.job_id
     with pytest.raises(SupportError):
@@ -234,8 +227,7 @@ def test_batch_limit_never_skips_messages_and_scope_is_checked(store):
     assert counts == [2, 2, 1]
     assert len(intake.progress("s", "alice", limit=2)["messages"]) == 2
     for call in (lambda: intake.progress("s", "bob"), lambda: intake.claim("s", "bob"),
-                 lambda: intake.receive("s", "bob", request_id="no", content="forbidden"),
-                 lambda: store.receive("s", "alice", "legacy", "legacy-request", task_input={})):
+                 lambda: intake.receive("s", "bob", request_id="no", content="forbidden")):
         with pytest.raises(SupportError):
             call()
 
@@ -300,5 +292,6 @@ def test_v10_migration_preserves_legacy_outbox_and_rolls_back_on_failure(empty_s
     monkeypatch.setattr(migrations, "migrate_message_intake", original)
     empty_store.initialize()
     SupportStore(empty_store.dsn).initialize()
-    delivery = empty_store.jobs.claim_delivery()
-    assert delivery["job_id"] == "old-job" and delivery["kind"] == "conversation"
+    with empty_store.transaction(read_only=True) as tx:
+        row = tx.one("SELECT * FROM runtime_jobs WHERE job_id='old-job'")
+    assert row["kind"] == "conversation" and row["status"] == "superseded"

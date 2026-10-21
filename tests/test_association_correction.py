@@ -283,9 +283,10 @@ def test_server_conflict_entries_require_existing_evidence(store, reason):
         with pytest.raises(SupportError):
             CorrectionService(store, "alice").correct("s", req)
         with store.transaction() as tx:
-            tx.execute("INSERT INTO case_snapshots VALUES (?,?)", ("alice", json.dumps({
-                "events": [{"event_id": "tool-check", "event_type": "tool_result", "user_id": "alice",
-                            "session_id": "s", "payload": {"actual_order": "ORD-A"}}]})))
+            control = store._control(tx, "s", "alice")
+            store._event(tx, control, "task_tool_result", "system", dict(event_id="tool-check",
+                task_id=wrong.task_id, tool="query_order", result={"actual_order": "ORD-A"}),
+                private=True, key="task-tool:tool-check")
     result = CorrectionService(store, "alice").correct("s", req)
     assert not result["needs_clarification"]
     assert TaskRepository(store, "alice").get(target.task_id).details["reason"] == "左耳没声音"

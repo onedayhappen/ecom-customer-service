@@ -306,7 +306,7 @@ def read_wait(store, goal, details, name, result):
         change_id=str(uuid4()), source=source, patch={'goal': goal})
     def save(params):
         value = json.loads(next(m['content'] for m in reversed(params['messages']) if m['role'] == 'tool'))
-        return response(calls=[('save_case_context', dict(expected_version=current.version, state='waiting_external',
+        return response(calls=[('save_task_progress', dict(expected_version=current.version, state='waiting_external',
             wait_reason='等待业务进展', evidence_id=value['_task_evidence']['event_id']))])
     reply = engine(Client(response(calls=[(name, {'order_id': details['order_id']})]), save)).execute_task(
         store, 'alice', request(current, source), tools=lambda *_: result)

@@ -121,7 +121,7 @@ class FailureClassifier:
     分类优先级：
 
     1. 工具显式声明的 ``error_code``（权威信号，与 FailureCategory 值一致）；
-    2. MutationGuard 的确认令牌拒绝（权威消息格式由本系统签发）；
+    2. 服务端操作确认 的确认令牌拒绝（权威消息格式由本系统签发）；
     3. 保守的文本推断（仅服务未改造的旧工具）；
     4. 无法识别的失败默认按 ``evidence_unavailable`` 处理——fail-closed，
        不重试、不编造。
@@ -199,7 +199,7 @@ class ReActPolicy:
     # -- 调用前：重复调用拦截 ---------------------------------------------
 
     def before_call(self, tool_name: str, arguments: dict[str, Any]) -> PolicyDecision:
-        if tool_name in {'read_case_memory', 'save_case_context'}:
+        if tool_name in {'read_task_context', 'save_task_progress'}:
             # Drafts can change across sessions during the same Agent turn.
             return PolicyDecision(Action.CONTINUE)
         cached = self._cache.get(self._call_key(tool_name, arguments))

@@ -119,10 +119,8 @@ class TaskRepository:
                     or json.loads(row['payload']).get('task_id') != source.task_id):
                 raise SupportError('人工交接来源不存在或不属于本事项', 422)
         else:
-            row = tx.one("SELECT payload FROM case_snapshots WHERE user_id=?", (self.user_id,))
-            events = json.loads(row["payload"]).get("events", []) if row else []
-            if not any(e.get("event_id") == source.event_id and e.get("event_type") == "tool_result"
-                       and e.get("user_id") == self.user_id and e.get("session_id") == source.session_id for e in events):
+            from app.tasks.evidence import find_evidence
+            if not find_evidence(tx, self.user_id, source.event_id, session_id=source.session_id):
                 raise SupportError("来源工具结果不存在或不可用", 422)
 
     def _check_source_owner(self, tx, session_id):

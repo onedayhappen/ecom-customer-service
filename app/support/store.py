@@ -16,7 +16,6 @@ from uuid import uuid4
 from app.tasks.service import SCHEMA as TASK_SCHEMA, TaskService
 from app.runtime.outbox import SCHEMA as JOB_SCHEMA, DurableJobs
 from app.runtime.notifications import SCHEMA as NOTIFICATION_SCHEMA, enqueue as enqueue_notification
-from app.memory.case_postgres import SCHEMA as CASE_SCHEMA
 from app.runtime.maintenance import SCHEMA as MAINTENANCE_SCHEMA
 from app.session.short_term import SCHEMA as CONTEXT_SCHEMA
 from app.memory.runtime import SCHEMA as MEMORY_RUNTIME_SCHEMA
@@ -72,8 +71,8 @@ SCHEMA = (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, response TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS support_bot_runs (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
-) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + CASE_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA + MEMORY_RUNTIME_SCHEMA
-SCHEMA_VERSION = 20
+) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA + MEMORY_RUNTIME_SCHEMA
+SCHEMA_VERSION = 22
 
 
 class Tx:
@@ -181,6 +180,17 @@ class SupportStore:
                             from app.tasks.migrations import migrate_pipeline_rollout
                             migrate_pipeline_rollout(tx)
                         tx.execute('CREATE TABLE IF NOT EXISTS support_schema_versions (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
+                        # Legacy Case data is deliberately discarded; task events remain authoritative.
+                        tx.execute('DROP TABLE IF EXISTS case_archives')
+                        tx.execute('DROP TABLE IF EXISTS case_snapshots')
+                        # Retire old queue reservations; preserve receipts for audit.
+                        tx.execute("""UPDATE support_conversations SET bot_job_id=NULL,
+                            control_version=control_version+1 WHERE bot_job_id IN
+                            (SELECT job_id FROM runtime_jobs WHERE kind='conversation')""")
+                        tx.execute("""UPDATE runtime_jobs SET status=CASE WHEN status='running'
+                            THEN 'interrupted' ELSE 'superseded' END,error='retired_pipeline',
+                            finished_at=COALESCE(finished_at,0) WHERE kind='conversation'
+                            AND status IN ('pending','dispatched','running')""")
                         tx.execute('INSERT INTO support_schema_versions VALUES (?,?) ON CONFLICT(version) DO NOTHING', (SCHEMA_VERSION, now()))
                 self._initialized = True
 
@@ -358,60 +368,6 @@ class SupportStore:
             handoffs.release(tx, c, ticket['ticket_id'])
             return self._state(tx, c)
 
-    def receive(self, sid, user, content, message_id, *, explicit_handoff=False, request_fingerprint=None, task_input=None, delivery=None):
-        """Append once; return routing version. Delivery to the bot queue is separate."""
-        with self.transaction() as tx:
-            c = self._control(tx, sid, user)
-            if tx.one("SELECT session_id FROM message_intake_sessions WHERE session_id=?", (sid,)):
-                raise SupportError("该会话使用持续消息入口，请从该入口继续")
-            if tx.one("SELECT job_id FROM support_bot_runs WHERE job_id=? AND session_id<>?", (message_id, sid)):
-                raise SupportError("消息 ID 已用于其他会话")
-            old = tx.one("SELECT payload FROM support_events WHERE session_id=? AND event_key=?", (sid, f"user:{message_id}"))
-            if old:
-                data = json.loads(old["payload"])
-                if data["content"] != content or data.get("request_fingerprint") != request_fingerprint:
-                    raise SupportError("消息 ID 已用于不同内容")
-                if c["mode"] == "bot" and c["control_version"] == data["route_version"]:
-                    cached = tx.one("SELECT job_id FROM support_bot_results WHERE job_id=? AND session_id=?", (message_id, sid))
-                    if not cached:
-                        if c["bot_job_id"] not in {None, message_id}:
-                            raise SupportError("会话已有其他任务，不能重放旧请求")
-                        if c["bot_job_id"] is None and tx.one("SELECT job_id FROM support_bot_runs WHERE job_id=?", (message_id,)):
-                            raise SupportError("该任务此前已启动但未返回结果，请转人工核实")
-                        tx.execute("UPDATE support_conversations SET bot_job_id=? WHERE session_id=?", (message_id, sid))
-                return {**self._state(tx, c), "route_version": data["route_version"], "duplicate": True}
-            task_route = {}
-            if task_input is not None and not explicit_handoff:
-                task_route = self.tasks.receive(tx, c, content, user, message_id, task_input)
-            if c["mode"] == "bot" and c["bot_job_id"] and not explicit_handoff and not task_route.get('background_control'):
-                raise SupportError("该会话已有 AI 任务，请等待完成或转人工")
-            self._event(tx, c, "message", user,
-                        {"role": "user", "content": content, "route_version": c["control_version"],
-                         "request_fingerprint": request_fingerprint, 'task_id': task_route.get('task_id')}, key=f"user:{message_id}")
-            if explicit_handoff:
-                self._handoff(tx, c, "customer_requested", user)
-            elif c["mode"] == "bot" and not task_route.get('background_control'):
-                tx.execute("UPDATE support_conversations SET bot_job_id=? WHERE session_id=?", (message_id, sid))
-                if delivery and not task_route.get('reply'):
-                    self.jobs.admit(tx, c, message_id, content, (task_input or {}).get('confirmation_token'), **delivery)
-            if task_route.get('background_control'):
-                result = {'session_id': sid, 'reply': task_route['reply'], 'intent': 'answer_question',
-                          'confidence': 1, 'requires_human': False, 'follow_up_question': None,
-                          'control_version': c['control_version']}
-                self._event(tx, c, 'message', 'bot', {'role': 'assistant', 'content': result['reply'],
-                            'task_id': task_route.get('control_task_id')}, key=f'bot:{message_id}')
-                tx.execute('INSERT INTO support_bot_results VALUES (?,?,?)', (message_id, sid, json.dumps(result, ensure_ascii=False)))
-            ticket = self._ticket(tx, c)
-            if ticket and c["mode"] == "human" and ticket["status"] in {"waiting_customer", "resolved"}:
-                enabled = ticket["assignee"] and self._role(tx, ticket["assignee"]) != "customer"
-                target = "in_progress" if enabled else "queued"
-                tx.execute("UPDATE support_tickets SET status=?,resolved_at=NULL,version=version+1 WHERE ticket_id=?", (target, ticket["ticket_id"]))
-                if not enabled:
-                    tx.execute("UPDATE support_tickets SET assignee=NULL WHERE ticket_id=?", (ticket["ticket_id"],))
-                    tx.execute("UPDATE support_conversations SET mode='handoff_pending' WHERE session_id=?", (sid,))
-                    c["mode"] = "handoff_pending"
-                self._event(tx, c, "support_state", user, {"status": target, "mode": c["mode"]})
-            return {**self._state(tx, c), "route_version": c["control_version"], "duplicate": False}
 
     def _ticket_view(self, tx, c, actor, tid):
         ticket = tx.one("SELECT * FROM support_tickets WHERE ticket_id=? AND session_id=?", (tid, c["session_id"]))
@@ -445,18 +401,18 @@ class SupportStore:
             cursor = rows[-1]["sequence"] if len(rows) == limit else ceiling
             return {"events": rows, "cursor": cursor, "state": state}
 
-    def context(self, sid, user, *, query='', exclude_latest_user=False):
+    def context(self, sid, user, *, query=''):
         from app.config.settings import settings
         if settings.short_term_memory_enabled:
             from app.session.short_term import ContextService
-            return ContextService(self).build(sid, user, query=query, exclude_latest_user=exclude_latest_user)
+            return ContextService(self).build(sid, user, query=query)
         with self.transaction(read_only=True) as tx:
             self._control(tx, sid, user)
             rows = tx.all("""SELECT payload FROM support_events WHERE session_id=? AND kind='message'
                 AND visibility='public' ORDER BY sequence DESC LIMIT 40""", (sid,))
             messages = [{"role": p["role"] if p["role"] == "user" else "assistant", "content": p["content"]}
                         for p in (json.loads(r["payload"]) for r in reversed(rows))]
-            return messages[:-1] if exclude_latest_user and messages and messages[-1]['role'] == 'user' else messages
+            return messages
 
     def transcript(self, sid, user, before=None, limit=50, *, staff=False, ticket_id=None):
         """Bootstrap from a bounded snapshot, then seek backwards through messages.
@@ -596,95 +552,6 @@ class SupportStore:
             raise BotInterrupted()
         return c
 
-    def publish_bot(self, sid, user, version, job_id, content, response=None):
-        with self.transaction() as tx:
-            c = self._check(tx, sid, user, version)
-            if response is not None:
-                self.tasks.finish(tx, c, job_id, response)
-                self.jobs.completed(tx, job_id, response)
-            self._event(tx, c, "message", "bot", {"role": "assistant", "content": content,
-                        'task_id': self.tasks.message_task_id(tx, job_id)}, key=f"bot:{job_id}")
-            if response is not None:
-                tx.execute("INSERT INTO support_bot_results VALUES (?,?,?) ON CONFLICT(job_id) DO NOTHING",
-                           (job_id, sid, json.dumps(response, ensure_ascii=False)))
-            tx.execute("UPDATE support_conversations SET bot_job_id=NULL WHERE session_id=? AND bot_job_id=?", (sid, job_id))
-
-    def start_bot(self, sid, user, version, job_id):
-        with self.transaction() as tx:
-            c = self._check(tx, sid, user, version)
-            if c["bot_job_id"] not in {None, job_id}:
-                raise SupportError("会话已有其他任务")
-            inserted = tx.execute("INSERT INTO support_bot_runs VALUES (?,?,?) ON CONFLICT(job_id) DO NOTHING",
-                                  (job_id, sid, now())).rowcount
-            if not inserted:
-                raise SupportError("该任务已启动过，请查看会话结果或转人工核实，不能重复执行")
-            tx.execute("UPDATE support_conversations SET bot_job_id=? WHERE session_id=?", (job_id, sid))
-            self.jobs.started(tx, c, job_id)
-            self.tasks.started(tx, c, job_id)
-
-    def release_bot(self, sid, user, job_id):
-        with self.transaction() as tx:
-            c = self._control(tx, sid, user)
-            if c['bot_job_id'] == job_id:
-                self.tasks.failed(tx, c, job_id)
-            tx.execute("UPDATE support_conversations SET bot_job_id=NULL WHERE session_id=? AND bot_job_id=?", (sid, job_id))
-
-    def release_admission(self, sid, user, job_id):
-        """An uncertain/rejected queue submission must not unlock an active worker."""
-        with self.transaction() as tx:
-            self._control(tx, sid, user)
-            if not tx.one("SELECT job_id FROM support_bot_runs WHERE job_id=?", (job_id,)):
-                tx.execute("UPDATE support_conversations SET bot_job_id=NULL WHERE session_id=? AND bot_job_id=?", (sid, job_id))
-
-    def failed_job(self, sid, user, job_id, interrupted=False):
-        with self.transaction() as tx:
-            c = self._control(tx, sid, user)
-            if c["bot_job_id"] != job_id:
-                return
-            if interrupted:
-                self._handoff(tx, c, "business_result_unknown", "system")
-            else:
-                self.tasks.failed(tx, c, job_id)
-            tx.execute("UPDATE support_conversations SET bot_job_id=NULL WHERE session_id=?", (sid,))
-
-    def evidence(self, sid, user, tool, arguments, result):
-        from app.observability.audit import mask_sensitive
-        with self.transaction() as tx:
-            c = self._control(tx, sid, user)
-            self._event(tx, c, "tool_evidence", "bot", mask_sensitive({"tool": tool, "arguments": arguments, "result": result}), private=True)
-
-    def bot_result(self, sid, user, job_id):
-        with self.transaction(read_only=True) as tx:
-            self._control(tx, sid, user)
-            row = tx.one("SELECT response FROM support_bot_results WHERE job_id=? AND session_id=?", (job_id, sid))
-            return json.loads(row["response"]) if row else None
-
-    def begin_operation(self, sid, user, version, tool):
-        with self.transaction() as tx:
-            c = self._check(tx, sid, user, version)
-            if tx.one("SELECT operation_id FROM support_operations WHERE session_id=? AND status IN ('running','unknown') LIMIT 1", (sid,)):
-                raise SupportError("已有业务操作执行中或结果待核实，请转人工处理")
-            oid = str(uuid4())
-            tx.execute("INSERT INTO support_operations VALUES (?,?,?,?,?,?,?)", (oid, sid, version, tool, "running", now(), None))
-            self._event(tx, c, "operation", "bot", {"operation_id": oid, "tool": tool, "status": "running"}, private=True)
-            return oid
-
-    def finish_operation(self, oid, result):
-        if result.get("success") is True:
-            status = "succeeded"
-        elif result.get("error_code") in {"business_rejection", "validation_error", "evidence_unavailable", "confirmation_invalid"}:
-            status = "failed"
-        else:
-            status = "unknown"
-        with self.transaction() as tx:
-            op = tx.one("SELECT * FROM support_operations WHERE operation_id=?", (oid,))
-            c = self._control(tx, op["session_id"])
-            updated = tx.execute("UPDATE support_operations SET status=?,result=? WHERE operation_id=? AND status IN ('running','unknown')",
-                                 (status, json.dumps(result, ensure_ascii=False), oid)).rowcount
-            self._event(tx, c, "operation" if updated else "operation_late_result", "bot",
-                        {"operation_id": oid, "status": status, "result": result}, private=True)
-            if updated and status == "unknown" and c["mode"] == "bot":
-                self._handoff(tx, c, "business_result_unknown", "system")
 
     def mark_unknown(self, oid, actor, evidence):
         """Operator attests the old executor stopped; never automatically retry it."""

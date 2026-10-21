@@ -239,7 +239,7 @@ class CandidateService:
             WHERE c.user_id=? AND c.task_id=? ORDER BY c.version DESC LIMIT 1""", (self.user, task_id))
         source = json.loads(change["payload"]).get("source") if change else None
         if source and source.get("kind") == "tool_result":
-            # The receipt stays in Case. Do not copy arbitrary tool text into
+            # The receipt stays in task evidence. Do not copy arbitrary tool text into
             # candidate context or treat the reference as current authority.
             result.append({**source, "requires_evidence_lookup": True})
         return result

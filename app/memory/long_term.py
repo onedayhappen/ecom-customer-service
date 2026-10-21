@@ -155,6 +155,8 @@ class LongTermMemory:
         self.version = version
         self.facts = []
         for item in data.get("facts", []):
+            if str(item.get("scope", "")).startswith("case:"):
+                continue
             self.facts.append(MemoryFact(
                 content=item["content"],
                 category=item.get("category", "other"),
@@ -174,7 +176,7 @@ class LongTermMemory:
                 superseded_by_memory_id=item.get("superseded_by_memory_id", ""),
                 allowed_agents=item.get("allowed_agents", []),
             ))
-        # 旧 episodic_memories 不再加载；业务情境由 Case 管理。
+        # 旧 episodic_memories 不再加载；事项进度由 app.tasks 管理。
         self.prune_expired()
 
     def history_facts(self) -> list[MemoryFact]:
@@ -294,9 +296,9 @@ class LongTermMemory:
                 scope = item.metadata.get('scope', 'user_preference')
                 if scope not in {'user_profile', 'user_preference'}:
                     continue
-            elif item.scope_type in {'case', 'session'} and item.scope_id:
+            elif item.scope_type == 'session' and item.scope_id:
                 # Structured ownership/scope is authoritative. Legacy metadata
-                # cannot promote a case/session record into a user profile.
+                # cannot promote a session record into a user profile; retired scopes are skipped.
                 scope = self._fact_scope_from_item(item)
             else:
                 continue
@@ -352,8 +354,7 @@ class LongTermMemory:
     def _fact_to_item(self, fact: MemoryFact) -> MemoryItem:
         """结构化事实 → MemoryItem。
 
-        scope_type/scope_id 决定这条事实属于用户、case 还是 session；当前主要使用 user
-        和 case，为后续更细粒度权限/检索预留。
+        scope_type/scope_id 区分用户与会话记录。事项进度只保存在 app.tasks，不写入用户画像。
         """
         self._namespace_ids([fact])
         scope_type, scope_id = self._scope_for_fact(fact)
@@ -395,14 +396,14 @@ class LongTermMemory:
         scope 使用字符串是为了兼容 LLM/旧 snapshot 输出；落库时转为结构化字段。
         """
         if fact.scope.startswith("case:"):
-            return "case", fact.scope.split(":", 1)[1]
+            raise ValueError("Retired Case scope cannot be written to user memory")
         if fact.scope.startswith("session:"):
             return "session", fact.scope.split(":", 1)[1]
         return "user", self.user_id
 
     def _fact_scope_from_item(self, item: MemoryItem) -> str:
         """把 MemoryItem 的结构化 scope 还原成 MemoryFact.scope。"""
-        if item.scope_type in {"case", "session"}:
+        if item.scope_type == "session":
             return f"{item.scope_type}:{item.scope_id}"
         return "user_preference"
 

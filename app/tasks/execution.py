@@ -155,9 +155,9 @@ class _TaskContext:
         }, ensure_ascii=False)}]
 
     def read_progress(self, arguments):
-        from app.tools.case_context import ReadCase
+        from app.tools.task_context import ReadTaskContext
         try:
-            query = ReadCase.model_validate(arguments)
+            query = ReadTaskContext.model_validate(arguments)
         except ValidationError:
             return _failure("invalid_progress_query")
         self.check()
@@ -165,33 +165,11 @@ class _TaskContext:
             return _failure("order_outside_task")
         from app.memory.task_context import task_history
         from app.memory.source_policy import safe_context
-        with self.runs.store.transaction(read_only=True) as tx:
-            row = tx.one("SELECT payload FROM case_snapshots WHERE user_id=?", (self.runs.user,))
-            snapshot = json.loads(row['payload']) if row else {}
-            order = self.record.details.get('order_id')
-            cases = [{"case_id": c['case_id'], "business_state": c.get('business_state'),
-                      "operations": [{"action": o.get('action'), "status": o.get('status')}
-                          for o in c.get('conversation_state', {}).get('idempotency', {}).values()]}
-                     for c in snapshot.get('cases', [])
-                     if order and order in c.get('order_ids', []) and c.get('user_id') == self.runs.user]
-            old_evidence = []
-            for e in snapshot.get('events', []):
-                p = e.get('payload', {})
-                if (e.get('event_type') != 'tool_result' or e.get('user_id') != self.runs.user or not order
-                        or p.get('tool') not in READ_SCHEMAS
-                        or p.get('tool') == 'search_knowledge'
-                        or _order_ids(p.get('evidence')) != {str(order).upper()}
-                        or p.get('task_id', self.record.task_id) != self.record.task_id
-                        or ('provenance' in p and not self.runs.guard.valid(p['provenance'], tx=tx))):
-                    continue
-                old_evidence.append(dict(event_id=e.get('event_id'), created_at=e.get('created_at'),
-                                         tool=p.get('tool'), evidence=p.get('evidence')))
         history = task_history(self.runs, self.record)
         self.memory.watch_sources(history['sources'] + history['historical_sources'])
         return {"success": True, "task": safe_context(self.record.model_dump()),
                 **history,
-                "historical_cases": safe_context(cases[:10]),
-                "historical_tool_evidence": safe_context(old_evidence[-10:]),
+                "recent_tool_evidence": safe_context(self.historical),
                 "evidence": [e for e in self.receipts if e["result"].get("success")],
                 "note": "事项是唯一进度；历史回执不代表当前业务状态，也不恢复授权。"}
 
@@ -289,10 +267,10 @@ class _TaskContext:
                 raise ExecutionStopped("preflight_timeout_or_capacity") from None
             self.operation_id = operation["operation_id"]
             raise ExecutionPrepared()
-        if name in {"read_case_memory", "save_case_context"}:
-            from app.tools.case_context import read_case_memory, save_case_context
-            result = (read_case_memory if name == "read_case_memory" else save_case_context)(**arguments)
-            if result.get("success") and name == "save_case_context" and self.record.status != "in_progress":
+        if name in {"read_task_context", "save_task_progress"}:
+            from app.tools.task_context import read_task_context, save_task_progress
+            result = (read_task_context if name == "read_task_context" else save_task_progress)(**arguments)
+            if result.get("success") and name == "save_task_progress" and self.record.status != "in_progress":
                 raise ExecutionWaiting()
             return json.dumps(result, ensure_ascii=False)
         args = self._validate_tool(name, arguments)
@@ -386,12 +364,12 @@ class TaskExecutor:
         plan = replace(build_conversation_plan(engine.intent), tools=tuple(sorted(context.allowed_tools)), skills=())
         definitions = [{"type": "function", "function": {"name": name, "description": name,
                         "parameters": schema.model_json_schema()}} for name, schema in READ_SCHEMAS.items()]
-        from app.tools.case_context import ReadCase
+        from app.tools.task_context import ReadTaskContext
         from app.tasks.execution_models import HandoffInput
         definitions += [{"type": "function", "function": {"name": name, "description": description,
                          "parameters": schema.model_json_schema()}} for name, schema, description in (
-            ("read_case_memory", ReadCase, "读取本事项进度和历史回执，不读取其他事项"),
-            ("save_case_context", ProgressInput, "保存本事项等待内容，等待时结束本次执行"),
+            ("read_task_context", ReadTaskContext, "读取本事项进度和历史回执，不读取其他事项"),
+            ("save_task_progress", ProgressInput, "保存本事项等待内容，等待时结束本次执行"),
             ('escalate_to_human', HandoffInput, '创建真实人工工单并停止当前会话的自动处理'))]
         if settings.task_operations_enabled:
             definitions.append({"type": "function", "function": {"name": "prepare_operation",

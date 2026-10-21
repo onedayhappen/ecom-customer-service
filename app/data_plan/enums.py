@@ -115,6 +115,6 @@ class CapabilityCategory(str, Enum):
     """工具能力所属类别（区别于 Intent 的业务域）。"""
 
     BUSINESS = "business"  # 业务域（订单/商品/物流/售后/执行）
-    MEMORY = "memory"      # 记忆域（用户长期记忆 / Case 记忆）
+    MEMORY = "memory"      # 记忆域（用户长期记忆 / 事项上下文）
     ENGINE = "engine"      # 引擎域（检索 / 推荐）
     AUGMENT = "augment"    # 增强域（满意度触达 / 图像 / 身份核验）

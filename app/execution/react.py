@@ -1,29 +1,7 @@
-"""统一对话执行器：直接回复或按需进行 LLM + 工具循环。
+"""Bounded ReAct loop for one task; business writes use TaskOperations.
 
-与 Workflow 的差别在于：下一步无法预先写死，需 Agent 根据工具返回动态规划。
-默认接待全部 31 类意图，使用统一对话策略；历史意图剧本仅用于回滚模式。
-
-工具集来自 :class:`DataPlan` 的 ``prompt_tool_names``（已实现能力 + load_skill），
-因此本执行器**不会**碰到未实现工具。知识检索无结果时 fail-closed，绝不编造政策。
-
-可靠执行策略（由 :class:`~app.reliability.failure_policy.ReActPolicy` 驱动）：
-
-> ReAct 可以决定"查什么"，但不能决定"失败后无限试、没有证据也回答、
-> 状态未知仍继续写"。
-
-- 重复调用（同工具+同参数）被拦截并回放缓存结果；
-- 读工具瞬时失败在执行器层透明重试一次（模型不感知中间失败）；
-- 写工具瞬时失败永不自动重试，先查询幂等状态，状态未知即转人工；
-- 全链路连续失败达到 3 次立即终止并降级（澄清/转人工/基于证据收尾）；
-- 最终回复经过 Evidence Pack 校验：订单号/金额/状态没有工具证据支撑的
-  句子被替换为保守表述。
-
-异步化设计（适配器模式）：
-- ``_run_impl`` 是共享核心逻辑（async），通过 ``call_llm`` 和 ``call_sync``
-  两个适配器抽象 LLM 调用与同步工具/DB 调用；
-- ``run()``（sync，测试/CLI 兼容）提供同步适配器——LLM 直接调用、工具直接执行；
-- ``run_async()``（async，API 生产路径）提供异步适配器——LLM ``await`` 不占线程、
-  工具 ``asyncio.to_thread`` 不阻塞事件循环。
+Both sync and async callers share the same tool whitelist, evidence checks,
+read retry limits and convergence rules. A model cannot confirm a mutation.
 """
 
 from __future__ import annotations
@@ -33,11 +11,9 @@ import json
 from typing import Any, Callable
 
 from app.data_plan import DataPlan
-from app.data_plan.capabilities import MUTATING_CAPABILITIES, get_capability
-from app.data_plan.enums import Permission
+from app.data_plan.capabilities import MUTATING_CAPABILITIES
 from app.execution.types import ExecutionResult, ToolStep
 from app.harness.convergence import CONVERGENCE_REPLY
-from app.prompts.react_guidelines import REACT_GUIDELINES
 from app.reliability.evidence import sanitize_reply, verify_reply
 from app.reliability.failure_policy import (
     EVIDENCE_FINALIZE_NOTE,
@@ -60,49 +36,18 @@ EVIDENCE_STOP_REPLY = (
     "如仍需帮助，请联系人工客服处理。"
 )
 
-IN_PROGRESS_REPLY = "该操作正在处理中，请勿重复提交，稍后可再次查询处理结果。"
 
 ToolExecutor = Callable[[str, dict[str, Any]], str]
 
 
 def business_evidence(steps: list[ToolStep]) -> list[dict]:
     """Conversation drafts may contain user claims, never proof of business facts."""
-    return [step.result for step in steps if step.name not in {'read_case_memory', 'save_case_context'}]
+    return [step.result for step in steps if step.name not in {'read_task_context', 'save_task_progress'}]
 
 
 def default_system_prompt(plan: DataPlan) -> str:
-    """从 IntentSpec 生成默认 system prompt。
-
-    结构 = 动态装配（任务描述 + DataPlan 裁剪的工具清单）+ 通用规则
-    + 按意图注入的行为准则（改编自旧子 Agent prompt，见
-    ``app/prompts/react_guidelines.py``）。工具清单不写死，
-    保证与 DataPlan 装配一致；准则提供角色定位与回复规范。
-    """
-    if plan.conversational:
-        from app.prompts.conversation import CONVERSATION_PROMPT
-        return CONVERSATION_PROMPT + f'\n本轮参考标签：{plan.intent.value}（{plan.description}）；以当前对话实际需求为准。'
-    tool_lines = [
-        f"- {name}: {get_capability(name).description}"
-        for name in plan.tools
-    ]
-    tools_text = "\n".join(tool_lines) if tool_lines else "（无）"
-    parts = [
-        "你是并夕夕平台的电商客服助手。",
-        f"当前任务：{plan.description}",
-        "可用工具：\n" + tools_text,
-        (
-            "通用规则：\n"
-            "1. 只基于工具返回的信息回答，绝不编造订单、商品或政策数据；\n"
-            "2. 需要查数据时调用最必要的工具，信息足够时直接回复；\n"
-            "3. 知识库检索无结果时，如实告知无法确认，不要臆测；\n"
-            "4. 需要用户确认或补充信息时，直接提问；\n"
-            "5. 不要用相同参数重复调用同一工具。"
-        ),
-    ]
-    guideline = REACT_GUIDELINES.get(plan.intent)
-    if guideline:
-        parts.append(guideline)
-    return "\n\n".join(parts)
+    from app.tasks.execution_models import TASK_PROMPT
+    return TASK_PROMPT
 
 
 class ReactExecutor:
@@ -148,7 +93,7 @@ class ReactExecutor:
         self._observed_execute = self._tool_client.call_tool
 
     # ------------------------------------------------------------------
-    # 同步入口（测试 / CLI 兼容）
+    # 同步入口（事项 Worker）
     # ------------------------------------------------------------------
 
     def run(
@@ -157,12 +102,9 @@ class ReactExecutor:
         plan: DataPlan,
         max_steps: int = 5,
         tool_definitions: list[dict] | None = None,
-        confirmed: bool = False,
-        mutation_guard=None,
-        confirmation_token: str | None = None,
         historical_evidence: list[dict] | None = None,
     ) -> ExecutionResult:
-        """同步执行 ReAct 循环（测试 / CLI 兼容路径）。
+        """同步执行 ReAct 循环，供事项 Worker 调用。
 
         通过 ``asyncio.run`` 调用共享核心 ``_run_impl``，适配器为同步直调：
         LLM 直接 ``client.chat.completions.create()``，工具直接 ``self._execute()``。
@@ -174,13 +116,12 @@ class ReactExecutor:
             return func(*a, **kw)
 
         return asyncio.run(self._run_impl(
-            messages, plan, max_steps, tool_definitions, confirmed,
-            mutation_guard, confirmation_token, call_llm, call_sync,
+            messages, plan, max_steps, tool_definitions, call_llm, call_sync,
             historical_evidence,
         ))
 
     # ------------------------------------------------------------------
-    # 异步入口（API 生产路径）
+    # 异步调用适配器
     # ------------------------------------------------------------------
 
     async def run_async(
@@ -189,12 +130,9 @@ class ReactExecutor:
         plan: DataPlan,
         max_steps: int = 5,
         tool_definitions: list[dict] | None = None,
-        confirmed: bool = False,
-        mutation_guard=None,
-        confirmation_token: str | None = None,
         historical_evidence: list[dict] | None = None,
     ) -> ExecutionResult:
-        """异步执行 ReAct 循环（API 生产路径）。
+        """异步执行相同的受控 ReAct 循环。
 
         LLM 调用通过 ``await client.chat.completions.create()`` 不占用线程，
         工具 / DB 调用通过 ``asyncio.to_thread`` 不阻塞事件循环。
@@ -211,8 +149,7 @@ class ReactExecutor:
             return await asyncio.to_thread(func, *a, **kw)
 
         return await self._run_impl(
-            messages, plan, max_steps, tool_definitions, confirmed,
-            mutation_guard, confirmation_token, call_llm, call_sync,
+            messages, plan, max_steps, tool_definitions, call_llm, call_sync,
             historical_evidence,
         )
 
@@ -226,9 +163,6 @@ class ReactExecutor:
         plan: DataPlan,
         max_steps: int,
         tool_definitions: list[dict] | None,
-        confirmed: bool,
-        mutation_guard,
-        confirmation_token: str | None,
         call_llm: Callable[..., Any],
         call_sync: Callable[..., Any],
         historical_evidence: list[dict] | None = None,
@@ -355,49 +289,9 @@ class ReactExecutor:
                     if report is not None:
                         return make_result(CONVERGENCE_REPLY)
 
-                # Unified conversation: authorization depends on the tool, never the label.
-                mutation_intent = plan.intent.value
-                if plan.conversational and name in MUTATING_CAPABILITIES:
-                    from app.execution.proposals import MUTATION_INTENTS, prepare_proposal
-                    mutation_intent = MUTATION_INTENTS.get(name, plan.intent.value)
-                    if mutation_guard is None:
-                        return make_result('当前缺少安全执行上下文，操作未执行，请重新进入会话或联系人工。', blocked=True)
-                    if not confirmation_token:
-                        proposal = await call_sync(prepare_proposal, name, args, self._observed_execute)
-                        steps.extend(proposal.steps)
-                        if proposal.error:
-                            result = {'success': False, 'error_code': 'validation_error', 'error': proposal.error}
-                            steps.append(ToolStep(name, args, result, blocked=True))
-                            working.append({'role': 'tool', 'tool_call_id': tc.id,
-                                            'content': json.dumps(result, ensure_ascii=False)})
-                            continue
-                        token = await call_sync(mutation_guard.request_confirmation, mutation_intent, name, args)
-                        return ExecutionResult(intent=plan.intent, execution=plan.execution,
-                                               reply=proposal.summary, tool_steps=steps,
-                                               needs_confirmation=True, confirmation_token=token)
-
-                # Legacy plans retain their historical confirmation contract.
-                # CONFIRM_REQUIRED 意图的写操作工具在未 confirmed 时不真正执行，
-                # 返回 needs_confirmation=True，等待用户确认后再带 confirmed=True 重跑。
-                if (
-                    name in MUTATING_CAPABILITIES
-                    and not plan.conversational
-                    and plan.permission == Permission.CONFIRM_REQUIRED
-                    and not confirmed
-                ):
-                    token = None
-                    if mutation_guard is not None:
-                        token = await call_sync(
-                            mutation_guard.request_confirmation,
-                            plan.intent.value, name, args,
-                        )
-                    return ExecutionResult(
-                        intent=plan.intent, execution=plan.execution,
-                        reply="该操作需要您确认后才能执行，请问是否确认继续？",
-                        tool_steps=steps,
-                        needs_confirmation=True,
-                        confirmation_token=token,
-                    )
+                # Only TaskOperations may commit writes after a fixed-card confirmation.
+                if name in MUTATING_CAPABILITIES:
+                    return make_result('业务操作必须通过事项确认卡片提交，本次未执行。', blocked=True)
 
                 # 重复调用拦截：同工具+同参数不再次执行，反馈已有结果
                 pre = policy.before_call(name, args)
@@ -417,23 +311,9 @@ class ReactExecutor:
                         historical_evidence=historical_evidence,
                     )
 
-                # 执行工具（写操作走 MutationGuard 幂等链）
+                result_str = await call_sync(self._observed_execute, name, args)
+                result = self._parse_result(result_str)
                 replayed = False
-                if mutation_guard is not None and name in MUTATING_CAPABILITIES:
-                    outcome = await call_sync(
-                        mutation_guard.execute,
-                        mutation_intent, name, args, confirmation_token,
-                        self._observed_execute,
-                    )
-                    result = dict(outcome.result)
-                    replayed = outcome.replayed
-                    if replayed:
-                        result["replayed"] = True
-                        any_replayed = True
-                    result_str = json.dumps(result, ensure_ascii=False)
-                else:
-                    result_str = await call_sync(self._observed_execute, name, args)
-                    result = self._parse_result(result_str)
 
                 # 失败策略决策
                 post = policy.after_call(name, args, result)
@@ -444,23 +324,7 @@ class ReactExecutor:
                     post = policy.after_call(name, args, result)
 
                 if post.action is Action.CHECK_IDEMPOTENCY:
-                    # 写操作瞬时失败：查询幂等状态，状态未知即转人工，绝不重提
-                    if mutation_guard is None:
-                        return make_result(HANDOFF_REPLY, needs_human=True)
-                    status = await call_sync(
-                        mutation_guard.query_idempotency_status,
-                        mutation_intent, name, args,
-                    )
-                    state = status.get("status")
-                    if state == "succeeded":
-                        result = dict(status.get("result") or {})
-                        result["note"] = "检测到此前执行已成功，以上为该操作的权威结果"
-                        result_str = json.dumps(result, ensure_ascii=False)
-                    elif state == "in_progress" and not status.get("stale"):
-                        return make_result(IN_PROGRESS_REPLY)
-                    else:
-                        # unknown / in_progress 已过期 / failed / not_found → 转人工
-                        return make_result(HANDOFF_REPLY, needs_human=True)
+                    return make_result(HANDOFF_REPLY, needs_human=True)
 
                 elif post.action is Action.STOP_CLARIFY:
                     return make_result(CLARIFY_REPLY)

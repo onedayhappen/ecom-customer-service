@@ -1,8 +1,4 @@
-"""执行层共享数据类型（Evidence Pack / 执行结果）。
-
-Workflow 与 ReAct 两条执行路径都产出统一的 :class:`ExecutionResult`，
-供 Response Agent 与 Case 更新层消费；:class:`ToolStep` 是证据包的基本单元。
-"""
+"""Task execution results and tool evidence used by the Harness."""
 
 from __future__ import annotations
 
@@ -36,8 +32,8 @@ class ToolStep:
 class ExecutionResult:
     """一次执行路径的完整产物。
 
-    - ``reply``            最终给用户的文本（Workflow 由脚本生成，ReAct 由 LLM 生成）。
-    - ``tool_steps``       证据包：本次所有工具调用及结果，供 Case 更新与审计。
+    - ``reply``            最终给用户的文本。
+    - ``tool_steps``       证据包：本次所有工具调用及结果，供事项进度与审计。
     - ``needs_confirmation`` 写操作类在未确认时的门控信号（对应 CONFIRM_REQUIRED）。
     - ``needs_human``      是否转人工（降级 / 升级）。
     - ``blocked``          是否因关键工具未实现而无法完整执行。
@@ -54,8 +50,6 @@ class ExecutionResult:
     confirmation_token: str | None = None
     # 幂等命中时复用此前成功结果，而非再次调用下游。
     replayed: bool = False
-    # 多订单澄清时由 workflow 产出的候选集；API 层负责持久化选择状态。
-    selection_candidates: list[dict[str, Any]] = field(default_factory=list)
     # needs_human 只表示需要人工介入；只有真实工单系统返回 ID 后才为 True。
     human_handoff_created: bool = False
     # Explicit waiting state; never infer a pending task from punctuation in a reply.

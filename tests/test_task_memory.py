@@ -232,7 +232,7 @@ def test_cross_session_refund_progress_has_receipt_without_confirmation_or_repla
     assert card['confirmation_token'] not in json.dumps(history)
     assert 'confirmation_token' not in json.dumps(history)
     assert len(business.writes) == 1
-    client = Client(response(calls=[('read_case_memory', {})]), response('退款申请已受理，需核实后续进度'))
+    client = Client(response(calls=[('read_task_context', {})]), response('退款申请已受理，需核实后续进度'))
     result = TaskExecutor(store, 'alice').run(request(current, resumed_source), engine(client))
     assert result['state'] == 'ready'
     assert len(business.writes) == 1

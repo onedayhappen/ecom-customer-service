@@ -1,4 +1,5 @@
 """Resource isolation and remote retrieval contracts."""
+from tests.intake_fixtures import receive_message
 import asyncio
 from types import SimpleNamespace
 from uuid import uuid4
@@ -71,7 +72,7 @@ def test_notification_hub_coalesces_and_releases_connections():
 def test_notification_outbox_does_not_drop_update_during_publish(tmp_path):
     store = SupportStore(f'sqlite:///{tmp_path / "notify.db"}')
     store.ensure('s', 'u')
-    store.receive('s', 'u', 'message', 'first')
+    receive_message(store, 's', 'u', 'message', 'first')
     publisher = NotificationPublisher(store, '', 'test')
     class Client:
         def publish(self, channel, payload):

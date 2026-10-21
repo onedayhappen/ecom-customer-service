@@ -1,4 +1,6 @@
 """Storage contracts against SQLite and opt-in, isolated real PostgreSQL."""
+from tests.intake_fixtures import receive_message
+from tests.legacy_fixtures import create_legacy_task
 import json
 import os
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -85,7 +87,7 @@ def test_multiple_matters_and_cross_session_restart(store):
         links = tx.all("SELECT * FROM support_task_messages WHERE task_id=?", (refund.task_id,))
     assert len(links) == 2  # Both sessions used sequence=1.
     # Default ingress cannot pause or rewrite a durable matter.
-    store.receive("s1", "alice", "你好", "new-old-route")
+    receive_message(store, "s1", "alice", "你好", "new-old-route")
     assert repo.get(refund.task_id) == result
     assert store.tasks.list("s1", "alice")["tasks"] == []
 
@@ -232,10 +234,11 @@ def test_tool_evidence_must_exist_and_belong_to_user_and_session(store):
     source = dict(kind="tool_result", session_id="s1", event_id="tool-1")
     with pytest.raises(SupportError):
         create(store, source=source)
-    event = dict(event_id="tool-1", event_type="tool_result", user_id="alice", session_id="s1",
-                 payload={"tool": "query_order", "success": True, "evidence": {"order_id": "ORD-A"}})
     with store.transaction() as tx:
-        tx.execute("INSERT INTO case_snapshots VALUES (?,?)", ("alice", json.dumps({"events": [event]})))
+        control = store._control(tx, "s1", "alice")
+        store._event(tx, control, "task_tool_result", "system", dict(event_id="tool-1",
+            tool="query_order", result={"success": True, "order": {"order_id": "ORD-A"}}),
+            private=True, key="task-tool:tool-1")
     record = create(store, source=source)
     assert TaskRepository(store, "alice").history(record.task_id)[0]["source"] == source
     with pytest.raises(SupportError):
@@ -286,7 +289,7 @@ def test_v9_migration_is_repeatable_and_old_flows_remain_readable(empty_store):
             assert {r["column_name"] for r in types if r["data_type"] == "jsonb"} == {"details", "waiting_for"}
         c = empty_store._control(tx, "s1", "alice")
         for _ in range(2):
-            legacy = empty_store.tasks.create(tx, c, {"intent": "logistics_inquiry", "text": "查物流"}, "alice")
+            legacy = create_legacy_task(empty_store, tx, c, {"intent": "logistics_inquiry", "text": "查物流"}, "alice")
             legacy["status"] = "ready"
             empty_store.tasks.save(tx, c, legacy, "alice")
     assert len(repo.list()) == 3

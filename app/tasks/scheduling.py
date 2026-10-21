@@ -342,7 +342,7 @@ class TaskWorker:
                 if running and attempts < 2 and record.status == "in_progress" and record.version == request.expected_version:
                     request = request.model_copy(update={"job_id": _id(row["job_id"], "readonly-recovery")})
                     service.enqueue(request, dependencies=payload["schedule"]["dependencies"], tx=tx, recovery=attempts + 1)
-                    # Executor loads only fresh, object-matching successful Case
+                    # Executor loads only fresh, object-matching successful task
                     # evidence. Missing/failed reads are safe to repeat; no model
                     # continuation, question or business action is blindly replayed.
         return recovered

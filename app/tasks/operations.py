@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from app.config.settings import settings
 from app.execution.business_operations import BusinessOperations
 from app.harness.bounded_call import bounded_calls
-from app.reliability.mutations import MutationGuard
+from app.tasks import confirmation_tokens
 from app.runtime.outbox import clock
 from app.support.store import SupportError, now
 from app.tasks.association import _id
@@ -101,10 +101,10 @@ class TaskOperations:
 
     def _token_valid(self, row, token):
         try:
-            current = MutationGuard.bound_token(self._binding(row), settings.api_jwt_secret)
+            current = confirmation_tokens.bound_token(self._binding(row), settings.api_jwt_secret)
         except ValueError:
             return False
-        return MutationGuard.token_matches(token, row["token_hash"]) and MutationGuard.token_matches(current, row["token_hash"])
+        return confirmation_tokens.token_matches(token, row["token_hash"]) and confirmation_tokens.token_matches(current, row["token_hash"])
 
     def _view(self, tx, row, sid):
         p = json.loads(row["payload"])
@@ -122,8 +122,8 @@ class TaskOperations:
                     raise SupportError("同一订单已有执行中或待核实的操作，请先核实原结果")
                 if clock(tx) >= row["expires_at"]:
                     raise SupportError("本次确认已过期，请重新核实操作内容")
-                token = MutationGuard.bound_token(self._binding(row), settings.api_jwt_secret)
-                if not MutationGuard.token_matches(token, row["token_hash"]):
+                token = confirmation_tokens.bound_token(self._binding(row), settings.api_jwt_secret)
+                if not confirmation_tokens.token_matches(token, row["token_hash"]):
                     raise SupportError("确认凭证已失效，请重新准备操作")
             except (SupportError, ValueError) as exc:
                 token, error = None, str(exc)
@@ -184,7 +184,7 @@ class TaskOperations:
             encoded, expiry = json.dumps(payload, ensure_ascii=False), clock(tx) + 600
             row = dict(operation_id=oid, task_id=task_id, task_version=expected_version, payload=encoded, expires_at=expiry)
             try:
-                token_hash = MutationGuard.token_hash(MutationGuard.bound_token(self._binding(row), settings.api_jwt_secret))
+                token_hash = confirmation_tokens.token_hash(confirmation_tokens.bound_token(self._binding(row), settings.api_jwt_secret))
             except ValueError:
                 raise SupportError("操作确认签名配置不可用", 503) from None
             tx.execute("INSERT INTO support_operations VALUES (?,?,?,?,?,?,?)",
@@ -301,16 +301,10 @@ class TaskOperations:
         """Keep actual side effects even if a later message changed the task."""
         oid, tid = row["operation_id"], row["task_id"]
         eid = _id(oid, "receipt:" + status)
-        tx.execute("INSERT INTO case_snapshots VALUES (?,?) ON CONFLICT DO NOTHING",
-                   (self.user, json.dumps(dict(user_id=self.user, cases=[], events=[]))))
-        snapshot = tx.one("SELECT payload FROM case_snapshots WHERE user_id=?" +
-                          (" FOR UPDATE" if tx.postgres else ""), (self.user,))
-        case = json.loads(snapshot["payload"])
-        case.setdefault("events", []).append(dict(event_id=eid, event_type="tool_result", user_id=self.user,
-            session_id=row["session_id"], turn_id=oid, case_id=None, created_at=now(), payload=dict(
-                tool=row["tool"], evidence=result, success=status == "succeeded", task_id=tid,
-                task_version=row["task_version"], operation_id=oid)))
-        tx.execute("UPDATE case_snapshots SET payload=? WHERE user_id=?", (json.dumps(case, ensure_ascii=False), self.user))
+        self.store._event(tx, control, "task_operation_result", "system", dict(
+            event_id=eid, tool=row["tool"], result=result, task_id=tid,
+            task_version=row["task_version"], operation_id=oid, status=status, observed_at=now()),
+            private=True, key="task-tool:" + eid)
         record = self.runs.repo._record(self.runs.repo._row(tx, tid, lock=True))
         if (status == "succeeded" and record.version == row["task_version"] and record.status == "in_progress"
                 and control["mode"] == "bot" and not tx.one("""SELECT c.session_id FROM task_sessions s

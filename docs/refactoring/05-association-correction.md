@@ -6,7 +6,7 @@
 
 ## 改动位置
 
-`app/tasks/service.py`、`app/reliability/mutations.py`、`app/session/short_term.py`、`app/memory`、`app/support/store.py`。
+`app/tasks/correction.py`、`app/tasks/repository.py`、`app/tasks/operations.py`、`app/session/short_term.py`、`app/memory`、`app/support/store.py`。
 
 ## 实施步骤
 

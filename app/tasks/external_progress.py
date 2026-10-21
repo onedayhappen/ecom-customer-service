@@ -42,14 +42,12 @@ def binding_for(tx, runs, record):
     waiting = record.waiting_for
     if not isinstance(waiting, dict) or not waiting.get('evidence_id'):
         raise ExternalEvidenceError('等待进度缺少业务来源')
-    row = tx.one('SELECT payload FROM case_snapshots WHERE user_id=?', (runs.user,))
-    events = json.loads(row['payload']).get('events', []) if row else []
-    event = next((e for e in events if e.get('event_id') == waiting['evidence_id']
-        and e.get('user_id') == runs.user and e.get('event_type') == 'tool_result'
-        and e.get('payload', {}).get('task_id') == record.task_id), None)
-    if not event or not event['payload'].get('success'):
+    from app.tasks.evidence import find_evidence
+    stored = find_evidence(tx, runs.user, waiting['evidence_id'], task_id=record.task_id)
+    evidence = stored['payload'] if stored else {}
+    if evidence.get('result', {}).get('success') is not True:
         raise ExternalEvidenceError('外部等待来源尚未核实')
-    details, evidence = record.details, event['payload']
+    details = record.details
     if not details.get('order_id'):
         raise ExternalEvidenceError('外部等待没有明确订单')
     binding = {k: details[k] for k in ('order_id', 'platform_code', 'store_id', 'item_id', 'item_name', 'sku_id', 'product_id',
@@ -80,21 +78,18 @@ def binding_for(tx, runs, record):
     else:
         if evidence.get('object') != object_key(record):
             raise ExternalEvidenceError('等待来源与当前事项对象不同')
-        field = "payload::jsonb->>'event_id'" if tx.postgres else "json_extract(payload,'$.event_id')"
-        stored = tx.one(f"SELECT session_id,sequence,payload FROM support_events WHERE kind='task_tool_result' AND {field}=?",
-                        (waiting['evidence_id'],))
-        if (not stored or not context_event_valid(tx, stored['session_id'], stored['sequence'])
-                or any(invalid(tx, runs.user, 'decision', did) for did in json.loads(stored['payload'])['provenance']['decisions'])):
+        if (not context_event_valid(tx, stored['session_id'], stored['sequence'])
+                or any(invalid(tx, runs.user, 'decision', did) for did in evidence['provenance']['decisions'])):
             raise ExternalEvidenceError('等待来源已失效，须重新查询')
         if evidence['tool'] == 'query_logistics':
-            entity = evidence.get('evidence', {}).get('logistics', {})
+            entity = evidence.get('result', {}).get('logistics', {})
             tracking = entity.get('tracking_number')
             if not tracking or details.get('tracking_number') not in (None, tracking):
                 raise ExternalEvidenceError('物流来源无法对应当前运单')
             binding.update(kind='logistics', tracking_number=tracking,
                 completion='tracking_delivered' if details.get('tracking_number') == tracking else 'manual')
         elif evidence['tool'] == 'query_order':
-            order = evidence.get('evidence', {}).get('order') or {}
+            order = evidence.get('result', {}).get('order') or {}
             if order.get('refund_status'):
                 binding['kind'] = 'refund'
             elif order.get('tracking_number'):
@@ -106,7 +101,7 @@ def binding_for(tx, runs, record):
             else:
                 raise ExternalEvidenceError('当前订单查询不足以建立外部跟进，需要查询具体售后或运单')
         elif evidence['tool'] == 'query_after_sale':
-            result = evidence.get('evidence', {})
+            result = evidence.get('result', {})
             kinds = {r.get('kind') for r in result.get('records', [])
                 if not binding.get('after_sale_id') or r.get('after_sale_id') == binding['after_sale_id']}
             if len(kinds) == 1 and kinds <= {'refund', 'return'}:
@@ -282,14 +277,10 @@ class ExternalProgress:
             if not inserted:
                 return 'duplicate'
             eid = 'external:' + tid + ':' + value['event_id']
-            tx.execute('INSERT INTO case_snapshots VALUES (?,?) ON CONFLICT DO NOTHING',
-                (user, encode(dict(user_id=user, cases=[], events=[]))))
-            case = json.loads(tx.one('SELECT payload FROM case_snapshots WHERE user_id=?' +
-                (' FOR UPDATE' if tx.postgres else ''), (user,))['payload'])
-            case.setdefault('events', []).append(dict(event_id=eid, event_type='tool_result', user_id=user,
-                session_id=lease['session_id'], created_at=now(), payload=dict(tool='external_progress',
-                    success=True, task_id=tid, task_version=record.version, evidence=value)))
-            tx.execute('UPDATE case_snapshots SET payload=? WHERE user_id=?', (encode(case), user))
+            self.store._event(tx, control, 'task_external_result', 'system', dict(
+                event_id=eid, tool='external_progress', result=dict(success=True, progress=value),
+                task_id=tid, task_version=record.version, observed_at=now()),
+                private=True, key='task-tool:' + eid)
             completed = finished(binding, value)
             waiting = {**record.waiting_for, 'external_progress': value, 'next_check_at': at + settings.task_external_interval_seconds}
             after = runs.repo.update(tid, lease['session_id'], expected_version=record.version,

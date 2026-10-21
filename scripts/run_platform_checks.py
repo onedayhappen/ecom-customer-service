@@ -26,12 +26,11 @@ def main():
     with tempfile.TemporaryDirectory(prefix='ecom-checks-') as directory:
         os.environ.update({
             'ORDER_DB_DSN': '', 'ORDER_CACHE_REDIS_URL': '', 'MEMORY_REDIS_URL': '',
-            'API_CONCURRENCY_REDIS_URL': '', 'API_SESSION_STORAGE_BACKEND': 'json',
+            'API_CONCURRENCY_REDIS_URL': '',
             'API_SESSION_POSTGRES_DSN': '', 'MEMORY_POSTGRES_DSN': '',
             'SUPPORT_DATABASE_URL': 'sqlite:///' + str(Path(directory) / 'support.db'),
             'MEMORY_STORAGE_BACKEND': 'json', 'MEMORY_ENABLED': 'false',
-            'MEMORY_DIR': str(Path(directory) / 'memory'), 'CASE_DIR': str(Path(directory) / 'cases'),
-            'CASE_STORAGE_BACKEND': 'json',
+            'MEMORY_DIR': str(Path(directory) / 'memory'),
             'INTENT_MODEL_ENABLED': 'false', 'OBSERVABILITY_ENABLED': 'true', 'AUDIT_ENABLED': 'false',
             'MCP_ENABLED': 'false', 'RETRIEVAL_SERVICE_URL': '',
             'DEEPSEEK_API_KEY': '', 'OPENAI_API_KEY': '', 'DASHSCOPE_API_KEY': '', 'ROUTER_API_KEY': '',
@@ -39,8 +38,6 @@ def main():
             'API_AUTH_USERS': '', 'API_JWT_SECRET': 'isolated-test-runner-jwt-key-32-characters',
             'ECOM_INTEGRATION': '1' if integration else '0',
         })
-        from app.session import repository
-        repository.JSON_SESSION_DIR = Path(directory) / 'sessions'
         import pytest
         files = ['tests']
         files = args.paths or files

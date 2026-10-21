@@ -13,8 +13,7 @@ import pytest
 from app.config.settings import settings
 from app.data.commerce_dao import MySqlCommerceDAO, TABLES
 from app.data.order_dao import MySqlOrderDAO
-from app.memory.case_manager import CaseManager
-from app.reliability.mutations import MutationGuard
+from app.tools.mutation_context import authorized_mutation
 from app.tools.commerce import invoke
 from app.tools.request_context import set_current_user_id, reset_current_user_id
 from scripts.init_commerce_db import demo_records
@@ -115,28 +114,26 @@ def test_order_queries_deny_foreign_orders(db_case, name):
         reset_current_user_id(token)
 
 
-def test_guarded_invoice_issue_replay_reissue_and_status(db_case, tmp_path):
-    db, identity, order_id, _, _, _ = db_case
-    guard = MutationGuard(CaseManager(identity, str(tmp_path)), 'session')
+def test_database_invoice_issue_replay_reissue_and_status(db_case):
+    _, identity, order_id, _, _, _ = db_case
+    def write(action, args, key):
+        with authorized_mutation(identity, action, args, key):
+            return invoke(action, args)
     args = args_for_invoice(order_id)
-    token = guard.request_confirmation('invoice_request', 'issue_invoice', args)
-    first = guard.execute('invoice_request', 'issue_invoice', args, token, invoke).result
+    key = uuid4().hex
+    first = write('issue_invoice', args, key)
     assert first['success'] and first['is_demo'], first
     assert first['invoice']['status'] == 'issued_local'
-    replay = guard.execute('invoice_request', 'issue_invoice', args, token, invoke)
-    assert replay.replayed and replay.result['invoice'] == first['invoice']
+    replay = write('issue_invoice', args, key)
+    assert replay['replayed'] and replay['invoice'] == first['invoice']
     assert invoke('query_mutation_status', {'request_id': first['request_id']})['status'] == 'succeeded'
     assert len(invoke('query_invoice', {'order_id': order_id})['invoices']) == 1
-    # A fresh server guard with a different Case must still reject duplicate new invoices.
-    second = MutationGuard(CaseManager(identity, str(tmp_path / 'another')), 'another-session')
-    again = args_for_invoice(order_id)
-    again_token = second.request_confirmation('invoice_request', 'issue_invoice', again)
-    assert second.execute('invoice_request', 'issue_invoice', again, again_token, invoke).result['error_code'] == 'business_rejection'
+    # A new operation identifier still cannot create a duplicate invoice.
+    assert write('issue_invoice', args_for_invoice(order_id), uuid4().hex)['error_code'] == 'business_rejection'
     changed = args_for_invoice(order_id)
     changed['invoice_id'] = first['invoice']['invoice_id']
     changed['fields'] = {'title': '测试公司', 'invoice_type': 'company', 'tax_id': 'TEST-TAX-ID'}
-    reissue_token = guard.request_confirmation('invoice_request', 'reissue_invoice', changed)
-    reissued = guard.execute('invoice_request', 'reissue_invoice', changed, reissue_token, invoke).result
+    reissued = write('reissue_invoice', changed, uuid4().hex)
     assert reissued['success'], reissued
     invoices = invoke('query_invoice', {'order_id': order_id})['invoices']
     assert sorted(i['status'] for i in invoices) == ['issued_local', 'replaced_local']
@@ -148,14 +145,13 @@ def test_guarded_invoice_issue_replay_reissue_and_status(db_case, tmp_path):
         reset_current_user_id(token)
 
 
-def test_changed_order_after_preview_requires_new_confirmation(db_case, tmp_path):
+def test_changed_order_after_preview_requires_new_confirmation(db_case):
     db, identity, order_id, _, _, _ = db_case
     args = args_for_invoice(order_id)
-    guard = MutationGuard(CaseManager(identity, str(tmp_path)), 's')
-    token = guard.request_confirmation('invoice_request', 'issue_invoice', args)
     with db._connection() as conn, conn.cursor() as cur:
         cur.execute("UPDATE orders SET status='delivered' WHERE order_id=%s AND user_id=%s", (order_id, identity))
-    result = guard.execute('invoice_request', 'issue_invoice', args, token, invoke).result
+    with authorized_mutation(identity, 'issue_invoice', args, uuid4().hex):
+        result = invoke('issue_invoice', args)
     assert result['error_code'] == 'confirmation_invalid'
     assert invoke('query_invoice', {'order_id': order_id})['invoices'] == []
 

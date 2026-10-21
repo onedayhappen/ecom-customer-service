@@ -2,7 +2,11 @@
 from decimal import Decimal, InvalidOperation
 import json
 
-from app.execution.proposals import MUTATION_INTENTS
+MUTATION_INTENTS = {
+    'apply_refund': 'refund_service',
+    'issue_invoice': 'invoice_request',
+    'reissue_invoice': 'invoice_request',
+}
 from app.tools.commerce_models import InvoiceFields
 
 

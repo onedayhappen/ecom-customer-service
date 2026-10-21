@@ -1,4 +1,6 @@
 """Evidence, scope, cursor and failure invariants for support short-term memory."""
+from tests.intake_fixtures import receive_message
+from tests.legacy_fixtures import create_legacy_task
 import json
 
 import pytest
@@ -56,7 +58,7 @@ def job(store, scope='session'):
 def new_task(store, text):
     with store.transaction() as tx:
         control = store._control(tx, 's', 'u')
-        return store.tasks.create(tx, control, {'intent': 'logistics_inquiry', 'text': text}, 'u')
+        return create_legacy_task(store, tx, control, {'intent': 'logistics_inquiry', 'text': text}, 'u')
 
 
 def test_early_public_recall_and_internal_exclusion(store):
@@ -90,15 +92,6 @@ def test_task_scope_and_membership_after_admission(store):
         ContextService(store).build('s', 'other-user', first['task_id'])
     with pytest.raises(SupportError):
         ContextService(store).build('s', 'u', 'missing-task')
-
-
-def test_same_text_input_exclusion_uses_event_id_and_snapshot_ceiling(store):
-    append(store, [('user', '相同内容'), ('assistant', '之前回复')])
-    store.receive('s', 'u', '相同内容', 'job-current')
-    append(store, [('user', '后到消息'), ('assistant', '后到回复')])
-    context = ContextService(store).build('s', 'u', exclude_latest_user=True)
-    assert raw_context(context) == [{'role': 'user', 'content': '相同内容'},
-                                    {'role': 'assistant', 'content': '之前回复'}]
 
 
 def test_budget_removes_whole_old_turns_and_keeps_multiple_staff_replies(store, monkeypatch):

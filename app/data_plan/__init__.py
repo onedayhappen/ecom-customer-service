@@ -1,7 +1,7 @@
-"""意图装配层（IntentSpec / Data Plan）。
+"""Intent metadata and tool plans.
 
-管线：意图分类器输出 {intent} → :func:`get_intentspec` 查静态定义
-→ :func:`build_data_plan` 结合可用工具集实例化 → Workflow/ReAct/规则执行。
+Classification labels describe requests. Current task execution replaces the
+plan's tool set with a server-validated task whitelist; labels grant no authority.
 """
 
 from app.data_plan.enums import (

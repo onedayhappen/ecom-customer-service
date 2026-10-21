@@ -15,7 +15,7 @@
 
 3. **缓存键包含 user_id**：``ecom:order:{platform}:{order_id}:{user_id}``，
    命中即归属安全，无需在缓存层重复校验；订单写操作成功后由调用方
-   （MutationGuard 成功路径）按同构键主动失效。
+   （服务端操作确认 成功路径）按同构键主动失效。
 
 4. 返回结构与现有本地工具同构（``success/order|error/error_code``），
    下游 FailureClassifier / ReActPolicy 无需任何改动即可分类。
@@ -60,7 +60,7 @@ def cache_key(order_id: str, platform_code: str, user_id: str) -> str:
 
 
 def invalidate_order_cache(order_id: str, platform_code: str, user_id: str) -> None:
-    """订单状态写操作成功后主动失效缓存（由 MutationGuard 成功路径调用）。"""
+    """订单状态写操作成功后主动失效缓存（由 服务端操作确认 成功路径调用）。"""
     cache = _get_cache()
     if cache is not None:
         cache.delete(cache_key(order_id, platform_code, user_id))

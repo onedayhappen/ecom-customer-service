@@ -22,7 +22,7 @@ def test_preupgrade_backup_restores_original_messages_and_business_receipts(stor
     with store.transaction() as tx:
         for table in ('task_legacy_imports', 'task_rollout_audit', 'task_pipeline_users', 'task_pipeline_state'):
             tx.execute('DROP TABLE ' + table)
-        tx.execute('DELETE FROM support_schema_versions WHERE version=20')
+        tx.execute('DELETE FROM support_schema_versions WHERE version>=20')
         tx.execute("INSERT INTO support_schema_versions VALUES (19,'before-upgrade') ON CONFLICT DO NOTHING")
     before = store.public_history('s', 'alice')
     target_database = 'rollout_restore_' + uuid4().hex

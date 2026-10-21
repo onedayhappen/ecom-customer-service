@@ -9,7 +9,7 @@
   ``recall_user_memory`` 工具。
 - 跳过路径：明显的实时业务查询，例如“查询订单 DX123 的物流”，直接走业务工具。
 
-这里故意保持保守：误注入长期记忆比漏注入更危险，因为旧画像或旧 case 线索可能
+这里故意保持保守：误注入长期记忆比漏注入更危险，因为旧画像或历史事项线索可能
 污染实时业务判断。漏掉的情况仍可由 Agent 工具路径补查。
 """
 
@@ -116,7 +116,7 @@ class MemoryQueryRouter:
         if has_order_id:
             return MemoryRouteDecision(False, "explicit_entity_query", route="realtime")
 
-        # Historical commitments belong to public events/cases, not the user
+        # Historical commitments belong to public task events, not the user
         # profile. This decision prevents accidental preference substitution.
         if has_memory_cue and any(cue in text for cue in ("你说", "你不是说", "承诺", "答应", "说好的", "回电")):
             return MemoryRouteDecision(False, "historical_event", route="events", history=True)

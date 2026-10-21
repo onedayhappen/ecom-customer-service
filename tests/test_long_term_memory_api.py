@@ -5,7 +5,6 @@ from uuid import uuid4
 
 import pytest
 
-from app.agents.engine import AgentEngine
 from app.api import main
 from app.config.settings import settings
 from app.execution.types import ExecutionResult
@@ -27,13 +26,7 @@ def memory_api(api, tmp_path, monkeypatch):
     monkeypatch.setattr(settings, 'memory_retrieval_enabled', False)
     monkeypatch.setattr(settings, 'memory_retrieval_min_score', 0.15)
     monkeypatch.setattr(settings, 'memory_extraction_debounce_seconds', 0)
-    calls = []
-    def execute(engine, text='', **kwargs):
-        calls.append({'text': text, 'messages': kwargs['messages'],
-                      'recall': memory_tool.recall_user_memory('黑色耳机')})
-        return ExecutionResult(intent=engine.intent, execution=engine.plan.execution, reply='已收到。')
-    monkeypatch.setattr(AgentEngine, 'execute', execute)
-    return api, calls
+    return api, []
 
 
 def fact(content='用户偏好黑色耳机', **kwargs):
@@ -44,14 +37,6 @@ def fact(content='用户偏好黑色耳机', **kwargs):
                   source_session='source', source_event_id='source:1')
     values.update(kwargs)
     return MemoryFact(**values)
-
-
-
-
-
-
-
-
 
 
 def test_memory_tool_rejects_missing_and_mismatched_identity(memory_api):
@@ -94,10 +79,6 @@ def test_long_term_memory_is_optional_under_final_request_budget(monkeypatch):
     assert len(result['messages']) == 2
     assert result['messages'][-1] == request['messages'][-1]
     assert len(request['messages']) == 3
-
-
-
-
 
 
 def test_final_wire_budget_restores_recall_when_automatic_block_is_removed(memory_api, monkeypatch):

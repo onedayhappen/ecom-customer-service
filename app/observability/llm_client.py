@@ -215,7 +215,7 @@ class LlmClient:
     """统一 LLM 客户端。
 
     :param raw_client: OpenAI 兼容客户端；None 时懒加载共享客户端
-        （``app.api.main._get_openai_client``），避免模块加载期拉入重依赖。
+        （``app.runtime.model_client.get_openai_client``），避免模块加载期拉入重依赖。
     :param model: 默认模型名。
     :param default_scene: 未显式指定 scene 时的场景标签。
     :param audit_errors_only: 仅审计异常（正常流量抽样在 AuditLogger 内做）。
@@ -373,9 +373,9 @@ class LlmClient:
 
         raw = self._raw_client
         if raw is None:
-            from app.api.main import _get_openai_client
+            from app.runtime.model_client import get_openai_client
 
-            raw = _get_openai_client()
+            raw = get_openai_client()
         with suspend_active_tracer():
             options = settings.chat_completion_options
             for key, value in options.items():
@@ -398,9 +398,9 @@ class LlmClient:
 
         raw = self._raw_client
         if raw is None:
-            from app.api.main import _get_openai_client
+            from app.runtime.model_client import get_openai_client
 
-            raw = _get_openai_client()
+            raw = get_openai_client()
         with suspend_active_tracer():
             options = settings.chat_completion_options
             for key, value in options.items():

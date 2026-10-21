@@ -10,15 +10,12 @@ from fastapi.testclient import TestClient
 
 from app.api import main
 from app.config.settings import settings
-from app.session import repository
 from app.support.runtime import get_store
 
 
 @pytest.fixture
 def api(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "support_database_url", f"sqlite:///{tmp_path / 'support.db'}")
-    monkeypatch.setattr(settings, "api_session_storage_backend", "json")
-    monkeypatch.setattr(repository, "JSON_SESSION_DIR", tmp_path / "sessions")
     monkeypatch.setattr(settings, "api_jwt_secret", "isolated-test-key-at-least-32-characters")
     from app.runtime.concurrency import DistributedLease
     get_store().seed_staff("agent", "agent")
@@ -51,16 +48,10 @@ def test_full_human_lifecycle_and_private_note(api, monkeypatch):
     assert client.post(f'/api/v1/support/tickets/{tid}/messages', headers=headers("agent"), json={"content": "late", "client_message_id": str(uuid4())}).status_code in {403, 409}
 
 
-
-
-
-
-
-
 def test_existing_session_cannot_be_claimed_by_another_user(api):
     client, headers = api
     sid = str(uuid4())
-    repository.save_session(sid, [{"role": "user", "content": "private"}], None, {"owner_user_id": "owner"}, "json", "", expected_state_version=0)
+    get_store().ensure(sid, "owner", [{"role": "user", "content": "private"}])
     assert client.post(f'/api/v1/sessions/{sid}/handoff', headers=headers("intruder")).status_code == 404
     assert client.post(f'/api/v1/sessions/{sid}/handoff', headers=headers("owner")).status_code == 200
 
@@ -71,24 +62,6 @@ def test_reset_preserves_ticket_history_and_roles_are_not_client_controlled(api)
     client.post(f'/api/v1/sessions/{sid}/handoff', headers=headers())
     assert client.post(f'/api/v1/sessions/{sid}/reset', headers=headers()).status_code == 409
     assert client.post('/api/v1/support/staff/customer', headers=headers(), json={"role": "admin"}).status_code == 403
-
-
-def test_old_confirmation_binding_invalidated_by_takeover(api, tmp_path):
-    from app.memory.case_manager import CaseManager
-    from app.reliability.mutations import MutationGuard
-    from app.support.runtime import bot_scope
-    sid = str(uuid4()); store = get_store(); store.ensure(sid, "customer")
-    guard = MutationGuard(CaseManager("customer", str(tmp_path / "cases")), sid)
-    with bot_scope(store, sid, "customer", 0):
-        token = guard.request_confirmation("after_sale_request", "apply_refund", {"order_id": "O1", "reason": "test"})
-        assert guard.peek_confirmation(token)
-    store.handoff(sid, "customer"); state = store.resume(sid, "customer")
-    with bot_scope(store, sid, "customer", state["control_version"]):
-        assert guard.peek_confirmation(token) is None
-
-
-
-
 
 
 def test_unauthorized_support_response_has_cors_headers(api):

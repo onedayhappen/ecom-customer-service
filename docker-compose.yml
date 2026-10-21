@@ -67,7 +67,6 @@ services:
     env_file:
       - .env
     environment:
-      API_SESSION_STORAGE_BACKEND: postgres
       API_SESSION_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/ecom_agent
       MEMORY_STORAGE_BACKEND: postgres
       MEMORY_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/ecom_agent
@@ -75,7 +74,6 @@ services:
       ORDER_DB_DSN: mysql://ecom:ecom_dev_password@mysql:3306/ecom_agent_orders
       ORDER_CACHE_REDIS_URL: redis://redis:6379/0
       API_CONCURRENCY_REDIS_URL: redis://redis:6379/0
-      CASE_STORAGE_BACKEND: postgres
       INTENT_MODEL_ENABLED: "false"
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     expose: ["8010"]
@@ -118,7 +116,6 @@ services:
     env_file:
       - .env
     environment:
-      API_SESSION_STORAGE_BACKEND: postgres
       API_SESSION_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/ecom_agent
       MEMORY_STORAGE_BACKEND: postgres
       MEMORY_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/ecom_agent
@@ -129,7 +126,6 @@ services:
       INTENT_MODEL_ENABLED: "false"
       RUNTIME_METRICS_PORT: "9101"
       RUNTIME_METRICS_HOST: "0.0.0.0"
-      CASE_STORAGE_BACKEND: postgres
     command: ["python", "-m", "scripts.task_worker"]
     volumes:
       - ./.docker-data/app:/app/data

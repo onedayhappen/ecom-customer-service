@@ -111,7 +111,7 @@ elif role == 'retrieval':
         def encode_one(self, text):
             if 'SLOW' in text: time.sleep(2)
             return [1., 0., 0.]
-    backend = ChromaBackend(Path(os.environ['CASE_DIR']).parent / f'chroma-{port}', 'fixture_policy')
+    backend = ChromaBackend(Path(os.environ['ECOM_TEST_ARTIFACT_DIR']) / f'chroma-{port}', 'fixture_policy')
     backend.upsert([
         Chunk('returns', 'fixture-policy', 'returns', '这是合成的检索依据'),
         Chunk('shipping', 'fixture-shipping', 'shipping', '这是合成的物流依据'),

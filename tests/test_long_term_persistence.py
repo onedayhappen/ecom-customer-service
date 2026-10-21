@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import json
 import multiprocessing
+import os
 
 import pytest
 
@@ -28,6 +29,44 @@ def _concurrent_merge(directory, key, barrier):
     memory.load()
     barrier.wait(timeout=20)
     memory.merge_and_save([_fact(content=key, key=key, event=key)], source_batch_id=key)
+
+
+def _contend_empty_lock(path, result):
+    from app.memory.file_lock import ProcessFileLock
+    try:
+        with ProcessFileLock(path, timeout=0.2):
+            result.put('acquired')
+    except TimeoutError:
+        result.put('timeout')
+    except Exception as exc:
+        result.put(type(exc).__name__)
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows mandatory byte-range locks')
+def test_empty_lock_file_contention_waits_without_writing_before_lock(tmp_path):
+    import msvcrt
+    from app.memory.file_lock import ProcessFileLock
+    path = tmp_path / 'empty.lock'
+    context = multiprocessing.get_context('spawn')
+    results = context.Queue()
+    process = context.Process(target=_contend_empty_lock, args=(str(path), results))
+    with path.open('a+b') as owner:
+        msvcrt.locking(owner.fileno(), msvcrt.LK_NBLCK, 1)
+        try:
+            process.start()
+            process.join(timeout=20)
+            assert process.exitcode == 0
+            assert results.get(timeout=2) == 'timeout'
+        finally:
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+            owner.seek(0)
+            msvcrt.locking(owner.fileno(), msvcrt.LK_UNLCK, 1)
+            results.close()
+            results.join_thread()
+    with ProcessFileLock(path, timeout=0.2):
+        pass
 
 
 @pytest.mark.parametrize('_iteration', range(4))
@@ -217,8 +256,16 @@ def test_structured_scope_and_owner_override_legacy_metadata(tmp_path):
     ]
     memory._load_from_items(items)
     assert [(fact.content, fact.scope) for fact in memory.facts] == [
-        ('case only', 'case:case-1'), ('session only', 'session:session-1'), ('profile', 'user_profile'),
+        ('session only', 'session:session-1'), ('profile', 'user_profile'),
     ]
+
+
+def test_retired_case_scope_cannot_be_written_as_user_memory(tmp_path):
+    memory = _memory(tmp_path)
+    fact = _fact()
+    fact.scope = 'case:old-case'
+    with pytest.raises(ValueError, match='Retired Case scope'):
+        memory._fact_to_item(fact)
 
 
 class _Cursor:

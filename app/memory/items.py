@@ -2,7 +2,7 @@
 
 Memory Item 是长期记忆的持久化原子单位。相比“一个用户一个 JSON 快照”，它能支持：
 - 单条删除/过期/替换
-- 按 user/case/session 作用域检索
+- 按 user/session 作用域检索
 - 按来源、置信度、权限做治理
 - 保存每个版本及其证据，状态与冷热 tier 分开管理
 
@@ -31,7 +31,7 @@ class MemoryItem:
     """一条可独立治理的长期记忆。
 
     字段约定：
-    - scope_type/scope_id：这条记忆属于用户、case 还是 session。
+    - scope_type/scope_id：这条记忆属于用户还是 session。
     - memory_type：fact 表示结构化事实。
     - memory_key：可替换槽位；同一槽位通常只保留一个 active 版本。
     - status：active/superseded/retracted/expired 描述事实生命周期。
@@ -40,7 +40,7 @@ class MemoryItem:
 
     memory_id: str
     user_id: str
-    scope_type: str  # user / case / session
+    scope_type: str  # user / session
     scope_id: str
     memory_type: str  # fact
     category: str

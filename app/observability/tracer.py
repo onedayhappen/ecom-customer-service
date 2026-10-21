@@ -1,7 +1,6 @@
 """业务链日志监控：线上每条 chat 请求的完整可观测轨迹。
 
-与离线评测的 RunTrace（app/evaluation/trace.py）同构：``llm_calls`` /
-``tool_steps`` 字段命名对齐，两套数据的统计代码可复用。采集方式：
+采集模型调用、工具结果和执行阶段，供问题排查和审计。
 
 - **阶段事件直埋**：API 层在各业务阶段显式调用 :meth:`BusinessTracer.record`；
 - **LLM 调用插桩**：对共享 OpenAI client 的 ``completions.create`` 打一次
@@ -11,7 +10,7 @@
   arguments / result / blocked / replayed），不重复采集。
 
 安全：``confirmation_token`` 只落 SHA-256 摘要，不落完整令牌
-（与 MutationGuard 的服务端存储约定一致）。
+（与 服务端操作确认 的服务端存储约定一致）。
 """
 
 from __future__ import annotations

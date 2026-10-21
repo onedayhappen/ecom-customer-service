@@ -2,7 +2,6 @@
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import lru_cache
-import json
 import re
 
 from app.support.store import SupportStore
@@ -46,42 +45,17 @@ def check_bot():
         store.check_bot(sid, user, version)
 
 
-def control_binding():
-    scope = _scope.get()
-    return {"support_session": scope[1], "support_version": scope[3]} if scope else {}
-
-
 def current_scope():
     return _scope.get()
 
 
-def valid_binding(pending):
-    binding = control_binding()
-    return not binding or all(pending.get(k) == v for k, v in binding.items())
-
-
 def call_tool(name, arguments, function):
     from app.data_plan.capabilities import MUTATING_CAPABILITIES
-    scope = _scope.get()
-    if not scope:
-        return function(**arguments)
-    store, sid, user, version = scope
     check_bot()
-    if name not in MUTATING_CAPABILITIES:
-        result = function(**arguments)
-        if name not in {"escalate_to_human", "read_case_memory", "save_case_context"}:
-            store.evidence(sid, user, name, arguments, result)
-        return result
-    oid = store.begin_operation(sid, user, version, name)
-    try:
-        result = function(**arguments)
-        parsed = json.loads(result) if isinstance(result, str) else result
-    except Exception:
-        store.finish_operation(oid, {"success": False, "error_code": "transient_failure"})
-        raise
-    store.finish_operation(oid, parsed if isinstance(parsed, dict) else {})
-    store.evidence(sid, user, name, arguments, result)
-    return result
+    if name in MUTATING_CAPABILITIES:
+        return {'success': False, 'error_code': 'confirmation_invalid',
+                'error': '业务写入必须通过事项确认卡片提交'}
+    return function(**arguments)
 
 
 def escalate_to_human():

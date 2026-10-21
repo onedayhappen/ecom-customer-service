@@ -13,7 +13,6 @@ from app.data_plan.taxonomy import (
     CLASSIFICATION_INTENTS, LEGACY_INTENTS, MANIFEST_NAME, VALID_INTENTS,
     validate_manifest, write_manifest,
 )
-from app.execution import dispatch, dispatch_async
 from app.intent.classifier import IntentClassifier, parse_intent
 from app.intent.rules import recognize, conversation_messages
 from scripts.eval_intent_model import prepare_example
@@ -96,24 +95,6 @@ def test_classifier_context_excludes_future_answers_and_tool_output():
     original = copy.deepcopy(messages)
     assert conversation_messages('你好', messages) == [messages[0]]
     assert messages == original
-
-
-@pytest.mark.parametrize('intent', [i for i in CLASSIFICATION_INTENTS
-                                  if not build_data_plan(i).spec.execution_ready])
-def test_pending_execution_never_calls_a_tool_or_requires_a_client(intent, monkeypatch):
-    from app.config.settings import settings
-    class Forbidden:
-        def __getattr__(self, name):
-            raise AssertionError(f'未接入执行路径不能调用 {name}')
-    plan = build_data_plan(intent)
-    results = [dispatch(plan, runner=Forbidden(), react_executor=Forbidden()),
-               asyncio.run(dispatch_async(plan, runner=Forbidden(), react_executor=Forbidden()))]
-    for result in results:
-        assert result.intent == intent and result.blocked and result.tool_steps == []
-        assert not result.needs_confirmation
-        assert '尚未接入' in result.reply
-
-
 
 
 def test_refund_keeps_existing_guarded_chain_with_narrow_tool_set():

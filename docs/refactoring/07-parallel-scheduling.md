@@ -6,7 +6,7 @@
 
 ## 改动位置
 
-`app/runtime/chat_queue.py`、`app/runtime/outbox.py`、`app/runtime/concurrency.py`、`app/support/store.py`、`app/tasks/service.py`。
+`app/tasks/conversation_worker.py`、`app/tasks/scheduling.py`、`app/runtime/outbox.py`、`app/runtime/concurrency.py`、`app/tasks/execution_store.py`。
 
 ## 实施步骤
 
@@ -32,7 +32,7 @@
 
 ## 已实现接口与处理步骤
 
-实现集中在 `app/tasks/scheduling.py`，复用 06 的 `TaskExecutor`、`runtime_jobs` 和 Case 证据，不增加 Agent 或流程引擎。
+实现集中在 `app/tasks/scheduling.py`，复用 06 的 `TaskExecutor`、`runtime_jobs` 和 事项事件中的工具证据，不增加 Agent 或流程引擎。
 
 1. 归属确认后的调用方使用 `TaskSchedule(store, authenticated_user_id, scope=...).enqueue(request)` 排队。`request` 沿用 06 的事项、版本、原话来源和预算。身份与业务范围由服务端传入，来源必须已经关联到该事项。数据库先保存请求，随后可用 `TaskQueue.notify(job_id)` 提醒 Worker；提醒不携带业务参数，也不授予执行资格。
 2. 同一事项、同一版本的重复唤醒复用待执行、执行中或已完成的记录，跨 session 也一样；相同编号携带不同请求会被拒绝。新版本替代尚未执行的旧版本，正在执行的查询则按下述证据规则收尾。失败恢复使用新的确定编号，保留原执行的中断记录。

@@ -1,1 +1,1 @@
-"""Durable conversation tasks, separate from business Case facts."""
+"""Durable conversation tasks, scoped evidence and operation receipts."""

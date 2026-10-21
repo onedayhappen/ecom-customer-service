@@ -11,16 +11,15 @@ from app.tools.knowledge import search_knowledge
 from app.tools.user_orders import list_user_orders
 from app.tools.memory_tool import recall_user_memory
 from app.tools.skill_tool import load_skill
-from app.tools.text2sql import text_to_sql
 from app.reliability.failure_policy import FailureCategory
 from app.support.runtime import call_tool as controlled_tool_call
 from app.support.runtime import escalate_to_human
 from app.tools.commerce import TOOL_MAP as COMMERCE_TOOLS, TOOL_DEFINITIONS as COMMERCE_DEFINITIONS
-from app.tools.case_context import TOOL_MAP as CASE_TOOLS, TOOL_DEFINITIONS as CASE_DEFINITIONS
+from app.tools.task_context import TOOL_MAP as TASK_CONTEXT_TOOLS, TOOL_DEFINITIONS as TASK_CONTEXT_DEFINITIONS
 
 _TOOL_MAP: dict[str, Callable] = {
     **COMMERCE_TOOLS,
-    **CASE_TOOLS,
+    **TASK_CONTEXT_TOOLS,
     "escalate_to_human": escalate_to_human,
     "query_order": query_order,
     "query_product": query_product,
@@ -30,7 +29,6 @@ _TOOL_MAP: dict[str, Callable] = {
     "list_user_orders": list_user_orders,
     "recall_user_memory": recall_user_memory,
     "load_skill": load_skill,
-    "text_to_sql": text_to_sql,
 }
 
 # 同一份 schema 同时作为模型可调用工具清单和本地分发白名单，避免两处配置漂移。
@@ -223,33 +221,11 @@ TOOL_DEFINITIONS: list[dict] = [
             },
         },
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "text_to_sql",
-            "description": (
-                "根据自然语言问题生成并执行只读 SQL，查询数据库中的用户、商品、"
-                "订单与订单明细表，返回查询结果。适合统计、筛选、聚合、排序等"
-                "结构化数据查询，例如「库存大于50的商品」「订单总金额最高的前3笔」「"
-                "退款中的订单」。工具内部已内置表结构，无需额外传参。"
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "要查询的自然语言问题，例如「库存大于50的商品有哪些」",
-                    }
-                },
-                "required": ["query"],
-            },
-        },
-    },
 ]
 
 
 TOOL_DEFINITIONS.extend(COMMERCE_DEFINITIONS)
-TOOL_DEFINITIONS.extend(CASE_DEFINITIONS)
+TOOL_DEFINITIONS.extend(TASK_CONTEXT_DEFINITIONS)
 
 
 def execute_tool(name: str, arguments: dict) -> str:

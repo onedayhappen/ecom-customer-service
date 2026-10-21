@@ -19,7 +19,7 @@ docker compose up -d --scale backend=2 --scale worker=2 --scale dispatcher=2
 docker compose exec gateway nginx -s reload
 ```
 
-nginx 在启动/重载时解析 backend 的多个地址；每次副本数或容器地址变化后重载。SSE 禁用代理缓冲，客户端断线后携带 Last-Event-ID 补拉。跨主机部署使用同一个 PostgreSQL、同一个逻辑 Redis、相同队列前缀/额度配置；Case 使用 PostgreSQL。JSON 模式只适用于本地开发。
+nginx 在启动/重载时解析 backend 的多个地址；每次副本数或容器地址变化后重载。SSE 禁用代理缓冲，客户端断线后携带 Last-Event-ID 补拉。跨主机部署使用同一个 PostgreSQL、同一个逻辑 Redis、相同队列前缀/额度配置；事项与工具回执使用 PostgreSQL，用户长期记忆支持独立存储。
 
 示例 Compose 仍是开发部署：数据库密码、端口暴露、TLS、备份和基础设施高可用应由部署环境配置。单机 Redis 与 Redis 高可用部署可以使用当前客户端；不宣称支持 Redis Cluster 多分片，现有跨键 Lua 没有实现 Cluster hash-slot 分区。
 
@@ -28,15 +28,14 @@ nginx 在启动/重载时解析 backend 的多个地址；每次副本数或容�
 API、事项 Worker、通知、维护进程与前端必须来自同一发布版本。`TASK_INTAKE_ENABLED`、`TASK_WORKER_ENABLED`、`TASK_OPERATIONS_ENABLED`、`TASK_EXTERNAL_PROGRESS_ENABLED` 默认开启，只控制能力是否装配；不要让不同实例用不同开关决定同一用户的路径。没有模型密钥时不要启动自动执行 Worker。旧 `ASSISTANT_JUST_REACT`、`API_CHAT_EXECUTION_MODE`、`API_CHAT_WORKER_ENABLED`、`ROUTER_*` 和前端 `VITE_TASK_PIPELINE_ENABLED` 已退役，应从部署配置移除；旧环境中的多余字段会忽略，不会重新开启旧路径。
 
 1. 在网关停止新写入，停止旧 API、Worker、Dispatcher、维护及所有草稿写进程，确认在途业务请求已经结束或登记为待核实。仅修改新版本数据库开关不能约束已经运行的旧程序；必须停掉旧进程并撤销其写入凭据。
-2. 备份整个会话 PostgreSQL、业务 MySQL、Case/记忆和知识索引；记录发布版本、备份时间与摘要。先将备份恢复到隔离数据库核对原话、来源、业务回执，再升级原库。测试中的单 schema 备份只是恢复演练，不代替生产全库及业务备份。
-3. 用新版本运行 `python -m scripts.init_support_db`。当前结构版本为 20；已有会话数据升级后自动办理为 `stopped`，全新空库为 `all`。迁移失败可重试；不要在带流量时混跑新旧版本执行迁移。运行 `python -m scripts.pipeline_rollout status` 核对模式、发布标识及未决操作。
-4. 若 Case 仍在 JSON，保持所有写进程停止，先校验后导入，再设置 `CASE_STORAGE_BACKEND=postgres`。旧记录和回执保留为历史依据；只有用户归属、原话来源和版本均明确的一条未结旧事项允许转换，转换结果为 `paused`，不复制推测的订单、字段或授权。多轮改写、来源无效或有未知操作的记录拒绝自动转换，等待用户重新说明或人工核实。
+2. 备份整个会话 PostgreSQL、业务 MySQL、事项事件、用户记忆和知识索引；记录发布版本、备份时间与摘要。先将备份恢复到隔离数据库核对原话、来源、业务回执，再升级原库。测试中的单 schema 备份只是恢复演练，不代替生产全库及业务备份。
+3. 用新版本运行 `python -m scripts.init_support_db`。当前结构版本为 22；从 20 之前版本升级的已有会话库，自动办理初始为 `stopped`，全新空库为 `all`；已有放量设置保持不变。迁移失败可重试；不要在带流量时混跑新旧版本执行迁移。运行 `python -m scripts.pipeline_rollout status` 核对模式、发布标识及未决操作。
+4. 旧 Case 模块和迁移脚本已删除；数据库升级会删除 `case_snapshots` 和 `case_archives`，旧 JSON Case 不再读取。当前事项与操作回执继续保留。只有用户归属、原话来源和版本均明确的旧事项才允许通过管理脚本转换，转换后保持暂停，不恢复旧授权。
 5. 启动同版本 API、Worker、通知、维护和前端。确认 `/ready` 的 `release=task-pipeline-v1` 和 `automation`，历史读取与人工接管可用；将全局切到 `selected`，再启用少量已核对用户。每个用户的所有 session 共用数据库控制记录。
 6. 观察归属、证据、确认、未决业务、延迟和错误，再逐步添加用户，最后切到 `all`。显式 `disabled` 的用户在 `all` 下仍停用；使用 `enabled` 才恢复。每次控制变更都会使受影响用户旧执行和确认失效，避免无意义地反复调用。
 
 ```sh
-python -m scripts.migrate_cases_to_postgres --source data/sessions/cases
-python -m scripts.migrate_cases_to_postgres --source data/sessions/cases --apply
+python -m scripts.init_support_db
 python -m scripts.pipeline_rollout status
 python -m scripts.pipeline_rollout set selected --operator deploy-admin --reason "开始小范围验收"
 python -m scripts.pipeline_rollout set enabled --user customer-id --operator deploy-admin --reason "该用户已核对"

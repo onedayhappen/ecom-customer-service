@@ -1,4 +1,4 @@
-"""Execution receipts in the existing Outbox; Case retains tool evidence."""
+"""Execution receipts in the existing Outbox; Tool evidence lives in the task event log."""
 import json
 from uuid import uuid4
 
@@ -210,21 +210,6 @@ class TaskRuns:
                         "provenance": payload["provenance"], "controls": payload.get("controls"),
                         "observed_at": now(), "observed_epoch": clock(tx)}
             self.store._event(tx, control, "task_tool_result", "system", evidence, private=True, key="task-tool:" + eid)
-            # Same transaction and same Case evidence format; do not write a
-            # parallel conversation draft or reinterpret a query as an action.
-            tx.execute("INSERT INTO case_snapshots VALUES (?,?) ON CONFLICT DO NOTHING",
-                       (self.user, json.dumps({"user_id": self.user, "cases": [], "events": []})))
-            snapshot = tx.one("SELECT payload FROM case_snapshots WHERE user_id=?" +
-                              (" FOR UPDATE" if tx.postgres else ""), (self.user,))
-            case = json.loads(snapshot["payload"])
-            case.setdefault("events", []).append({
-                "event_id": eid, "event_type": "tool_result", "user_id": self.user,
-                "session_id": request.session_id, "turn_id": request.job_id, "case_id": None,
-                "payload": {"tool": name, "evidence": result, "success": bool(result.get("success")),
-                            "task_id": record.task_id, "task_version": record.version, "object": object_key(record)},
-                "created_at": evidence["observed_at"],
-            })
-            tx.execute("UPDATE case_snapshots SET payload=? WHERE user_id=?", (json.dumps(case, ensure_ascii=False), self.user))
             return evidence
 
     def evidence(self, record, *, seconds=60):

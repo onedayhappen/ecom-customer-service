@@ -206,7 +206,7 @@ def test_populated_v19_upgrade_starts_stopped_and_can_retry_atomically(store, mo
     with store.transaction() as tx:
         for table in ('task_legacy_imports', 'task_rollout_audit', 'task_pipeline_users', 'task_pipeline_state'):
             tx.execute('DROP TABLE ' + table)
-        tx.execute('DELETE FROM support_schema_versions WHERE version=20')
+        tx.execute('DELETE FROM support_schema_versions WHERE version>=20')
         tx.execute("INSERT INTO support_schema_versions VALUES (19,'before-upgrade') ON CONFLICT DO NOTHING")
     store._initialized = False
     original = migrations.migrate_pipeline_rollout
@@ -224,7 +224,8 @@ def test_populated_v19_upgrade_starts_stopped_and_can_retry_atomically(store, mo
     store = SupportStore(store.dsn)
     with store.transaction(read_only=True) as tx:
         assert not running(tx, 'alice')
-        assert tx.one('SELECT MAX(version) AS v FROM support_schema_versions')['v'] == 20
+        from app.support.store import SCHEMA_VERSION
+        assert tx.one('SELECT MAX(version) AS v FROM support_schema_versions')['v'] == SCHEMA_VERSION
     assert store.public_history('s', 'alice')[-1]['content'] == '旧版本原话'
 
 

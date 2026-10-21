@@ -80,7 +80,7 @@ class MessageIntake:
         if pending is None:
             return
         job_id = str(uuid4())
-        self.store.jobs.admit(tx, control, job_id, "", None, max_pending=self.max_pending,
+        self.store.jobs.admit(tx, control, job_id, max_pending=self.max_pending,
                               queue_timeout=600, run_timeout=self.lease_seconds, kind="association")
         tx.execute("UPDATE message_intake_sessions SET active_job_id=?,lease_owner=NULL WHERE session_id=?", (job_id, sid))
 
@@ -154,6 +154,17 @@ class MessageIntake:
                 tx.execute("""UPDATE message_intake_items SET association_status='control',decision_id=?
                     WHERE session_id=? AND sequence=?""", ("control:" + incoming.request_id, sid, sequence))
                 self._advance(tx, sid)
+            ticket = self.store._ticket(tx, control)
+            if ticket and control['mode'] == 'human' and ticket['status'] in {'waiting_customer', 'resolved'}:
+                enabled = ticket['assignee'] and self.store._role(tx, ticket['assignee']) != 'customer'
+                target = 'in_progress' if enabled else 'queued'
+                tx.execute('UPDATE support_tickets SET status=?,resolved_at=NULL,version=version+1 WHERE ticket_id=?',
+                           (target, ticket['ticket_id']))
+                if not enabled:
+                    tx.execute('UPDATE support_tickets SET assignee=NULL WHERE ticket_id=?', (ticket['ticket_id'],))
+                    tx.execute("UPDATE support_conversations SET mode='handoff_pending' WHERE session_id=?", (sid,))
+                    control['mode'] = 'handoff_pending'
+                self.store._event(tx, control, 'support_state', user, {'status': target, 'mode': control['mode']})
             self._wake(tx, control)
             return dict(session_id=sid, request_id=incoming.request_id, sequence=sequence, status="accepted")
 

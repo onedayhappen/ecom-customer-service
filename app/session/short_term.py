@@ -237,7 +237,7 @@ class ContextService:
     def __init__(self, store):
         self.store = store
 
-    def build(self, sid, user, task_id=None, query='', exclude_latest_user=False):
+    def build(self, sid, user, task_id=None, query=''):
         from app.support.store import SupportError
 
         with self.store.transaction(read_only=True) as tx:
@@ -248,12 +248,6 @@ class ContextService:
                 if not task:
                     raise SupportError('任务不存在', 404)
             ceiling = control['sequence']
-            if exclude_latest_user and control.get('bot_job_id'):
-                admitted = tx.one('''SELECT sequence FROM support_events WHERE session_id=?
-                    AND event_key=? AND kind='message' AND visibility='public' ''',
-                    (sid, f"user:{control['bot_job_id']}"))
-                if admitted:
-                    ceiling = admitted['sequence'] - 1
             recent = _recent(_messages(tx, sid, task_id, ceiling=ceiling, descending=True))
             result = [_task_state(task)] if task else []
             snapshot = tx.one('''SELECT * FROM support_context_snapshots

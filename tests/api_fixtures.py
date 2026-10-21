@@ -12,15 +12,11 @@ from app.config.settings import settings
 
 @pytest.fixture
 def api(tmp_path, monkeypatch):
-    from app.session import repository
     monkeypatch.setattr(settings, 'support_database_url', f"sqlite:///{tmp_path / 'tasks.db'}")
-    monkeypatch.setattr(settings, 'api_session_storage_backend', 'json')
-    monkeypatch.setattr(settings, 'case_dir', str(tmp_path / 'cases'))
     monkeypatch.setattr(settings, 'memory_enabled', False)
     monkeypatch.setattr(settings, 'short_term_memory_enabled', False)
     monkeypatch.setattr(settings, 'api_concurrency_redis_url', '')
     monkeypatch.setattr(settings, 'api_jwt_secret', 'task-tests-isolated-secret-at-least-32bytes')
-    monkeypatch.setattr(repository, 'JSON_SESSION_DIR', tmp_path / 'sessions')
     client = TestClient(main.app)
     def headers(user='user'):
         return {'Authorization': 'Bearer ' + jwt.encode(

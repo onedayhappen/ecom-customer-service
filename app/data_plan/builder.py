@@ -1,8 +1,7 @@
 """DataPlan 装配器：IntentSpec → 运行时装配实例。
 
 IntentSpec 是静态定义（intent → 需求）；DataPlan 是结合当前可用工具集
-（本地 registry / MCP）实例化后的**具体装配**，供执行层（Workflow/ReAct/规则）
-直接消费。装配时做工具裁剪：已实现的工具进 prompt，未实现的进入
+（本地 registry / MCP）实例化后的工具元数据。当前事项执行会再次收窄工具范围。装配时做工具裁剪：已实现的工具进 prompt，未实现的进入
 ``pending_tools`` 供执行层显式降级（澄清 / 转人工）。
 """
 
@@ -61,9 +60,9 @@ class DataPlan:
     def init_pending_slots(
         self, resolved_entities: Mapping[str, str] | None = None
     ) -> list[str]:
-        """由 required_slots 初始化 case.pending_slots。
+        """根据规格列出尚未提供的字段。
 
-        已解析实体（如已在 case.resolved_entities 中的 order_id）不计入待填槽位。
+        已提供的字段（如 order_id）不计入待填字段。
         """
         resolved = set(resolved_entities or {})
         return [slot for slot in self.required_slots if slot not in resolved]
@@ -112,7 +111,7 @@ def build_conversation_plan(intent: Intent | str) -> DataPlan:
     """
     plan = build_data_plan(intent)
     tools = tuple(sorted(IMPLEMENTED_CAPABILITIES))
-    memory = MemorySpec(session=True, case=True, user_profile=True,
+    memory = MemorySpec(session=True, task_context=True, user_profile=True,
                         order_db=True, product_db=True, policy_kb=True)
     spec = replace(plan.spec, execution=Execution.REACT, execution_ready=True,
                    tools=tools, skills=(), required_slots=(), memory=memory,

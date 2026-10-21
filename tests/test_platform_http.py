@@ -58,7 +58,7 @@ def platform(tmp_path_factory):
     model_port = port()
     prefix = 'http:' + uuid4().hex
     env = {**os.environ, 'ECOM_INTEGRATION': '1', 'SUPPORT_DATABASE_URL': dsn,
-        'API_SESSION_STORAGE_BACKEND': 'postgres', 'API_SESSION_POSTGRES_DSN': dsn,
+         'API_SESSION_POSTGRES_DSN': dsn,
         'MEMORY_STORAGE_BACKEND': 'json', 'MEMORY_POSTGRES_DSN': '', 'MEMORY_ENABLED': 'false',
         'MEMORY_REDIS_URL': '', 'ORDER_DB_DSN': '', 'ORDER_CACHE_REDIS_URL': '',
         'API_CONCURRENCY_REDIS_URL': REDIS, 'API_CHAT_QUEUE_PREFIX': prefix,
@@ -67,7 +67,7 @@ def platform(tmp_path_factory):
         'OBSERVABILITY_ENABLED': 'false', 'OBSERVABILITY_TRACE_ENABLED': 'false', 'AUDIT_ENABLED': 'false',
         'DEEPSEEK_API_KEY': 'fixture-provider-key', 'OPENAI_API_KEY': '', 'DASHSCOPE_API_KEY': '', 'ROUTER_API_KEY': '',
         'DEEPSEEK_BASE_URL': f'http://127.0.0.1:{model_port}/v1', 'DEEPSEEK_MODEL_NAME': 'fixture',
-        'CASE_DIR': str(root / 'cases'), 'CASE_STORAGE_BACKEND': 'postgres', 'RETRIEVAL_SERVICE_TOKEN': SERVICE_TOKEN, 'RETRIEVAL_SERVICE_URL': '',
+        'ECOM_TEST_ARTIFACT_DIR': str(root), 'RETRIEVAL_SERVICE_TOKEN': SERVICE_TOKEN, 'RETRIEVAL_SERVICE_URL': '',
         'API_SSE_CATCHUP_SECONDS': '5', 'RETRIEVAL_GLOBAL_CONCURRENCY': '1',
         'RUNTIME_METRICS_PORT': '0', 'API_QUEUE_WAIT_SECONDS': '2',
         'API_GLOBAL_RPM': '10000', 'API_TENANT_RPM': '10000', 'API_USER_RPM': '1000'}

@@ -10,11 +10,7 @@
 3. **fork 子任务隔离**（:mod:`app.harness.fork_runner`）：每条用例独立子进程
    运行，父进程超时 kill，防止单条用例死循环堵死整个测试套件。
 
-与既有评测设施的关系：
-
-- ``app/evaluation/sandbox.py`` 是「评测器」（采集 RunTrace、跑 EvalCase）；
-- ``app/harness/*`` 是「执行框架」（故障注入 + 收敛检测 + 进程隔离），
-  两者可组合：Harness 负责把用例跑稳、跑不死，Sandbox 负责采集评分。
+事项归属与执行评测分别使用 scripts/eval_association.py 和 scripts/eval_task_execution.py。
 """
 
 from app.harness.convergence import (

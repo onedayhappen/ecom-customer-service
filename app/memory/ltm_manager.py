@@ -246,7 +246,7 @@ class LongTermMemoryManager:
         return view if view and resolve_view(view, eligible) else None
 
     def retrieve_relevant_long_term_memory(self, query: str, *, history=False, as_of=None, exclude_ids=None) -> list:
-        """Read bounded user-scope facts; never return case progress or ungrounded legacy facts."""
+        """Read bounded user-scope facts; never return task progress or ungrounded legacy facts."""
         if not self.memory_enabled:
             return []
         if self.source_policy is not None:

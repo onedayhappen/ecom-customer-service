@@ -74,7 +74,7 @@ def test_real_multi_package_tracking_only_updates_the_selected_parcel(store, bus
         record, source = task(store, 's', goal='跟进指定运单签收', details=dict(order_id=order, tracking_number=first))
         def save(params):
             value = json.loads(next(m['content'] for m in reversed(params['messages']) if m['role'] == 'tool'))
-            return response(calls=[('save_case_context', dict(expected_version=record.version, state='waiting_external',
+            return response(calls=[('save_task_progress', dict(expected_version=record.version, state='waiting_external',
                 wait_reason='等待这票包裹签收', evidence_id=value['_task_evidence']['event_id']))])
         result = engine(Client(response(calls=[('query_logistics', dict(order_id=order, tracking_number=first))]), save)).execute_task(
             store, 'alice', request(record, source), tools=lambda *_: dict(success=True,

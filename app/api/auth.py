@@ -6,7 +6,7 @@
 - 密码哈希用标准库 ``hashlib.pbkdf2_hmac``（120k 迭代 + 随机盐），零新依赖；
   校验用 ``hmac.compare_digest`` 恒定时间比较，防时序攻击。
 - 登录签发的 JWT 与外部生成的 JWT 同构（sub + exp），由同一个 ``api_jwt_secret``
-  校验，因此现有 ``get_current_user`` 依赖与全局鉴权中间件无需区分 token 来源。
+  校验，因此全局鉴权中间件无需区分 token 来源。
 """
 
 from __future__ import annotations

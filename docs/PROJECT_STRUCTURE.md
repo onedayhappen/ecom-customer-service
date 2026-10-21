@@ -8,22 +8,22 @@
 ecom-customer-service/
 ├── app/
 │   ├── api/              FastAPI 路由、认证、中间件
-│   ├── agents/           Agent 入口和响应组装
+│   ├── agents/           同一 Agent 的归属判断与事项执行入口
 │   ├── config/           配置模型和环境变量
 │   ├── data/             订单、物流、商品 DAO 与 service
 │   ├── data_plan/        意图规格、能力规划和工具白名单
-│   ├── execution/        共享 ReAct 工具循环与执行器
+│   ├── execution/        事项 ReAct 工具循环与业务预检
 │   ├── harness/          评估和故障注入运行器
 │   ├── intent/           可选意图分类、规则回退和订单状态提取
 │   ├── mcp/              MCP 客户端、服务端和认证
-│   ├── memory/           长期记忆、检索和 Case
+│   ├── memory/           用户长期记忆、检索和事项上下文
 │   ├── observability/    审计、追踪、指标和脱敏
 │   ├── prompts/          Agent、意图和工具提示词
 │   ├── rag/              知识库、Embedding 和索引更新
 │   ├── reliability/      证据校验、失败策略和幂等变更
 │   ├── runtime/          并发额度、唤醒队列、通知和运行时协调
-│   ├── session/          会话存储、生命周期和上下文预算
-│   ├── skills/           可复用业务技能
+│   ├── session/          工作记忆、摘要和上下文预算
+│   ├── skills/           通用技能加载器（暂无内置业务 Skill）
 │   ├── support/          会话事件、人工客服和共享事务存储
 │   ├── tasks/            事项、归属纠错、并行执行、回复、确认和放量
 │   └── tools/            订单、物流、商品、退款等工具

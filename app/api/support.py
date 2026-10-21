@@ -31,21 +31,8 @@ def identity(request):
 
 
 def ensure_session(sid, user):
-    from app.config.settings import settings
-    from app.session.repository import load_session
     store = get_store()
-    try:
-        return store.state(sid, user)
-    except SupportError as exc:
-        if exc.status != 404:
-            raise
-    # Check old ownership without a user filter before importing old conversations.
-    old = load_session(sid, settings.api_session_storage_backend, settings.api_session_postgres_dsn)
-    if old and old["metadata"].get("owner_user_id") != user:
-        raise SupportError("会话不存在", 404)
-    from app.api.main import _display_messages
-    history = [m.model_dump() for m in _display_messages(old.get("messages", []))] if old else []
-    store.ensure(sid, user, history)
+    store.ensure(sid, user)
     return store.state(sid, user)
 
 

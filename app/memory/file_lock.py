@@ -18,9 +18,9 @@ class ProcessFileLock:
     def acquire(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         handle = self.path.open("a+b")
-        if handle.tell() == 0:
-            handle.write(b"0")
-            handle.flush()
+        # Lock the byte range directly, including an empty file. Writing an
+        # initialization byte before locking races with another Windows owner:
+        # that owner's byte-range lock can reject the write/flush itself.
         deadline = time.monotonic() + self.timeout
         while True:
             try:
