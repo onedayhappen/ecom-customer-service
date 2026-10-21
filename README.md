@@ -4,8 +4,6 @@
 
 后端采用 Python / FastAPI，前端采用 React / Vite，模型支持 DeepSeek 或其他 OpenAI 兼容接口。
 
-**目前用于开发和演示，尚未接入真实业务。** 订单等业务数据来自 MySQL 模拟数据，知识资料是几篇 Markdown 文件。演示退款、发票等记录不代表真实支付或开票。本 README 以当前主分支代码为准。
-
 ## 能做什么
 
 例如，用户先后发送：
@@ -216,7 +214,7 @@ docker compose exec backend python scripts/init_commerce_db.py --seed-demo
 
 ### Markdown 规则与 RAG
 
-[知识目录](app/rag/knowledge)包含退换货政策、配送说明、会员权益和常见问题四份示例 Markdown。**这些文件还不是可直接用于主链路的已审核规则库。**
+[知识目录](app/rag/knowledge)包含退换货政策、配送说明、会员权益和常见问题。
 
 启用规则问答需要完成：
 
@@ -293,11 +291,3 @@ npm run build
 | `scripts`、`deploy` | 初始化、后台进程、检查与部署配置 |
 | `tests` | 自动化测试 |
 
-进一步阅读：
-
-- [完整方案](docs/AGENT_REFACTOR_PLAN.md)：实现目标、处理步骤和安全边界。
-- [分步实施记录](docs/refactoring/README.md)：各部分实现与验证记录。
-- [运行手册](docs/CONCURRENCY_RUNBOOK.md)：部署、迁移、暂停、恢复和排错。
-- [项目结构](docs/PROJECT_STRUCTURE.md)：更详细的目录说明。
-
-可选的意图分类训练脚本保留在 [train_intent_lora.py](scripts/train_intent_lora.py) 和 [eval_intent_model.py](scripts/eval_intent_model.py)。它们用于独立实验，不代替主链路中的事项归属判断。
