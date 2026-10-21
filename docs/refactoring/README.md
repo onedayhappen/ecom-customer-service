@@ -40,7 +40,7 @@
 | 07 | [让独立事项并行处理](07-parallel-scheduling.md) | 已完成 | `refactor-task-scheduling` / `85d2e2e`；完整回归 1045 通过、179 跳过；06/07 相关 SQLite/PostgreSQL 测试 112 通过、1 跳过。覆盖同 session 并行查询、跨进程唯一执行与额度、条件等待、退出恢复、Redis 实际重启、迟到证据及跨会话转人工后恢复时的旧执行失效。 |
 | 08 | [协调回复并支持持续输入](08-coordinated-replies.md) | 已完成 | `refactor-coordinated-replies` / `335d75f`；完整回归 1073 通过、208 跳过；相关存储/API/执行/纠错及真实 HTTP 集成 266 通过、1 跳过，最终 08 专项 SQLite/PostgreSQL 共 56 通过。前端状态与浏览器测试共 6 通过，两种开关构建通过。覆盖持续输入、快慢结果、发布前后纠错、原子发布、多进程去重、SSE 跨实例补拉、页面刷新及重试恢复。 |
 | 09 | [确认具体内容后提交业务操作](09-confirmed-operations.md) | 已完成 | `refactor-confirmed-operations` / `dc1ddb9`；完整回归 1117 通过、258 跳过；最终 SQLite/PostgreSQL、真实 MySQL 与 API 专项 102 通过，回复协调与真实 HTTP/SSE 复测 57 通过，取消路径补测 4 通过。前端状态测试 3 通过、Edge 浏览器测试 6 通过，两种开关构建通过。覆盖固定参数确认、跨会话及多进程幂等、共同订单占用、取消/人工接管竞争、业务版本复核、提交前后进程退出、未知及迟到回执和原子迁移。 |
-| 10 | [维护跨会话记忆和上下文](10-memory-maintenance.md) | 未开始 | — |
+| 10 | [维护跨会话记忆和上下文](10-memory-maintenance.md) | 已完成 | `refactor-task-memory` / `f9be4b8`；完整回归 1138 通过、279 跳过，另有 15 个子测试通过。最终记忆、执行、回复与真实 HTTP/SSE 专项 169 通过、1 跳过；共享记忆与预算补充回归 105 通过，API、去重与规模测试 45 通过，最后边界补测 12 通过。覆盖跨会话回执续接、来源纠错与删除、并发清理和迟到写入、真实 PostgreSQL/Redis、完整原话预算、敏感信息隔离、缓存失败降级及检索超时释放资源。 |
 | 11 | [按业务条件检索适用规则](11-policy-retrieval.md) | 未开始 | — |
 | 12 | [交给人工并正确恢复机器人](12-human-handoff.md) | 未开始 | — |
 | 13 | [跟进外部结果并判断事项何时结束](13-external-progress.md) | 未开始 | — |
