@@ -84,9 +84,24 @@ python -m scripts.task_worker
 
 ## 验证入口
 
+本部分的实现提交为 `335d75f`，所在分支为 `refactor-coordinated-replies`。
+
 - `tests/test_coordinated_replies.py`：SQLite 与隔离 PostgreSQL，覆盖快慢结果、合并回复、跨会话新输入、纠错前后、单个追问、已知信息、证据失效、多进程发布竞争、原子回滚、迁移重试、恢复执行、归档和队列到期。
 - `tests/test_coordinated_replies_http.py`：真实 HTTP、多个 API 进程、隔离 PostgreSQL/Redis，覆盖消息重投、合并回复、携带 `Last-Event-ID` 重连、历史补拉和刷新。
 - 前端 `npm test` 检查消息合并、游标和重试记录；`npm run test:browser` 使用 Playwright 操作实际页面，覆盖连续输入、迟到响应、失败重试、重复通知、乱序通知和刷新。Windows 默认使用已安装的 Edge；其他环境可安装 Playwright Chromium，或通过 `PLAYWRIGHT_CHANNEL` 指定已安装的浏览器。
 - 前端开关关闭、开启两种构建均须通过；模型与业务查询使用受控替身，不将这些测试记录为线上模型准确率或真实业务办理验收。
 
 本次结果：完整后端回归 1073 通过、208 跳过，另有 15 个子测试通过；相关存储、接收、执行、纠错与真实 HTTP 集成 266 通过、1 跳过；最终 08 专项在 SQLite/PostgreSQL 共 56 通过。完整回归按配置跳过独立基础设施测试，相关集成已另行启用隔离 PostgreSQL/Redis 验证。前端状态测试 3 通过、Edge 浏览器测试 3 通过，关闭和开启新链路的构建均通过。
+
+## 独立分支复验
+
+再次在 `refactor-coordinated-replies` 分支、基线 `d5a2bcc` 上完成以下验证，结果全部通过。本次仅补充验收记录，没有修改业务代码。
+
+| 检查 | 结果 |
+| --- | --- |
+| `tests/test_coordinated_replies.py` 与 `tests/test_coordinated_replies_http.py`，启用 `ECOM_INTEGRATION=1` | 57 通过，耗时 234.44 秒；覆盖 SQLite、隔离 PostgreSQL/Redis、多进程发布和真实 HTTP/SSE 补拉 |
+| 前端 `npm test` | 3 通过 |
+| 前端 `npm run test:browser` | Edge 浏览器 3 通过，耗时 45.4 秒 |
+| `VITE_TASK_PIPELINE_ENABLED=false` 与 `true` 分别执行 `npm run build` | 两次构建通过 |
+
+浏览器验证包括请求未返回时继续发送、迟到响应保留输入、相同请求编号重试、快慢结果分别显示、重复及乱序通知去重和刷新恢复；已查看测试生成的页面截图。模型及业务查询仍使用受控替身，本次复验不代表线上模型准确率或真实业务提交验收。
