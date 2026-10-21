@@ -73,7 +73,7 @@ SCHEMA = (
     """CREATE TABLE IF NOT EXISTS support_bot_runs (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
 ) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + CASE_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA + MEMORY_RUNTIME_SCHEMA
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 
 class Tx:
@@ -171,6 +171,9 @@ class SupportStore:
                         if (applied or 0) < 17:
                             from app.tasks.migrations import migrate_task_operations
                             migrate_task_operations(tx)
+                        if (applied or 0) < 18:
+                            from app.tasks.migrations import migrate_task_handoffs
+                            migrate_task_handoffs(tx)
                         tx.execute('CREATE TABLE IF NOT EXISTS support_schema_versions (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
                         tx.execute('INSERT INTO support_schema_versions VALUES (?,?) ON CONFLICT(version) DO NOTHING', (SCHEMA_VERSION, now()))
                 self._initialized = True
@@ -273,6 +276,8 @@ class SupportStore:
         revision(tx, c["user_id"], lock=True)
         ticket = self._ticket(tx, c)
         if ticket and c["mode"] != "bot":
+            from app.tasks.handoffs import TaskHandoffs
+            TaskHandoffs(self, c['user_id']).acquire(tx, c, ticket['ticket_id'])
             return ticket
         tid, timestamp = str(uuid4()), now()
         recent = tx.all("""SELECT payload FROM support_events WHERE session_id=? AND kind='message'
@@ -286,6 +291,8 @@ class SupportStore:
         c.update(mode="handoff_pending", ticket_id=tid, control_version=c["control_version"] + 1)
         self.jobs.supersede(tx, c)
         self.tasks.freeze(tx, c, actor)
+        from app.tasks.handoffs import TaskHandoffs
+        TaskHandoffs(self, c['user_id']).acquire(tx, c, tid)
         self._event(tx, c, "support_state", actor,
                     {"mode": c["mode"], "ticket_id": tid, "status": "queued", "reason": reason})
         return self._ticket(tx, c)
@@ -322,6 +329,11 @@ class SupportStore:
             c = self._control(tx, sid, user)
             if c["mode"] == "bot":
                 return self._state(tx, c)
+            from app.tasks.provenance import revision
+            from app.tasks.handoffs import TaskHandoffs
+            revision(tx, user, lock=True)
+            handoffs = TaskHandoffs(self, user)
+            handoffs.require_resumable(tx, c['ticket_id'])
             # Unknown or in-flight effects must be reconciled before enabling new bot mutations.
             if tx.one("SELECT operation_id FROM support_operations WHERE session_id=? AND status IN ('running','unknown') LIMIT 1", (sid,)):
                 raise SupportError("仍有执行中或结果待核实的业务操作，请先由客服核实")
@@ -334,6 +346,7 @@ class SupportStore:
             self._event(tx, c, "support_state", user, {"mode": "bot", "status": target},
                         key=f"ticket-closed:{ticket['ticket_id']}")
             self.tasks.archive_ticket(tx, c, ticket['ticket_id'], c['sequence'])
+            handoffs.release(tx, c, ticket['ticket_id'])
             return self._state(tx, c)
 
     def receive(self, sid, user, content, message_id, *, explicit_handoff=False, request_fingerprint=None, task_input=None, delivery=None):
@@ -500,7 +513,9 @@ class SupportStore:
             operations = tx.all("SELECT * FROM support_operations WHERE session_id=? AND created_at<=? ORDER BY created_at",
                                 (c["session_id"], closed_at or now()))
             evidence = tx.all("SELECT payload,created_at FROM support_events WHERE session_id=? AND sequence<=? AND kind='tool_evidence' ORDER BY sequence DESC LIMIT 20", (c["session_id"], ceiling))
+            from app.tasks.handoffs import TaskHandoffs
             return {"ticket": ticket, "state": state, "operations": operations,
+                    "task_handovers": TaskHandoffs(self, c['user_id']).ticket_view(tx, tid),
                     "tasks": self.tasks.ticket_snapshot(tx, c, tid, ceiling)["tasks"],
                     "evidence": [{**json.loads(e["payload"]), "created_at": e["created_at"]} for e in evidence]}
 

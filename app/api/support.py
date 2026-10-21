@@ -6,7 +6,7 @@ import random
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Query, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 
 from app.support.runtime import get_store
@@ -74,6 +74,27 @@ class ReconcileBody(BaseModel):
 class StoppedBody(BaseModel):
     execution_stopped: Literal[True]
     evidence: str = Field(min_length=10, max_length=2000)
+
+
+class TaskUpdateBody(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    request_id: str = Field(min_length=1, max_length=200)
+    expected_version: int = Field(ge=1)
+    details: dict[str, str | int | None] | None = None
+    goal: str | None = Field(default=None, min_length=1, max_length=2000)
+
+
+@router.post('/support/tickets/{ticket_id}/tasks/{task_id}')
+def update_handoff_task(ticket_id: UUID, task_id: UUID, body: TaskUpdateBody, request: Request):
+    from app.tasks.handoffs import TaskHandoffs
+    store, actor = get_store(), identity(request)
+    # Authorize ticket visibility before resolving the customer identity.
+    detail = store.detail(str(ticket_id), actor)
+    with store.transaction(read_only=True) as tx:
+        control = store._control(tx, detail['ticket']['session_id'])
+    record = TaskHandoffs(store, control['user_id']).update(str(ticket_id), actor,
+        task_id=str(task_id), **body.model_dump())
+    return {'task': record.model_dump()}
 
 
 @router.get("/support/me")

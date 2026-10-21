@@ -107,6 +107,7 @@ export default function TaskConversation({ identity, onLogout, onStaff }) {
   }
   const state = conversation.state
   const status = progress?.processing === 'processing' ? '正在处理，你可以继续补充。'
+    : progress?.processing === 'waiting_human' ? '关联事项正在由人工处理，机器人不会重复办理。'
     : progress?.processing === 'waiting_user' ? '等待你的补充。' : ''
   return <main className="support-shell customer-shell">
     <header className="support-top"><div><small>小夕客服</small>

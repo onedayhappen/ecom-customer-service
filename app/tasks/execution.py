@@ -45,6 +45,10 @@ class PreparationNeedsHuman(RuntimeError):
     pass
 
 
+class ExecutionHandoff(RuntimeError):
+    pass
+
+
 def _failure(code):
     return {"success": False, "error_code": "validation_error", "error": code}
 
@@ -235,6 +239,13 @@ class _TaskContext:
         if self.tool_calls >= self.request.budget.tool_calls:
             raise ExecutionStopped("tool_call_budget")
         self.tool_calls += 1
+        if name == 'escalate_to_human':
+            from app.tasks.execution_models import HandoffInput
+            try:
+                HandoffInput.model_validate(arguments)
+            except ValidationError:
+                return json.dumps(_failure('invalid_handoff_arguments'))
+            raise ExecutionHandoff()
         if name == "recall_user_memory":
             try:
                 query = MemoryRecall.model_validate(arguments)
@@ -370,10 +381,12 @@ class TaskExecutor:
         definitions = [{"type": "function", "function": {"name": name, "description": name,
                         "parameters": schema.model_json_schema()}} for name, schema in READ_SCHEMAS.items()]
         from app.tools.case_context import ReadCase
+        from app.tasks.execution_models import HandoffInput
         definitions += [{"type": "function", "function": {"name": name, "description": description,
                          "parameters": schema.model_json_schema()}} for name, schema, description in (
             ("read_case_memory", ReadCase, "读取本事项进度和历史回执，不读取其他事项"),
-            ("save_case_context", ProgressInput, "保存本事项等待内容，等待时结束本次执行"))]
+            ("save_case_context", ProgressInput, "保存本事项等待内容，等待时结束本次执行"),
+            ('escalate_to_human', HandoffInput, '创建真实人工工单并停止当前会话的自动处理'))]
         if settings.task_operations_enabled:
             definitions.append({"type": "function", "function": {"name": "prepare_operation",
                 "description": "核验本事项并准备确认卡片；不执行操作、不接收业务参数或确认凭证",
@@ -402,6 +415,9 @@ class TaskExecutor:
                     result = ExecutionResult(plan.intent, Execution.REACT, reply=waiting.get("prompt") or "已保存等待进度。")
                 except ExecutionPrepared:
                     result = ExecutionResult(plan.intent, Execution.REACT, reply="请核对具体确认卡片。")
+                except ExecutionHandoff:
+                    stop_reason = 'agent_requested_handoff'
+                    result = ExecutionResult(plan.intent, Execution.REACT, reply='需要人工协助。', needs_human=True)
                 except PreparationNeedsHuman:
                     stop_reason = "operation_preparation_requires_human"
                     result = ExecutionResult(plan.intent, Execution.REACT, reply="需要人工核实办理范围。", needs_human=True)

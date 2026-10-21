@@ -210,6 +210,8 @@ class ReplyCoordinator:
                         result = dict(state="deferred", provenance=self.runs.guard.capture([tid], tx=tx))
                 stamp = result.get("provenance")
                 if (not self.runs.guard.valid(stamp, tx=tx)
+                        or tx.one('SELECT ticket_id FROM task_handoffs WHERE user_id=? AND task_id=? AND released_at IS NULL LIMIT 1',
+                                  (self.user, tid))
                         or not self.runs.control_versions_valid(tx, payload.get("controls"))
                         or tx.one("""SELECT c.session_id FROM task_sessions t JOIN support_conversations c
                             ON t.session_id=c.session_id WHERE t.task_id=? AND c.mode<>'bot' LIMIT 1""", (tid,))):

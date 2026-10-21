@@ -20,7 +20,14 @@ class ToolSource(StrictModel):
     event_id: str = Field(min_length=1, max_length=200)
 
 
-Source = Annotated[MessageSource | ToolSource, Field(discriminator="kind")]
+class SupportSource(StrictModel):
+    kind: Literal['support_event'] = 'support_event'
+    session_id: str = Field(min_length=1, max_length=200)
+    sequence: int = Field(ge=1)
+    task_id: str = Field(min_length=1, max_length=200)
+
+
+Source = Annotated[MessageSource | ToolSource | SupportSource, Field(discriminator="kind")]
 TaskStatus = Literal["in_progress", "waiting_user", "waiting_external", "paused", "completed", "cancelled"]
 
 

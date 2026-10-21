@@ -120,8 +120,11 @@ def test_changed_or_unresolved_inputs_prevent_old_confirmation(store, monkeypatc
             value = json.loads(row["payload"])
             value["prepared"]["arguments"]["order_id"] = "ORD-B"
             tx.execute("UPDATE task_operation_proposals SET payload=?", (json.dumps(value),))
-    with pytest.raises(SupportError):
-        confirm(service, card)
+    if mutation in {'handoff', 'resumed'}:
+        assert confirm(service, card)['status'] == 'cancelled'
+    else:
+        with pytest.raises(SupportError):
+            confirm(service, card)
     assert service.business.writes == []
     if mutation != "token":
         assert service.list("s")[0]["can_confirm"] is False
@@ -377,6 +380,7 @@ def test_v17_migration_rolls_back_and_preserves_original_receipts(store, monkeyp
     from app.tasks import migrations
     with store.transaction() as tx:
         tx.execute("INSERT INTO support_operations VALUES ('legacy','s',0,'apply_refund','succeeded','old','{}')")
+        tx.execute("DROP TABLE task_handoffs")
         tx.execute("DROP TABLE task_operation_resources")
         tx.execute("DROP TABLE task_operation_proposals")
         tx.execute("DELETE FROM support_schema_versions WHERE version>16")
@@ -396,7 +400,8 @@ def test_v17_migration_rolls_back_and_preserves_original_receipts(store, monkeyp
     upgraded.initialize()
     SupportStore(store.dsn).initialize()
     with upgraded.transaction(read_only=True) as tx:
-        assert tx.one("SELECT MAX(version) AS v FROM support_schema_versions")["v"] == 17
+        from app.support.store import SCHEMA_VERSION
+        assert tx.one("SELECT MAX(version) AS v FROM support_schema_versions")["v"] == SCHEMA_VERSION
         assert tx.one("SELECT COUNT(*) AS n FROM task_operation_proposals")["n"] == 0
 
 
@@ -468,7 +473,7 @@ def test_handoff_in_another_linked_session_wins_before_confirmation_or_preserves
         future, control = pool.submit(submit), pool.submit(handoff)
         result = future.result(timeout=15)
         control.result(timeout=15)
-    assert result in {"blocked", "succeeded"}
+    assert result in {"blocked", "cancelled", "succeeded"}
     assert len(operations.business.writes) == (1 if result == "succeeded" else 0)
 
 

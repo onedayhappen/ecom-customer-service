@@ -327,8 +327,10 @@ class CandidateService:
                 ranked.append((score, record, question, required, time_match))
             ranked.sort(key=lambda item: (not item[3], -item[0], item[1].task_id))
             for score, record, question, required, time_match in ranked[:self.max_candidates]:
+                from app.tasks.handoffs import handoff_context
                 context.candidates.append({
                     **record.model_dump(), "question": question, "required": required,
+                    'human_handoff': handoff_context(tx, self.user, record.task_id),
                     "reasons": [reason for active, reason in (
                         (str(record.details.get("order_id", "")).upper() in order_ids, "explicit_order"),
                         (self._product_matches(record, product_ids), "explicit_product"),

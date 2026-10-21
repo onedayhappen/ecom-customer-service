@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from app.support.store import SupportError, now
 from app.tasks.migrations import encoded, json_value
-from app.tasks.models import MessageSource, QuestionSpec, TaskChange, TaskContent, TaskPatch, TaskRecord
+from app.tasks.models import MessageSource, SupportSource, QuestionSpec, TaskChange, TaskContent, TaskPatch, TaskRecord
 
 
 class VersionConflict(SupportError):
@@ -112,6 +112,12 @@ class TaskRepository:
                 raise SupportError("来源消息不存在或不可用", 422)
             if json.loads(row["payload"]).get("role") != "user":
                 raise SupportError("事项补充必须引用用户原话", 422)
+        elif isinstance(source, SupportSource):
+            row = tx.one("SELECT kind,payload FROM support_events WHERE session_id=? AND sequence=?",
+                         (source.session_id, source.sequence))
+            if (not row or row['kind'] not in {'task_staff_update', 'task_resumed'}
+                    or json.loads(row['payload']).get('task_id') != source.task_id):
+                raise SupportError('人工交接来源不存在或不属于本事项', 422)
         else:
             row = tx.one("SELECT payload FROM case_snapshots WHERE user_id=?", (self.user_id,))
             events = json.loads(row["payload"]).get("events", []) if row else []
@@ -184,6 +190,8 @@ class TaskRepository:
             if replay is not None:
                 return replay
             self._source(tx, change.source)
+            if isinstance(change.source, SupportSource):
+                raise SupportError('人工交接不能用来新建另一事项', 422)
             record = TaskRecord(**content.model_dump(), task_id=task_id, user_id=self.user_id,
                                 version=1, created_at=timestamp, updated_at=timestamp, storage_mode="durable")
             tx.execute("""INSERT INTO conversation_tasks
@@ -219,6 +227,8 @@ class TaskRepository:
             if row["version"] != expected_version:
                 raise VersionConflict()
             self._source(tx, change.source)
+            if isinstance(change.source, SupportSource) and change.source.task_id != task_id:
+                raise SupportError('人工交接来源不属于本事项', 422)
             before = self._record(row)
             content = self._validate(TaskContent, {
                 **before.model_dump(include={"goal", "details", "waiting_for", "status"}), **patch})

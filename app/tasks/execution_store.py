@@ -35,6 +35,9 @@ class TaskRuns:
 
     def _control(self, tx, request):
         control = self.store._control(tx, request.session_id, self.user)
+        if tx.one('SELECT ticket_id FROM task_handoffs WHERE user_id=? AND task_id=? AND released_at IS NULL LIMIT 1',
+                  (self.user, request.task_id)):
+            raise SupportError('事项仍由人工处理，自动执行已停止')
         if control["mode"] != "bot" or tx.one("""SELECT c.session_id FROM task_sessions t
             JOIN support_conversations c ON c.session_id=t.session_id
             WHERE t.task_id=? AND c.mode<>'bot' LIMIT 1""", (request.task_id,)):
@@ -266,7 +269,11 @@ class TaskRuns:
                       "provenance": payload["provenance"], "controls": payload.get("controls", {})}
             tx.execute("""UPDATE runtime_jobs SET status=?,response=?,finished_at=? WHERE job_id=?""",
                        ("interrupted" if interrupted else "completed", json.dumps(result, ensure_ascii=False), clock(tx), request.job_id))
-            if not interrupted and result.get("reason") == "operation_preparation_requires_human":
+            if not interrupted and result.get('needs_human') is True:
                 control = self.store._control(tx, request.session_id, self.user)
-                self.store._handoff(tx, control, "operation_preparation_requires_human", "system")
+                reason = 'operation_preparation_requires_human' if result.get('reason') == 'operation_preparation_requires_human' else 'agent_escalation'
+                ticket = self.store._handoff(tx, control, reason, 'system')
+                result.update(ticket_id=ticket['ticket_id'], reply='已进入人工队列，客服将继续核实处理。')
+                tx.execute('UPDATE runtime_jobs SET response=? WHERE job_id=?',
+                    (json.dumps(result, ensure_ascii=False), request.job_id))
             return result

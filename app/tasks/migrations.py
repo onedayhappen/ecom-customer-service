@@ -175,3 +175,23 @@ def migrate_task_operations(tx):
     tx.execute("""CREATE TABLE task_operation_resources (
         resource_key TEXT PRIMARY KEY, operation_id TEXT NOT NULL)""")
 
+
+def migrate_task_handoffs(tx):
+    tx.execute("""CREATE TABLE task_handoffs (
+        ticket_id TEXT NOT NULL, task_id TEXT NOT NULL, user_id TEXT NOT NULL,
+        task_version INTEGER NOT NULL, snapshot TEXT NOT NULL,
+        acquired_at TEXT NOT NULL, released_at TEXT,
+        PRIMARY KEY(ticket_id,task_id))""")
+    tx.execute("""CREATE INDEX task_handoff_active ON task_handoffs(user_id,task_id)
+        WHERE released_at IS NULL""")
+    # Existing non-bot conversations must retain their constraints after upgrade.
+    from app.support.store import now
+    rows = tx.all("""SELECT c.ticket_id,t.task_id,t.user_id,t.version FROM conversation_tasks t
+        JOIN task_sessions s ON s.task_id=t.task_id
+        JOIN support_conversations c ON c.session_id=s.session_id
+        WHERE t.storage_mode='durable' AND c.mode<>'bot' AND c.ticket_id IS NOT NULL
+        AND t.status NOT IN ('completed','cancelled')""")
+    for row in rows:
+        tx.execute('INSERT INTO task_handoffs VALUES (?,?,?,?,?,?,NULL) ON CONFLICT DO NOTHING',
+            (row['ticket_id'], row['task_id'], row['user_id'], row['version'], '{}', now()))
+

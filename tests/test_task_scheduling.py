@@ -398,7 +398,9 @@ def test_cross_session_handoff_then_resume_does_not_revive_old_work(store, start
         control = store._control(tx, "old", "alice")
         store._handoff(tx, control, "customer_requested", "alice")
     store.resume("old", "alice")
-    with pytest.raises(SupportError, match="控制"):
+    assert TaskSchedule(store, 'alice').get(req.job_id)['status'] == 'superseded'
+    assert TaskRepository(store, 'alice').get(record.task_id).version == record.version + 1
+    with pytest.raises(SupportError, match='租约已失效' if started else '执行已停止'):
         if started:
             runs.save_tool(req, reservation["payload"], 1, "query_order", {"order_id": "ORD-A"},
                            result("query_order", {"order_id": "ORD-A"}))
@@ -427,6 +429,9 @@ def test_handoff_resume_also_invalidates_recent_query_cache(store):
     with store.transaction() as tx:
         store._handoff(tx, store._control(tx, "s", "alice"), "customer_requested", "alice")
     store.resume("s", "alice")
+    with pytest.raises(SupportError):
+        agent.execute_task(store, "alice", request(record, source), tools=tool)
+    record = TaskRepository(store, 'alice').get(record.task_id)
     assert agent.execute_task(store, "alice", request(record, source), tools=tool)["state"] == "ready"
     assert len(calls) == 2
 

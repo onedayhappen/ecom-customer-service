@@ -173,10 +173,15 @@ class MessageIntake:
                 WHERE s.session_id=? AND t.status='waiting_user' LIMIT 1""", (sid,))
             clarification = tx.one("""SELECT clarification_id FROM association_clarifications
                 WHERE session_id=? AND status='open' LIMIT 1""", (sid,))
+            human = tx.all("""SELECT DISTINCT t.task_id FROM conversation_tasks t
+                JOIN task_sessions s ON s.task_id=t.task_id JOIN task_handoffs h ON h.task_id=t.task_id
+                WHERE s.session_id=? AND t.user_id=? AND h.user_id=? AND h.released_at IS NULL""", (sid, user, user))
             processing = ("processing" if state["received_sequence"] > state["associated_sequence"] or active
-                          else "waiting_user" if waiting or clarification else "processing" if ready else "idle")
+                          else 'waiting_human' if human else "waiting_user" if waiting or clarification
+                          else "processing" if ready else "idle")
             return {"received_sequence": state["received_sequence"], "associated_sequence": state["associated_sequence"],
-                    "messages": items, "processing": processing, "active_tasks": active}
+                    "messages": items, "processing": processing, "active_tasks": active,
+                    'human_tasks': [r['task_id'] for r in human]}
 
     def claim(self, sid, user):
         with self.store.transaction() as tx:
