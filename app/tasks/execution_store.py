@@ -230,6 +230,7 @@ class TaskRuns:
                 (self.user, record.task_id))
             cutoff = clock(tx) - seconds
             return [e for r in reversed(rows) if (e := json.loads(r["payload"]))["object"] == object_key(record)
+                    and e.get('tool') != 'search_knowledge'
                     and e["observed_epoch"] >= cutoff and e["result"].get("success")
                     and self.control_versions_valid(tx, e.get("controls"))
                     and not any(invalid(tx, self.user, "decision", did) for did in e["provenance"]["decisions"])]

@@ -99,6 +99,7 @@ class _TaskContext:
         self.operation_id = None
         from app.memory.task_context import TaskMemory
         self.memory = TaskMemory(runs.store, runs.user)
+        self.policy_results = []
         self.allowed_tools = TASK_TOOLS | ({"prepare_operation"} if settings.task_operations_enabled else set())
         if settings.memory_enabled:
             self.allowed_tools = self.allowed_tools | {"recall_user_memory"}
@@ -114,6 +115,16 @@ class _TaskContext:
             self.evidence_time = clock(tx)
         if not self.memory.current():
             raise ExecutionStopped("memory_context_changed")
+        if self.policy_results:
+            from app.tools.knowledge import policy_result_current
+            from app.rag.task_policy import context_current
+            try:
+                valid = bounded_calls.run(lambda: all(context_current(self, r) and policy_result_current(r)
+                    for r in self.policy_results), self.call_timeout())
+            except (TimeoutError, CallCapacityExceeded):
+                valid = False
+            if not valid:
+                raise ExecutionStopped("policy_evidence_changed")
 
     def model_request(self, params):
         self.check()
@@ -164,6 +175,7 @@ class _TaskContext:
                 p = e.get('payload', {})
                 if (e.get('event_type') != 'tool_result' or e.get('user_id') != self.runs.user or not order
                         or p.get('tool') not in READ_SCHEMAS
+                        or p.get('tool') == 'search_knowledge'
                         or _order_ids(p.get('evidence')) != {str(order).upper()}
                         or p.get('task_id', self.record.task_id) != self.record.task_id
                         or ('provenance' in p and not self.runs.guard.valid(p['provenance'], tx=tx))):
@@ -269,10 +281,20 @@ class _TaskContext:
         args = self._validate_tool(name, arguments)
         if args is None:
             return json.dumps(_failure("arguments_or_object_outside_task"))
+        policy_context = None
+        if name == 'search_knowledge':
+            from app.rag.task_policy import context_for_task
+            from app.rag.policy import PolicyError, failure
+            try:
+                policy_context = context_for_task(self)
+            except PolicyError as error:
+                return json.dumps(failure(error.code, error.fields), ensure_ascii=False)
+            except (ValueError, TypeError):
+                return json.dumps(failure('policy_order_context_unverified'), ensure_ascii=False)
         # Reuse only a recent successful query for the same object and exact
         # parameters; changing a reason need not repeat an order read.
         reused = next((e for e in reversed(self.historical + self.receipts)
-                       if e["tool"] == name and e["arguments"] == args and e["result"].get("success")
+                       if name != 'search_knowledge' and e["tool"] == name and e["arguments"] == args and e["result"].get("success")
                        and e["observed_epoch"] >= self.evidence_time - 60), None)
         if reused:
             if not any(e["event_id"] == reused["event_id"] for e in self.receipts):
@@ -283,7 +305,16 @@ class _TaskContext:
             return json.dumps(result, ensure_ascii=False)
         def invoke():
             self.check()
-            return self.tools(name, args)
+            from app.rag.task_policy import policy_scope
+            with policy_scope(policy_context):
+                result = self.tools(name, args)
+            if name == 'search_knowledge':
+                from app.tools.knowledge import policy_result_current
+                from app.rag.policy import failure
+                decoded = json.loads(result) if isinstance(result, str) else result
+                if isinstance(decoded, dict) and decoded.get('success') and not policy_result_current(decoded, policy_context):
+                    return failure('policy_evidence_invalid')
+            return result
         try:
             raw = bounded_calls.run(invoke, self.call_timeout())
             result = json.loads(raw) if isinstance(raw, str) else raw
@@ -310,6 +341,8 @@ class _TaskContext:
             self.runs.save_tool(self.request, self.payload, self.tool_calls, name, args, result, original=self.record)
             raise
         self.receipts.append(evidence)
+        if name == 'search_knowledge' and result.get('success'):
+            self.policy_results.append(deepcopy(result))
         result = deepcopy(result)
         result["_task_evidence"] = {"event_id": evidence["event_id"], "observed_at": evidence["observed_at"]}
         return json.dumps(result, ensure_ascii=False)

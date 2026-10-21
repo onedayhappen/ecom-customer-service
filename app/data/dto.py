@@ -30,6 +30,9 @@ class OrderDTO:
     refund_status: str | None = None
     refund_reason: str | None = None
     refund_requested_at: str | None = None
+    store_id: str | None = None
+    channel: str | None = None
+    category: str | None = None
 
     # -- 行 → DTO ---------------------------------------------------------
 
@@ -53,6 +56,7 @@ class OrderDTO:
             refund_status=row.get("refund_status"),
             refund_reason=row.get("refund_reason"),
             refund_requested_at=_fmt_datetime(row.get("refund_requested_at")),
+            store_id=row.get("store_id"), channel=row.get("channel"), category=row.get("category"),
         )
 
     @classmethod
@@ -75,6 +79,7 @@ class OrderDTO:
             refund_status=order.get("refund_status"),
             refund_reason=order.get("refund_reason"),
             refund_requested_at=order.get("refund_requested_at"),
+            store_id=order.get("store_id"), channel=order.get("channel"), category=order.get("category"),
         )
 
     # -- DTO → 标准化输出 ---------------------------------------------------
@@ -92,6 +97,7 @@ class OrderDTO:
             "user", "created_at", "shipped_at", "delivered_at",
             "tracking_number", "carrier", "estimated_delivery",
             "refund_status", "refund_reason", "refund_requested_at",
+            "store_id", "channel", "category",
         ):
             value = getattr(self, key)
             if value not in (None, "", []):

@@ -26,6 +26,7 @@ class Chunk:
     doc: str
     section: str
     text: str
+    policy: dict | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -42,6 +43,49 @@ def chunk_markdown_dir(kb_dir: Path) -> list[Chunk]:
 def chunk_markdown_file(md_path: Path) -> list[Chunk]:
     """切分单个 Markdown 文档，供增量更新时避免扫描整个知识库。"""
     return _chunk_one_file(md_path)
+
+
+def policy_chunks(kb_dir: Path) -> list[Chunk]:
+    """Reviewed sidecars are required; complete sections keep exceptions intact.
+
+    A sidecar is `name.policy.json` next to `name.md`. It is authored by the
+    knowledge operator, never extracted from a customer upload or by a model.
+    """
+    import json
+    from app.rag.policy import PolicyMetadata, PolicyError, digest
+    root = Path(kb_dir).resolve()
+    result = []
+    identities = set()
+    for path in sorted(root.glob('*.md')):
+        if path.resolve().parent != root:
+            raise PolicyError('policy_source_outside_root')
+        sidecar = path.with_suffix('.policy.json')
+        if not sidecar.is_file() or sidecar.resolve().parent != root:
+            raise PolicyError('policy_metadata_missing')
+        metadata = PolicyMetadata.model_validate_json(sidecar.read_text(encoding='utf-8'))
+        identity = (metadata.source_id, metadata.version)
+        if identity in identities:
+            raise PolicyError('duplicate_policy_version')
+        identities.add(identity)
+        raw = path.read_text(encoding='utf-8')
+        # Introductory qualifications apply to every section, not just a
+        # separately ranked introduction which might otherwise be omitted.
+        sections = _split_by_h2(raw)
+        intro = sections[0][1] if sections and '概览' in sections[0][0] else ''
+        for section, body in sections:
+            if not body:
+                continue
+            text = f'【{path.stem} · {section}】\n' + (
+                intro + '\n\n' if intro and '概览' not in section else '') + body
+            if len(text) > 12000:
+                raise PolicyError('policy_section_requires_editorial_split')
+            policy = metadata.model_dump(mode='json')
+            policy['source_digest'] = digest(raw)
+            cid = digest(dict(source=metadata.source_id, version=metadata.version, section=section, text=text))
+            result.append(Chunk(cid, path.stem, section, text, policy))
+    if not result:
+        raise PolicyError('policy_corpus_empty')
+    return result
 
 
 def _chunk_one_file(md_path: Path) -> list[Chunk]:

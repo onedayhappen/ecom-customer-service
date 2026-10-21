@@ -75,6 +75,21 @@ class KnowledgeBaseUpdater:
             unchanged=sorted(set(current) - set(added) - set(changed)),
         )
 
+    def publish_policies(self, index):
+        """Build a complete reviewed generation before atomically publishing it.
+
+        Policy and sidecar changes are inseparable. The legacy incremental
+        document updater remains available until the rollout retires it.
+        """
+        from app.rag.chunker import policy_chunks
+        revision = index.revision()
+        chunks = policy_chunks(self.kb_dir)
+        identity = self.embedder.index_identity
+        vectors = self.embedder.encode([chunk.text for chunk in chunks])
+        if self.embedder.index_identity != identity:
+            raise ValueError('Embedding identity changed during policy build')
+        return index.publish(chunks, vectors, identity, expected_revision=revision)
+
     def _scan_documents(self) -> dict[str, dict]:
         docs = {}
         for path in sorted(self.kb_dir.glob("*.md")):

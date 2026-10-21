@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config.settings import settings
 from app.memory.retrieval import lexical_scores
+from app.memory.source_policy import message_content
 from app.session.context_budget import estimate_request_tokens
 from app.session.request_budget import ContextBudgetExceeded, request_input_limit
 from app.support.store import SupportError
@@ -222,7 +223,7 @@ class CandidateService:
             message = json.loads(row["payload"])
             if message.get("role") not in {"user", "assistant", "agent"}:
                 raise SupportError("原话不可用", 404)
-            return dict(session_id=session_id, sequence=sequence, role=message["role"], content=message["content"])
+            return dict(session_id=session_id, sequence=sequence, role=message["role"], content=message_content(message))
 
     def _sources(self, tx, task_id):
         rows = tx.all("""SELECT e.session_id,e.sequence,e.payload,e.created_at FROM support_task_messages m
@@ -230,7 +231,7 @@ class CandidateService:
             JOIN support_conversations c ON c.session_id=e.session_id
             WHERE m.task_id=? AND c.user_id=? AND e.visibility='public' AND e.kind='message'
             ORDER BY e.created_at DESC,e.session_id,e.sequence DESC LIMIT 3""", (task_id, self.user))
-        result = [dict(kind="message", session_id=r["session_id"], sequence=r["sequence"], role=p["role"], content=p["content"])
+        result = [dict(kind="message", session_id=r["session_id"], sequence=r["sequence"], role=p["role"], content=message_content(p))
                 for r in rows if (p := json.loads(r["payload"])).get("role") in {"user", "assistant", "agent"}
                 and self._source_allowed(tx, r["session_id"], r["sequence"])]
         change = tx.one("""SELECT e.payload FROM task_changes c JOIN support_events e
@@ -282,7 +283,7 @@ class CandidateService:
                 current.append(dict(session_id=session_id, sequence=sequence, content=payload["content"]))
             rows = tx.all("""SELECT sequence,payload FROM support_events WHERE session_id=? AND sequence<?
                 AND kind='message' AND visibility='public' ORDER BY sequence DESC LIMIT 12""", (session_id, sequences[0]))
-            recent = [dict(session_id=session_id, sequence=r["sequence"], role=p["role"], content=p["content"],
+            recent = [dict(session_id=session_id, sequence=r["sequence"], role=p["role"], content=message_content(p),
                            required=bool(re.search(r"不|别|仅|只|如果|除非|否则|只有|另一|第[一二三四五\d]|[?？]|ORD-|SKU-|ITEM-", p["content"], re.I)))
                       for r in reversed(rows) if (p := json.loads(r["payload"])).get("role") in {"user", "assistant", "agent"}
                       and self._source_allowed(tx, session_id, r["sequence"])]

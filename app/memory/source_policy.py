@@ -17,6 +17,16 @@ _PRIVATE = re.compile(
 )
 OMITTED = "[该内容含敏感信息或长期授权要求，未放入模型记忆，请补充不含这些信息的业务描述。]"
 
+POLICY_REFRESH = '此前查询过规则；继续处理时须重新检索适用条款，历史回复不能作为当前政策依据。'
+
+
+def message_content(payload):
+    """Preserve visible history while withholding cached policy conclusions."""
+    if payload.get('role') == 'assistant' and 'context_content' in payload:
+        value = payload['context_content']
+        return value if isinstance(value, str) else POLICY_REFRESH
+    return payload.get('content', '')
+
 
 def memory_safe(value):
     return isinstance(value, str) and not _PRIVATE.search(value)

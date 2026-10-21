@@ -1,9 +1,11 @@
 """Publish ready pieces once, in the transaction that checks their freshness.
 
-No model or network call occurs here. Bounded selection and typed rendering
-remove the need to repeatedly regenerate prose while new messages arrive.
+Policy checks run before the transaction; no model or network call holds its
+locks. Bounded selection and typed rendering avoid repeated prose generation.
 """
 import json
+import time
+from types import SimpleNamespace
 
 from app.runtime.outbox import clock
 from app.support.store import SupportError, now
@@ -29,23 +31,89 @@ class ReplyCoordinator:
             WHERE task_reply_items.disposition='deferred'""",
             (self.user, key, sid, sequence, disposition, now(), clock(tx)))
 
-    def _receipts(self, tx, record, result):
+    def _receipts(self, tx, record, result, policy_checks, source):
         receipts = []
         for eid in result.get("evidence_ids", [])[:30]:
             row = tx.one("""SELECT e.payload FROM support_events e JOIN support_conversations c
                 ON c.session_id=e.session_id WHERE c.user_id=? AND e.event_key=?
                 AND e.kind='task_tool_result'""", (self.user, "task-tool:" + eid))
             evidence = json.loads(row["payload"]) if row else {}
-            if (evidence.get("task_id") != record.task_id or evidence.get("object") != object_key(record)
-                    or not isinstance(evidence.get("result"), dict)
-                    or evidence["result"].get("success") is not True
-                    or evidence.get("observed_epoch", 0) < clock(tx) - 60
-                    or not self.runs.control_versions_valid(tx, evidence.get("controls"))
-                    or any(invalid(tx, self.user, "decision", did)
-                           for did in evidence.get("provenance", {}).get("decisions", []))):
+            if not self._valid_receipt(tx, record, evidence):
                 continue
+            if evidence.get('tool') == 'search_knowledge':
+                if eid not in policy_checks:
+                    return None
+                if not policy_checks[eid]:
+                    continue
+                if not self._policy_context_current(tx, record, evidence['result'], source):
+                    continue
             receipts.append(evidence)
         return receipts
+
+    def _valid_receipt(self, tx, record, evidence):
+        return (evidence.get('task_id') == record.task_id and evidence.get('object') == object_key(record)
+            and isinstance(evidence.get('result'), dict) and evidence['result'].get('success') is True
+            and evidence.get('observed_epoch', 0) >= clock(tx) - 60
+            and self.runs.control_versions_valid(tx, evidence.get('controls'))
+            and not any(invalid(tx, self.user, 'decision', did)
+                for did in evidence.get('provenance', {}).get('decisions', [])))
+
+    def _policy_context_current(self, tx, record, result, source):
+        from app.rag.task_policy import context_current, source_request_time
+        from app.rag.policy import PolicyError
+        try:
+            request_time = source_request_time(self.runs, source, tx=tx)
+        except (PolicyError, KeyError, TypeError):
+            return False
+        proof = []
+        eid = result.get('context', {}).get('order_evidence_id')
+        if eid:
+            row = tx.one("""SELECT e.payload FROM support_events e JOIN support_conversations c
+                ON c.session_id=e.session_id WHERE c.user_id=? AND e.event_key=?
+                AND e.kind='task_tool_result'""", (self.user, 'task-tool:' + eid))
+            evidence = json.loads(row['payload']) if row else {}
+            if not self._valid_receipt(tx, record, evidence):
+                return False
+            proof.append(evidence)
+        return context_current(SimpleNamespace(record=record, runs=self.runs, historical=proof,
+            receipts=[], evidence_time=clock(tx), request_time=request_time), result)
+
+    def _check_policy_results(self, sid):
+        """Validate knowledge outside the publication transaction/locks.
+
+        Clauses are cited as versioned retrieval evidence. A change after this
+        check belongs to the next retrieval; business execution still requires
+        independent preflight and confirmation against its actual backend.
+        """
+        from app.harness.bounded_call import bounded_calls, CallCapacityExceeded
+        from app.tools.knowledge import policy_result_current
+        with self.store.transaction(read_only=True) as tx:
+            self.store._control(tx, sid, self.user)
+            rows = tx.all("""SELECT j.response FROM runtime_jobs j LEFT JOIN task_reply_items r
+                ON r.user_id=j.user_id AND r.item_key='job:' || j.job_id
+                WHERE j.user_id=? AND j.session_id=? AND j.kind='task_execution'
+                AND j.status IN ('completed','interrupted','expired')
+                AND (r.disposition IS NULL OR r.disposition='deferred')
+                ORDER BY COALESCE(r.checked_at,0),j.created_at,j.job_id LIMIT 50""", (self.user, sid))
+            ids = list(dict.fromkeys(eid for r in rows for eid in json.loads(r['response'] or '{}').get('evidence_ids', [])[:30]))
+            evidence = []
+            for eid in ids:
+                row = tx.one("""SELECT e.payload FROM support_events e JOIN support_conversations c
+                    ON c.session_id=e.session_id WHERE c.user_id=? AND e.event_key=? AND e.kind='task_tool_result'""",
+                    (self.user, 'task-tool:' + eid))
+                value = json.loads(row['payload']) if row else {}
+                if value.get('tool') == 'search_knowledge' and value.get('result', {}).get('success'):
+                    evidence.append((eid, value['result']))
+        checked, deadline = {}, time.monotonic() + 3
+        for eid, result in evidence:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                checked[eid] = bounded_calls.run(lambda r=result: policy_result_current(r), remaining)
+            except (TimeoutError, CallCapacityExceeded):
+                checked[eid] = False
+        return checked
 
     def _open_question(self, tx, sid):
         # Only questions actually sent and still at their original version count.
@@ -70,6 +138,7 @@ class ReplyCoordinator:
         return "task" if has_task_question else None
 
     def publish(self, sid):
+        policy_checks = self._check_policy_results(sid)
         with self.store.transaction() as tx:
             # Also fences an unassociated correction arriving in another session.
             lock_input_user(tx, self.user)
@@ -182,8 +251,15 @@ class ReplyCoordinator:
                     text = "订单 " + label(view["review"]["order_id"]) + "：预检已完成，请核对确认卡片后决定是否提交。"
                     metadata["operation_id"] = row["operation_id"]
                 else:
-                    receipts = self._receipts(tx, record, result)
+                    receipts = self._receipts(tx, record, result, policy_checks, payload['request']['source'])
+                    if receipts is None:
+                        self._mark(tx, sid, key, disposition="deferred")
+                        continue
                     text = facts(record, receipts)
+                    if any(r['tool'] == 'search_knowledge' for r in receipts):
+                        from app.memory.source_policy import POLICY_REFRESH
+                        metadata['context_content'] = '\n'.join(filter(None, (
+                            facts(record, [r for r in receipts if r['tool'] != 'search_knowledge']), POLICY_REFRESH)))
                     metadata["evidence_ids"] = [r["event_id"] for r in receipts]
                     if not text:
                         subject = "订单 " + label(record.details["order_id"]) if record.details.get("order_id") else label(record.goal)
@@ -212,6 +288,8 @@ class ReplyCoordinator:
             for key in ("question_id", "task_id", "task_version", "clarification_id"):
                 if key in p:
                     payload[key] = p[key]
+        if any('context_content' in p for p in pieces):
+            payload['context_content'] = '\n\n'.join(p.get('context_content', p['content']) for p in pieces)
         seq = self.store._event(tx, control, "message" if pieces else "task_processing", "bot",
                                payload, key="coordinated-reply:" + event_id)
         for p in pieces:

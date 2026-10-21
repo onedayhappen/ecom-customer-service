@@ -21,6 +21,7 @@ from app.reliability.failure_policy import FailureCategory
 
 _retriever: Optional[KnowledgeRetriever] = None
 _retriever_lock = threading.RLock()
+_policy_retriever = None
 
 
 def _create_backend_from_settings():
@@ -61,11 +62,19 @@ def _initialize_retriever() -> KnowledgeRetriever:
 
 def reset_retriever() -> None:
     """清空单例缓存（测试或切换后端时使用）。"""
-    global _retriever
+    global _retriever, _policy_retriever
     _retriever = None
+    _policy_retriever = None
 
 
 def search_knowledge(query: str, top_k: int = 3) -> dict:
+    from app.rag.task_policy import current_policy_context
+    from app.tasks.runtime import current_task
+    if current_policy_context() is not None:
+        return search_policy(query, top_k, current_policy_context())
+    if current_task() is not None:
+        from app.rag.policy import failure
+        return failure('policy_context_missing')
     if settings.retrieval_service_url:
         from app.rag.remote import search
         try:
@@ -76,6 +85,44 @@ def search_knowledge(query: str, top_k: int = 3) -> dict:
             return {'success': False, 'backend': 'remote', 'query': query, 'results': [],
                     'error': '远程检索暂时不可用', 'error_code': FailureCategory.TRANSIENT_FAILURE.value}
     return search_knowledge_local(query, top_k)
+
+
+def _get_policy_retriever():
+    global _policy_retriever
+    with _retriever_lock:
+        if _policy_retriever is None:
+            from app.rag.releases import PolicyIndex
+            from app.rag.retriever import PolicyRetriever
+            embedder = Embedder(api_key=settings.embedding_api_key or settings.openai_api_key,
+                base_url=settings.embedding_base_url or settings.openai_base_url,
+                model=settings.embedding_model, provider=settings.embedding_provider,
+                local_model_path=settings.local_embedding_model_path)
+            _policy_retriever = PolicyRetriever(embedder, PolicyIndex(settings.chroma_persist_dir, settings.chroma_collection))
+        return _policy_retriever
+
+
+def search_policy(query, top_k, context, *, local=False):
+    from app.rag.policy import PolicyError, PolicyContext, failure
+    try:
+        context = PolicyContext.model_validate(context)
+        if settings.retrieval_service_url and not local:
+            from app.rag.remote import policy_search
+            return policy_search(query, top_k, context)
+        return _get_policy_retriever().search(query, context, top_k)
+    except PolicyError as error:
+        return failure(error.code, error.fields)
+    except Exception:
+        return failure('policy_retrieval_unavailable')
+
+
+def policy_result_current(result, expected_context=None, *, local=False):
+    try:
+        if settings.retrieval_service_url and not local:
+            from app.rag.remote import policy_validate
+            return policy_validate(result, expected_context)
+        return _get_policy_retriever().current(result, expected_context)
+    except Exception:
+        return False
 
 
 def search_knowledge_local(query: str, top_k: int = 3) -> dict:

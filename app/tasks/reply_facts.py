@@ -7,7 +7,8 @@ QUESTION_LABELS = {
     "order_id": "订单号", "item_id": "商品编号", "item_name": "商品名称",
     "sku_id": "商品规格编号", "product_id": "商品编号", "reason": "具体原因",
     "quantity": "数量", "tracking_number": "物流单号", "platform_code": "购买平台",
-    "store_id": "店铺", "address": "收货地址", "details": "希望如何处理",
+    "store_id": "店铺", "channel": "购买渠道", "category": "商品品类",
+    "address": "收货地址", "details": "希望如何处理",
 }
 
 
@@ -35,6 +36,19 @@ def facts(record, receipts):
     lines = []
     for receipt in receipts:
         result, tool = receipt["result"], receipt["tool"]
+        if tool == 'search_knowledge' and result.get('backend') == 'chroma-policy':
+            for clause in result.get('results', []):
+                scope = '；'.join(QUESTION_LABELS[key] + '：' + (
+                    '不限' if clause[key] == '*' else label(clause[key]))
+                    for key in ('platform_code', 'store_id', 'channel', 'category'))
+                lines.append(f"规则条款（{label(clause['doc'])}，版本 {label(clause['version'])}）：\n"
+                             + clause['text'] + '\n来源：' + clause['source_uri']
+                             + '\n适用范围：' + scope
+                             + '\n版本有效区间：' + label(clause['effective_from']) + ' 至 '
+                             + (label(clause['effective_until']) + '（不含结束时刻）' if clause['effective_until'] else '未设置结束时间')
+                             + '\n适用依据：' + label(clause['selection_reference'], 1000))
+            lines.append('以上为条款依据；当前订单是否符合条件及实际办理结果仍需业务核实。')
+            continue
         if tool == "query_order":
             order = result.get("order", {})
             if (not isinstance(order, dict) or not record.details.get("order_id")

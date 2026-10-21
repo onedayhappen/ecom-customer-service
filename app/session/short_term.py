@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.config.settings import settings
 from app.session.context_budget import estimate_message_tokens, estimate_text_tokens
-from app.memory.source_policy import memory_safe
+from app.memory.source_policy import memory_safe, message_content
 
 
 SCHEMA = (
@@ -97,9 +97,9 @@ def _messages(tx, sid, task_id, *, ceiling, after=0, before=None, limit=128, des
         if not context_event_valid(tx, sid, row['sequence']):
             continue
         value = json.loads(row['payload'])
-        if value.get('role') in {'user', 'assistant', 'agent'} and memory_safe(value.get('content')):
+        if value.get('role') in {'user', 'assistant', 'agent'} and memory_safe(message_content(value)):
             result.append({'sequence': row['sequence'], 'role': 'assistant' if value['role'] == 'agent' else value['role'],
-                           'content': value['content']})
+                           'content': message_content(value)})
     if descending:
         result.reverse()
         if len(rows) == limit and result and result[0]['role'] == 'assistant':
@@ -197,7 +197,7 @@ def _recall(tx, sid, task_id, query, cutoff):
         if not context_event_valid(tx, sid, row['sequence']):
             continue
         message = json.loads(row['payload'])
-        content = message.get('content', '')
+        content = message_content(message)
         if message.get('role') not in {'user', 'assistant', 'agent'} or not isinstance(content, str):
             continue
         score = sum((8 if re.search('[A-Za-z0-9]', term) else len(term))
@@ -286,7 +286,7 @@ def _current_summary(tx, sid, items, *, expand=True):
         row = tx.one("""SELECT payload FROM support_events WHERE session_id=? AND sequence=?
             AND kind='message' AND visibility='public'""", (sid, sequence))
         p = json.loads(row['payload']) if row else {}
-        content = p.get('content')
+        content = message_content(p)
         role = 'assistant' if p.get('role') == 'agent' else p.get('role')
         if (memory_safe(content) and role == item.get('role') and item.get('quote')
                 and item['quote'] in content):

@@ -44,13 +44,20 @@ def close_clients():
 
 
 def search(query, top_k):
+    content = _post('/v1/search', {'query': query, 'top_k': top_k})
+    return SearchResult.model_validate_json(content).model_dump(exclude_none=True)
+
+
+def _post(path, payload):
     from app.config.settings import settings
+    import json
     if not settings.retrieval_service_token:
         raise ValueError('Remote retrieval requires service authentication')
+    if len(json.dumps(payload, ensure_ascii=False).encode()) > 512000:
+        raise ValueError('Retrieval request exceeds allowed size')
     deadline = time.monotonic() + settings.retrieval_timeout_seconds
     with client(settings.retrieval_service_url, settings.retrieval_timeout_seconds,
-                settings.retrieval_service_token).stream('POST', '/v1/search',
-                    json={'query': query, 'top_k': top_k}) as response:
+                settings.retrieval_service_token).stream('POST', path, json=payload) as response:
         response.raise_for_status()
         if response.headers.get('content-encoding', 'identity') != 'identity':
             raise ValueError('Retrieval service must return an uncompressed response')
@@ -63,4 +70,23 @@ def search(query, top_k):
             if len(content) + len(chunk) > 512000:
                 raise ValueError('Retrieval response exceeds allowed size')
             content.extend(chunk)
-    return SearchResult.model_validate_json(content).model_dump(exclude_none=True)
+    return content
+
+
+def policy_search(query, top_k, context):
+    import json
+    from app.rag.policy import PolicyContext
+    context = PolicyContext.model_validate(context)
+    result = json.loads(_post('/v1/policies/search', dict(query=query, top_k=top_k,
+                         context=context.model_dump(mode='json'))))
+    if result.get('success') and not policy_validate(result, context):
+        raise ValueError('Invalid policy evidence from retrieval service')
+    return result
+
+
+def policy_validate(result, context=None):
+    import json
+    from app.rag.policy import PolicyContext
+    expected = PolicyContext.model_validate(context).model_dump(mode='json') if context is not None else None
+    reply = json.loads(_post('/v1/policies/validate', dict(result=result, expected_context=expected)))
+    return reply == {'valid': True}

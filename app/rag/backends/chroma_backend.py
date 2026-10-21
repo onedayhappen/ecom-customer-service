@@ -74,6 +74,7 @@ class ChromaBackend(VectorBackend):
         # cosine 距离：score = 1 - distance，越大越相似
         self._collection = self._client.create_collection(
             name=self._collection_name,
+            embedding_function=None,
             metadata={
                 _EMBEDDING_MODEL_KEY: embedding_model,
                 "hnsw:space": "cosine",
@@ -93,14 +94,17 @@ class ChromaBackend(VectorBackend):
         self._embedding_model = embedding_model
         self._size_cache = len(chunks)
 
-    def search(self, query_vector: list[float], top_k: int) -> list[RetrievedChunk]:
+    def search(self, query_vector: list[float], top_k: int, *, chunk_ids=None) -> list[RetrievedChunk]:
         if self._collection is None:
             self.load()
 
         # Chroma 返回的是 cosine distance；下方统一换算成越大越相似的 score。
+        if chunk_ids is not None and not chunk_ids:
+            return []
         result = self._collection.query(
             query_embeddings=[query_vector],
-            n_results=top_k,
+            n_results=min(top_k, len(chunk_ids)) if chunk_ids is not None else top_k,
+            **({'where': {'chunk_id': {'$in': list(chunk_ids)}}} if chunk_ids is not None else {}),
         )
 
         ids = result.get("ids", [[]])[0]
@@ -119,6 +123,16 @@ class ChromaBackend(VectorBackend):
             score = 1.0 - float(dist)  # cosine distance → similarity
             out.append(RetrievedChunk(chunk=chunk, score=score))
         return out
+
+    def fetch(self, chunk_ids):
+        """Read bodies only after the caller has filtered access/applicability."""
+        if self._collection is None:
+            self.load()
+        if not chunk_ids:
+            return []
+        data = self._collection.get(ids=list(chunk_ids), include=['documents', 'metadatas'])
+        return [Chunk(cid, meta['doc'], meta['section'], text)
+                for cid, meta, text in zip(data['ids'], data['metadatas'], data['documents'])]
 
     def replace_document(
         self,
@@ -167,7 +181,7 @@ class ChromaBackend(VectorBackend):
     def load(self) -> None:
         self._ensure_client()
         try:
-            self._collection = self._client.get_collection(self._collection_name)
+            self._collection = self._client.get_collection(self._collection_name, embedding_function=None)
         except Exception as e:
             raise FileNotFoundError(
                 f"Chroma collection '{self._collection_name}' 不存在于 "
