@@ -10,7 +10,7 @@ from app.tasks.models import StrictModel
 DetailField = Literal[
     "order_id", "item_id", "product_id", "sku_id", "item_name", "quantity",
     "reason", "conditions", "platform_code", "store_id", "tracking_number",
-    "after_sale_id", "invoice_title", "tax_id", "email", "address",
+    "after_sale_id", "invoice_title", "invoice_type", "invoice_id", "tax_id", "email", "address",
 ]
 
 

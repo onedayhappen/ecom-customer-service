@@ -265,4 +265,7 @@ class TaskRuns:
                       "provenance": payload["provenance"], "controls": payload.get("controls", {})}
             tx.execute("""UPDATE runtime_jobs SET status=?,response=?,finished_at=? WHERE job_id=?""",
                        ("interrupted" if interrupted else "completed", json.dumps(result, ensure_ascii=False), clock(tx), request.job_id))
+            if not interrupted and result.get("reason") == "operation_preparation_requires_human":
+                control = self.store._control(tx, request.session_id, self.user)
+                self.store._handoff(tx, control, "operation_preparation_requires_human", "system")
             return result

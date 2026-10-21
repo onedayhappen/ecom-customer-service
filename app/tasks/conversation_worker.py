@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import logging
 from types import SimpleNamespace
+from app.config.settings import settings
 
 from app.harness.bounded_call import bounded_calls
 from app.runtime.outbox import clock
@@ -21,6 +22,29 @@ class ConversationWorker:
         self.intake = MessageIntake(store)
         self.pool = ThreadPoolExecutor(min(concurrency, 4), thread_name_prefix="message-association")
         self.capacity, self.associations = min(concurrency, 4), {}
+        self.receipt_pool = ThreadPoolExecutor(1, thread_name_prefix="business-receipt")
+        self.receipt_future = None
+
+    def recover_operations(self):
+        """One bounded receipt lookup at a time; business writes are never retried."""
+        if self.receipt_future:
+            if not self.receipt_future.done():
+                return
+            try:
+                self.receipt_future.result()
+            except Exception:
+                log.exception("Business receipt recovery failed")
+            self.receipt_future = None
+        if not settings.task_operations_enabled:
+            return
+        with self.store.transaction(read_only=True) as tx:
+            row = tx.one("""SELECT p.operation_id,p.user_id FROM task_operation_proposals p
+                JOIN support_operations o ON o.operation_id=p.operation_id
+                WHERE o.status='running' AND p.run_deadline<=? ORDER BY p.run_deadline LIMIT 1""", (clock(tx),))
+        if row:
+            from app.tasks.operations import TaskOperations
+            self.receipt_future = self.receipt_pool.submit(
+                TaskOperations(self.store, row["user_id"]).reconcile, row["operation_id"])
 
     def _associate(self, batch):
         engine = SimpleNamespace(associate=lambda context: bounded_calls.run(
@@ -58,6 +82,7 @@ class ConversationWorker:
                                (clock(tx) + 2, row["task_id"]))
 
     def tick(self):
+        self.recover_operations()
         for jid, future in list(self.associations.items()):
             if future.done():
                 del self.associations[jid]
@@ -93,5 +118,6 @@ class ConversationWorker:
         return published
 
     def close(self):
+        self.receipt_pool.shutdown(wait=True)
         self.pool.shutdown(wait=True)
         self.executions.close()

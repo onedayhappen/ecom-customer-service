@@ -190,6 +190,26 @@ def request_refund(order_id: str, reason: str, platform_code: str = "pdd") -> di
             "error_code": FailureCategory.VALIDATION_ERROR.value,
         }
 
+    from app.tools.mutation_context import preflight_for, request_id_for
+    args = {"order_id": order_id, "reason": reason}
+    preview = preflight_for(user_id, "apply_refund", args)
+    if preview:
+        from app.tools.commerce_service import database
+        from app.data.commerce_dao import CommerceRejection
+        from app.execution.business_operations import refund_eligibility
+        request_id = request_id_for(user_id, "apply_refund", args)
+        if not request_id:
+            return {"success": False, "error_code": "confirmation_invalid", "error": "缺少服务端操作确认"}
+        try:
+            result = database().write_refund(user_id, args, request_id, preview, refund_eligibility)
+            invalidate_order_cache(order_id, platform_code, user_id)
+            return result
+        except CommerceRejection as exc:
+            return {"success": False, "error_code": exc.code, "error": str(exc), "request_id": request_id}
+        except Exception:
+            return {"success": False, "error_code": "transient_failure", "error": "退款申请结果待核实",
+                    "request_id": request_id}
+
     try:
         outcome = _get_dao().request_refund(user_id, order_id, platform_code, reason)
     except Exception as exc:  # noqa: BLE001

@@ -8,6 +8,7 @@ import time
 from types import SimpleNamespace
 
 from pydantic import ValidationError
+from app.config.settings import settings
 
 from app.data_plan.builder import build_conversation_plan
 from app.data_plan.enums import Execution
@@ -20,7 +21,8 @@ from app.runtime.outbox import clock
 from app.session.context_budget import estimate_request_tokens
 from app.session.request_budget import request_input_limit
 from app.support.store import SupportError
-from app.tasks.execution_models import ProgressInput, QUESTION_FIELDS, READ_SCHEMAS, TASK_PROMPT, TASK_TOOLS, TaskExecutionInput
+from app.tasks.execution_models import (ProgressInput, QUESTION_FIELDS, READ_SCHEMAS, TASK_PROMPT, TASK_TOOLS,
+                                       TaskExecutionInput, PrepareOperationInput, OPERATION_PROMPT)
 from app.tasks.execution_store import TaskRuns
 from app.tasks.repository import VersionConflict
 from app.tasks.runtime import task_scope
@@ -32,6 +34,14 @@ class ExecutionStopped(RuntimeError):
 
 
 class ExecutionWaiting(RuntimeError):
+    pass
+
+
+class ExecutionPrepared(RuntimeError):
+    pass
+
+
+class PreparationNeedsHuman(RuntimeError):
     pass
 
 
@@ -86,6 +96,8 @@ class _TaskContext:
         self.receipts = []
         self.validation_errors = []
         self.historical = runs.evidence(self.record)
+        self.operation_id = None
+        self.allowed_tools = TASK_TOOLS | ({"prepare_operation"} if settings.task_operations_enabled else set())
 
     def call_timeout(self):
         return min(self.request.budget.call_seconds, max(0, self.deadline - time.monotonic()))
@@ -190,11 +202,37 @@ class _TaskContext:
 
     def tool(self, name, arguments):
         self.check()
-        if name not in TASK_TOOLS:
+        if name not in self.allowed_tools:
             return json.dumps(_failure("tool_not_allowed"))
         if self.tool_calls >= self.request.budget.tool_calls:
             raise ExecutionStopped("tool_call_budget")
         self.tool_calls += 1
+        if name == "prepare_operation":
+            from app.tasks.operations import TaskOperations
+            from app.execution.task_proposals import PreparationRejected
+            from app.data.commerce_dao import CommerceRejection
+            try:
+                args = PrepareOperationInput.model_validate(arguments)
+            except ValidationError:
+                return json.dumps(_failure("invalid_operation_preparation"))
+            try:
+                operation = TaskOperations(self.runs.store, self.runs.user, scope=self.runs.candidates.scope).prepare(
+                    self.request.session_id, self.record.task_id, args.expected_version, args.action,
+                    fence=(self.request, self.payload), timeout=self.call_timeout())
+            except PreparationRejected as exc:
+                if exc.manual:
+                    raise PreparationNeedsHuman() from None
+                return json.dumps(dict(success=False, error_code="validation_error", field=exc.field,
+                                       error=str(exc)), ensure_ascii=False)
+            except CommerceRejection:
+                raise PreparationNeedsHuman() from None
+            except (ValueError, KeyError, TypeError):
+                # Unusable business evidence cannot authorize a broader action.
+                raise PreparationNeedsHuman() from None
+            except (TimeoutError, CallCapacityExceeded):
+                raise ExecutionStopped("preflight_timeout_or_capacity") from None
+            self.operation_id = operation["operation_id"]
+            raise ExecutionPrepared()
         if name in {"read_case_memory", "save_case_context"}:
             from app.tools.case_context import read_case_memory, save_case_context
             result = (read_case_memory if name == "read_case_memory" else save_case_context)(**arguments)
@@ -268,7 +306,7 @@ class TaskExecutor:
     def run_reserved(self, request, engine, reservation):
         """Internal Worker continuation of a DB reservation; not an HTTP input."""
         context = _TaskContext(self.runs, request, reservation, self.tools)
-        plan = replace(build_conversation_plan(engine.intent), tools=tuple(sorted(TASK_TOOLS)), skills=())
+        plan = replace(build_conversation_plan(engine.intent), tools=tuple(sorted(context.allowed_tools)), skills=())
         definitions = [{"type": "function", "function": {"name": name, "description": name,
                         "parameters": schema.model_json_schema()}} for name, schema in READ_SCHEMAS.items()]
         from app.tools.case_context import ReadCase
@@ -276,7 +314,12 @@ class TaskExecutor:
                          "parameters": schema.model_json_schema()}} for name, schema, description in (
             ("read_case_memory", ReadCase, "读取本事项进度和历史回执，不读取其他事项"),
             ("save_case_context", ProgressInput, "保存本事项等待内容，等待时结束本次执行"))]
-        executor = ReactExecutor(_ModelClient(context, engine.client), engine.model, system_prompt=TASK_PROMPT,
+        if settings.task_operations_enabled:
+            definitions.append({"type": "function", "function": {"name": "prepare_operation",
+                "description": "核验本事项并准备确认卡片；不执行操作、不接收业务参数或确认凭证",
+                "parameters": PrepareOperationInput.model_json_schema()}})
+        executor = ReactExecutor(_ModelClient(context, engine.client), engine.model,
+            system_prompt=TASK_PROMPT + (OPERATION_PROMPT if settings.task_operations_enabled else ""),
             execute=context.tool, question_fields=QUESTION_FIELDS,
             convergence_detector=ConvergenceDetector(max_steps=request.budget.model_calls + 1, max_same_tool_calls=3))
         identity = set_current_user_id(self.runs.user)
@@ -293,6 +336,11 @@ class TaskExecutor:
                 except ExecutionWaiting:
                     waiting = context.record.waiting_for or {}
                     result = ExecutionResult(plan.intent, Execution.REACT, reply=waiting.get("prompt") or "已保存等待进度。")
+                except ExecutionPrepared:
+                    result = ExecutionResult(plan.intent, Execution.REACT, reply="请核对具体确认卡片。")
+                except PreparationNeedsHuman:
+                    stop_reason = "operation_preparation_requires_human"
+                    result = ExecutionResult(plan.intent, Execution.REACT, reply="需要人工核实办理范围。", needs_human=True)
                 except ExecutionStopped as exc:
                     stop_reason = str(exc)
                     has_evidence = any(e["result"].get("success") for e in context.receipts + context.historical)
@@ -307,13 +355,15 @@ class TaskExecutor:
                         result = ExecutionResult(plan.intent, Execution.REACT, reply="需要进一步核实当前需求，请联系人工客服。",
                                                  needs_human=True)
                 state = context.record.status if context.record.status in {"waiting_user", "waiting_external"} else (
-                    "needs_human" if result.needs_human else "deferred" if stop_reason else "ready")
+                    "needs_human" if result.needs_human else "needs_confirmation" if context.operation_id
+                    else "deferred" if stop_reason else "ready")
                 return self.runs.finish(request, context.payload, {
                     "state": state, "reply": result.reply, "task_version": context.record.version,
                     "question": context.record.waiting_for if context.record.status == "waiting_user" else None,
                     "waiting_for": context.record.waiting_for, "needs_human": result.needs_human,
                     "reason": stop_reason, "model_calls": context.model_calls, "tool_calls": context.tool_calls,
                     "validation_errors": context.validation_errors,
+                    **({"operation_id": context.operation_id} if context.operation_id else {}),
                     "evidence_ids": list(dict.fromkeys(e["event_id"] for e in context.receipts + context.historical)),
                 })
         except (SupportError, ExecutionStopped):

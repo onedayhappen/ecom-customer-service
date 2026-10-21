@@ -186,3 +186,50 @@ class MySqlCommerceDAO(MySqlOrderDAO):
             return {'status': 'unknown', 'note': '本地无成功回执不等于可以安全重试'}
         return {'status': 'succeeded', 'action': row['action'], 'order_id': row['order_id'],
                 'result': decode(row['result'])}
+
+    def refund_snapshot(self, user_id, order_id, cursor=None, *, lock=False):
+        if cursor is None:
+            with self._connection() as conn, conn.cursor() as cur:
+                return self.refund_snapshot(user_id, order_id, cur, lock=lock)
+        order = self.owned_order(user_id, order_id, cursor=cursor, lock=lock)
+        suffix = " FOR UPDATE" if lock else ""
+        cursor.execute("""SELECT payload,is_demo FROM commerce_order_policies
+            WHERE platform_code='pdd' AND user_id='' AND record_id='refund'""" + suffix)
+        policy = cursor.fetchone()
+        if not policy:
+            raise CommerceRejection("缺少退款申请的业务预检规则", "evidence_unavailable")
+        policy = {**policy, "payload": decode(policy["payload"])}
+        cursor.execute("""SELECT record_id,payload,is_demo FROM commerce_after_sales
+            WHERE platform_code='pdd' AND user_id=%s AND object_id=%s ORDER BY record_id""" + suffix,
+            (user_id, order_id))
+        applications = [{**r, "payload": decode(r["payload"])} for r in cursor.fetchall()]
+        version = fingerprint(dict(order=order, policy=policy, applications=applications))
+        return order, policy, applications, version
+
+    def write_refund(self, user_id, args, request_id, preview_version, validate):
+        """One order lock covers qualification, conflicting writes and the receipt."""
+        args_hash = fingerprint({"action": "apply_refund", "args": args})
+        with self._connection() as conn, conn.cursor() as cur:
+            snapshot = self.refund_snapshot(user_id, args["order_id"], cur, lock=True)
+            cur.execute("""SELECT arguments_hash,result FROM commerce_mutations
+                WHERE user_id=%s AND request_id=%s FOR UPDATE""", (user_id, request_id))
+            previous = cur.fetchone()
+            if previous:
+                if previous["arguments_hash"] != args_hash:
+                    raise CommerceRejection("同一操作编号的参数不一致", "confirmation_invalid")
+                return {**decode(previous["result"]), "replayed": True}
+            if snapshot[3] != preview_version:
+                raise CommerceRejection("订单或售后状态已变化，请重新预检并确认", "confirmation_invalid")
+            validate(snapshot)
+            cur.execute("""UPDATE orders SET refund_status='submitted',refund_reason=%s,
+                refund_requested_at=NOW(),status=CASE WHEN status='pending' THEN 'refund_processing' ELSE status END
+                WHERE platform_code='pdd' AND order_id=%s AND user_id=%s""",
+                (args["reason"], args["order_id"], user_id))
+            demo = bool(snapshot[1].get("is_demo"))
+            result = dict(success=True, request_id=request_id, order_id=args["order_id"],
+                          status="submitted", source="mysql_demo" if demo else "mysql", is_demo=demo,
+                          message="已登记本地演示退款申请。" if demo else "整单退款申请已登记，需等待业务审核。")
+            cur.execute("INSERT INTO commerce_mutations VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (user_id, request_id, "apply_refund", args["order_id"], args_hash,
+                 datetime.now(timezone.utc).replace(tzinfo=None), json.dumps(result, ensure_ascii=False)))
+            return result

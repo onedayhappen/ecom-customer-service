@@ -1,5 +1,19 @@
 # Isolated integration infrastructure. Never points to business databases.
 services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ecom_operations_test
+      MYSQL_USER: test_runner
+      MYSQL_PASSWORD: isolated_test_only
+      MYSQL_ROOT_PASSWORD: isolated_root_only
+    ports: ["127.0.0.1:23306:3306"]
+    tmpfs: ["/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pisolated_root_only"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
   postgres:
     image: postgres:16-alpine
     environment:

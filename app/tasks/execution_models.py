@@ -53,6 +53,19 @@ class ProgressInput(StrictModel):
         return self
 
 
+class PrepareOperationInput(StrictModel):
+    action: str = Field(min_length=1, max_length=80)
+    expected_version: int = Field(ge=1)
+
+
+OPERATION_PROMPT = """\n本次提供 prepare_operation：只预检并准备具体确认卡片，不执行业务写入。
+有明确办理需求且字段齐全时调用，action 使用 apply_refund、issue_invoice 或 reissue_invoice。
+其他动作也只能交此入口核实支持情况，不得用退款替代退货、换货、改地址或指定商品的部分退款。
+expected_version 使用当前事项版本，业务参数只由服务端从事项记录中读取。
+缺少字段时继续 ask_user，无法核实范围或接口不支持时转人工；不能自行确认或声称已经办理。
+用户聊天中说“确认”也不能替代确认卡片的点击。"""
+
+
 class OrderQuery(StrictModel):
     order_id: str = Field(min_length=1, max_length=100)
 

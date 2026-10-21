@@ -231,9 +231,18 @@ class AssociationService:
                 if tx.one("""SELECT s.task_id FROM task_sessions s JOIN support_conversations c ON c.session_id=s.session_id
                     WHERE s.task_id=? AND c.mode<>'bot' LIMIT 1""", (target.task_id,)):
                     raise AssociationRejected("human_owned_task")
-                if tx.one("""SELECT o.operation_id FROM support_operations o JOIN task_sessions s ON s.session_id=o.session_id
-                    WHERE s.task_id=? AND o.status IN ('running','unknown') LIMIT 1""", (target.task_id,)):
-                    raise AssociationRejected("operation_in_progress_or_unknown")
+                inflight = tx.one("""SELECT o.operation_id FROM support_operations o JOIN task_sessions s ON s.session_id=o.session_id
+                    WHERE s.task_id=? AND o.status IN ('running','unknown')
+                    AND (EXISTS(SELECT 1 FROM support_operation_tasks m WHERE m.operation_id=o.operation_id AND m.task_id=?)
+                        OR NOT EXISTS(SELECT 1 FROM support_operation_tasks m WHERE m.operation_id=o.operation_id)) LIMIT 1""",
+                    (target.task_id, target.task_id))
+                if inflight:
+                    # A validated amendment of a new operation is saved for
+                    # human intervention after intake commits; it never undoes IO.
+                    known = tx.one("SELECT operation_id FROM task_operation_proposals WHERE operation_id=? AND user_id=?",
+                                   (inflight["operation_id"], self.user))
+                    if not known or decision.effect not in {"cancel", "pause", "amend"}:
+                        raise AssociationRejected("operation_in_progress_or_unknown")
                 if target.status in {"completed", "cancelled", "paused"} and decision.effect != "resume":
                     raise AssociationRejected("explicit_resume_required")
                 if decision.effect == "resume" and not re.search(r"继续|恢复|重开|接着|重新", text):
@@ -393,6 +402,10 @@ class AssociationService:
                              status="clarification" if any(action == "clarify" for _, action in ids) else "associated")
                         for seq, ids in per_message.items()]
             self.intake.complete(batch, outcomes, tx=tx)
+            from app.tasks.operations import handoff_started_tasks
+            affected = [d.task_id for d in proposal.decisions if d.action == "update" and d.effect in {"cancel", "pause", "amend"}]
+            if handoff_started_tasks(tx, self.store, self.user, batch.session_id, affected):
+                result["needs_human"] = True
             tx.execute("INSERT INTO association_runs VALUES (?,?,?,?,?,?)",
                        (batch.job_id, self.user, batch.session_id, fingerprint, json.dumps(result, ensure_ascii=False), now()))
             return result

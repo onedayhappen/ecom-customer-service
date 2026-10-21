@@ -168,6 +168,19 @@ class ReplyCoordinator:
                 elif record.status in {"paused", "cancelled"}:
                     text = f"订单 {label(record.details.get('order_id'))}的当前事项已" + (
                         "暂停。" if record.status == "paused" else "停止自动处理。")
+                elif result.get("state") == "needs_confirmation":
+                    from app.tasks.operations import TaskOperations
+                    operations = TaskOperations(self.store, self.user, scope=self.runs.candidates.scope)
+                    try:
+                        row = operations._row(tx, result.get("operation_id"))
+                        view = operations._view(tx, row, sid)
+                        if row["task_id"] != tid or not view["can_confirm"]:
+                            raise SupportError("操作已变化")
+                    except SupportError:
+                        self._mark(tx, sid, key, disposition="stale")
+                        continue
+                    text = "订单 " + label(view["review"]["order_id"]) + "：预检已完成，请核对确认卡片后决定是否提交。"
+                    metadata["operation_id"] = row["operation_id"]
                 else:
                     receipts = self._receipts(tx, record, result)
                     text = facts(record, receipts)
@@ -192,6 +205,9 @@ class ReplyCoordinator:
                        task_versions={k: v for p in pieces for k, v in p.get("task_versions", {}).items()},
                        decision_ids=sorted({d for p in pieces for d in p.get("decision_ids", [])}),
                        evidence_ids=sorted({e for p in pieces for e in p.get("evidence_ids", [])}))
+        operations = [p["operation_id"] for p in pieces if p.get("operation_id")]
+        if operations:
+            payload["operation_ids"] = operations
         for p in pieces:
             for key in ("question_id", "task_id", "task_version", "clarification_id"):
                 if key in p:

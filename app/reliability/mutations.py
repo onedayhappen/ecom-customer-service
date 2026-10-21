@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import secrets
 from dataclasses import dataclass
@@ -42,6 +43,26 @@ class MutationGuard:
     def _canonical(arguments: dict[str, Any]) -> str:
         return json.dumps(arguments, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
+    @staticmethod
+    def token_hash(token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def bound_token(cls, binding: dict[str, Any], secret: str) -> str:
+        """Recoverable credential for an immutable, server-owned operation.
+
+        The caller must still check ownership, expiry, sources and current state
+        in the transaction that reserves execution. A signature grants no tool
+        access on its own.
+        """
+        if len(secret) < 32:
+            raise ValueError("A confirmation signing secret of at least 32 characters is required")
+        return hmac.new(secret.encode("utf-8"), cls._canonical(binding).encode("utf-8"), hashlib.sha256).hexdigest()
+
+    @classmethod
+    def token_matches(cls, token: str, expected_hash: str) -> bool:
+        return bool(token and expected_hash and secrets.compare_digest(cls.token_hash(token), expected_hash))
+
     @classmethod
     def _key(cls, case_id: str, action: str, arguments: dict[str, Any]) -> str:
         value = f"{case_id}:{action}:{cls._canonical(arguments)}"
@@ -50,7 +71,7 @@ class MutationGuard:
     def request_confirmation(self, intent: str, action: str, arguments: dict[str, Any]) -> str:
         order_id = str(arguments.get("order_id") or "")
         raw_token = secrets.token_urlsafe(32)
-        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        token_hash = self.token_hash(raw_token)
         now = datetime.now()
         with self.case_manager.mutation_lock:
             with self.case_manager.transaction():

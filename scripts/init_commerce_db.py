@@ -85,7 +85,8 @@ def demo_records(products, orders, at=None):
                 'note': '初始化时的退款状态快照，不表示已到账',
             }, user_id=identity)
     for action, statuses in [('address_change', ['pending']), ('cancel', ['pending']),
-                             ('expedite', ['pending', 'shipped']), ('invoice', ['shipped', 'delivered'])]:
+                             ('expedite', ['pending', 'shipped']), ('invoice', ['shipped', 'delivered']),
+                             ('refund', ['pending', 'shipped', 'delivered'])]:
         add('policies', action, action, {
             **evidence, 'version': 'demo-v1', 'allowed_statuses': statuses,
             'effective_from': starts, 'effective_until': ends,

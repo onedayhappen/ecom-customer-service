@@ -138,10 +138,15 @@ class MessageIntake:
             elif incoming.action == "cancel":
                 if control["mode"] != "bot":
                     raise SupportError("人工服务期间请由客服处理事项取消")
+                from app.tasks.provenance import revision
+                revision(tx, user, lock=True)
                 TaskRepository(self.store, user).update(
                     incoming.task_id, sid, expected_version=incoming.task_version,
                     change_id="cancel:" + fingerprint, source=dict(kind="message", session_id=sid, sequence=sequence),
                     patch={"status": "cancelled", "waiting_for": None}, tx=tx)
+                from app.tasks.operations import handoff_started_tasks
+                handoff_started_tasks(tx, self.store, user, sid, [incoming.task_id])
+                control = self.store._control(tx, sid, user)
             if incoming.action:
                 tx.execute("""UPDATE message_intake_items SET association_status='control',decision_id=?
                     WHERE session_id=? AND sequence=?""", ("control:" + incoming.request_id, sid, sequence))

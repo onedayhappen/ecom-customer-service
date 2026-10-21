@@ -8,6 +8,8 @@ export default function TaskConversation({ identity, onLogout, onStaff }) {
   const [sessionId, setSessionId] = useState(() => localStorage.getItem(sessionKey) || crypto.randomUUID())
   const [input, setInput] = useState(''), [error, setError] = useState(''), [progress, setProgress] = useState(null)
   const [accepted, setAccepted] = useState(false)
+  const [operations, setOperations] = useState([]), [busyOperations, setBusyOperations] = useState({})
+  const operationRevision = useRef(0)
   const outboxKey = `ecom-task-outbox:${identity.user_id}:${sessionId}`
   const [pending, setPending] = useState(() => restorePending(sessionStorage, outboxKey, sessionId))
   const items = useRef(pending), active = useRef(sessionId)
@@ -34,6 +36,11 @@ export default function TaskConversation({ identity, onLogout, onStaff }) {
           if (next.length !== items.current.length) { save(next); setAccepted(true) }
         }
       } catch { /* SSE reports connectivity; an unused conversation has no intake yet. */ }
+      try {
+        const revision = operationRevision.current
+        const cards = await request(`/api/v1/task-operations/${sessionId}`)
+        if (!cancelled && revision === operationRevision.current && Array.isArray(cards)) setOperations(cards)
+      } catch { /* The operation feature is independently disabled by default. */ }
       if (!cancelled) timer = setTimeout(refresh, 2000)
     }
     refresh()
@@ -67,6 +74,30 @@ export default function TaskConversation({ identity, onLogout, onStaff }) {
     active.current = sid; setSessionId(sid); setInput(''); setError(''); setAccepted(false); setProgress(null)
     // Pending requests remain recoverable in the previous conversation's outbox.
     items.current = []; setPending([])
+    setOperations([]); setBusyOperations({})
+  }
+  async function operate(operation, action) {
+    const oid = operation.operation_id, sid = sessionId
+    if (busyOperations[oid]) return
+    operationRevision.current += 1
+    setBusyOperations(previous => ({ ...previous, [oid]: true }))
+    try {
+      const updated = await post(`/api/v1/task-operations/${oid}/${action}`, {
+        session_id: sid, ...(action === 'confirm' ? { confirmation_token: operation.confirmation_token } : {})
+      })
+      if (active.current === sid) {
+        setOperations(previous => previous.map(item => item.operation_id === oid ? updated : item))
+        setError('')
+      }
+    } catch (e) {
+      if (active.current === sid) {
+        setError(e.message + '。请刷新操作状态后再决定下一步。')
+        setOperations(previous => previous.map(item => item.operation_id === oid ? { ...item, can_confirm: false } : item))
+      }
+    } finally {
+      operationRevision.current += 1
+      if (active.current === sid) setBusyOperations(previous => ({ ...previous, [oid]: false }))
+    }
   }
   async function changeControl(action) {
     try {
@@ -95,7 +126,10 @@ export default function TaskConversation({ identity, onLogout, onStaff }) {
         <span>{item.payload.message} · {item.status === 'sending' ? '正在发送' : '等待核实接收结果'}</span>
         {item.status !== 'sending' && <button onClick={() => deliver(item.payload)}>重试这条消息</button>}
       </div>)}
-      <OperationConfirmation operation={null} />
+      {operations.map(operation => <OperationConfirmation key={operation.operation_id} operation={operation}
+        enabled={state?.mode === 'bot' && pending.length === 0} busy={!!busyOperations[operation.operation_id]}
+        onConfirm={value => operate(value, 'confirm')} onCancel={value => operate(value, 'cancel')}
+        onRefresh={value => operate(value, 'refresh')} />)}
       <form className="support-compose" onSubmit={send}>
         <textarea aria-label="咨询内容" maxLength={4000} value={input} onChange={e => setInput(e.target.value)}
           placeholder="可以连续补充订单、原因和其他问题" />

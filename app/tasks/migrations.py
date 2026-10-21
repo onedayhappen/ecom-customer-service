@@ -160,3 +160,18 @@ def migrate_coordinated_replies(tx):
     tx.execute("""CREATE INDEX runtime_task_reply_scan ON runtime_jobs(user_id,session_id,created_at)
         WHERE kind='task_execution' AND status IN ('completed','interrupted','expired')""")
 
+
+def migrate_task_operations(tx):
+    # Execution status/results stay in support_operations. This table holds
+    # only the immutable proposal and its authorization dependencies.
+    tx.execute("""CREATE TABLE task_operation_proposals (
+        operation_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, task_id TEXT NOT NULL,
+        task_version INTEGER NOT NULL, payload TEXT NOT NULL, token_hash TEXT NOT NULL,
+        expires_at DOUBLE PRECISION NOT NULL, run_deadline DOUBLE PRECISION,
+        created_at TEXT NOT NULL)""")
+    tx.execute("""CREATE INDEX task_operation_owner ON task_operation_proposals(user_id,task_id,created_at)""")
+    tx.execute("""CREATE INDEX task_operation_recovery ON task_operation_proposals(run_deadline)
+        WHERE run_deadline IS NOT NULL""")
+    tx.execute("""CREATE TABLE task_operation_resources (
+        resource_key TEXT PRIMARY KEY, operation_id TEXT NOT NULL)""")
+

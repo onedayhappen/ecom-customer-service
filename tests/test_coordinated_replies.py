@@ -339,7 +339,9 @@ def test_complete_worker_from_multiple_intake_messages_to_replies(store):
         intake.receive("s", "alice", request_id=str(uuid4()), content=oid + " 查询订单")
     worker = ConversationWorker(store, agent, tools=query_result, concurrency=2)
     try:
-        deadline = time.monotonic() + 10
+        # This is eventual publication, not a 10-second latency benchmark.
+        # Allow the normal execution window on loaded integration hosts.
+        deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             worker.tick()
             content = "\n".join(p["content"] for p in replies(store))
@@ -348,7 +350,9 @@ def test_complete_worker_from_multiple_intake_messages_to_replies(store):
             time.sleep(.02)
         assert intake.progress("s", "alice")["associated_sequence"] == intake.progress("s", "alice")["received_sequence"]
         content = "\n".join(p["content"] for p in replies(store))
-        assert content.count("ORD-A") == content.count("ORD-B") == 1
+        with store.transaction(read_only=True) as tx:
+            jobs = tx.all("SELECT kind,status,error,response FROM runtime_jobs")
+        assert content.count("ORD-A") == content.count("ORD-B") == 1, jobs
         assert worker.tick() == []
     finally:
         worker.close()
@@ -359,10 +363,11 @@ def test_v15_upgrade_preserves_pending_work_and_rolls_back_as_one_transaction(st
     a, sa = task(store, "s")
     jid = ready(store, a, sa)
     with store.transaction() as tx:
-        for table in ("task_reply_items", "task_reply_sessions", "task_execution_wakes"):
+        for table in ("task_operation_resources", "task_operation_proposals",
+                      "task_reply_items", "task_reply_sessions", "task_execution_wakes"):
             tx.execute("DROP TABLE " + table)
         tx.execute("DROP INDEX runtime_task_reply_scan")
-        tx.execute("DELETE FROM support_schema_versions WHERE version=16")
+        tx.execute("DELETE FROM support_schema_versions WHERE version>15")
         tx.execute("INSERT INTO support_schema_versions VALUES (15,'before-upgrade') ON CONFLICT DO NOTHING")
     upgraded = SupportStore(store.dsn)
     original = migrations.migrate_coordinated_replies

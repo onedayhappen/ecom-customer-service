@@ -422,6 +422,8 @@ app.include_router(auth_router)
 app.include_router(support_router)
 from app.api.task_messages import router as task_messages_router
 app.include_router(task_messages_router)
+from app.api.task_operations import router as task_operations_router
+app.include_router(task_operations_router)
 
 
 @app.exception_handler(SupportError)
