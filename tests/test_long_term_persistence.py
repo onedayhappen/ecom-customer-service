@@ -30,7 +30,8 @@ def _concurrent_merge(directory, key, barrier):
     memory.merge_and_save([_fact(content=key, key=key, event=key)], source_batch_id=key)
 
 
-def test_cross_process_stale_instances_merge_without_lost_updates(tmp_path):
+@pytest.mark.parametrize('_iteration', range(4))
+def test_cross_process_stale_instances_merge_without_lost_updates(tmp_path, _iteration):
     context = multiprocessing.get_context('spawn')
     barrier = context.Barrier(2)
     processes = [context.Process(target=_concurrent_merge,
@@ -191,6 +192,13 @@ def test_corrupt_authoritative_json_is_not_overwritten(tmp_path):
 def test_json_user_path_cannot_escape_memory_directory(tmp_path):
     with pytest.raises(ValueError, match='user path'):
         _memory(tmp_path, '../another-user').load()
+
+
+@pytest.mark.parametrize('user', ['', '../other', '..\\other', 'user:stream', '/absolute', 'bad\x00name'])
+def test_item_repository_rejects_paths_and_alternate_streams(tmp_path, user):
+    from app.memory.items import JsonMemoryItemRepository
+    with pytest.raises(ValueError, match='user path'):
+        JsonMemoryItemRepository(str(tmp_path)).list_versions(user)
 
 
 def test_structured_scope_and_owner_override_legacy_metadata(tmp_path):

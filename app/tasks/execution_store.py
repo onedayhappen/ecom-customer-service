@@ -34,6 +34,8 @@ class TaskRuns:
         return row
 
     def _control(self, tx, request):
+        from app.tasks.rollout import require_running
+        require_running(tx, self.user)
         control = self.store._control(tx, request.session_id, self.user)
         if tx.one('SELECT ticket_id FROM task_handoffs WHERE user_id=? AND task_id=? AND released_at IS NULL LIMIT 1',
                   (self.user, request.task_id)):

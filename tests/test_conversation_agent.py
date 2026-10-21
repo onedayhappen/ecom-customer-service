@@ -19,14 +19,16 @@ from app.support.runtime import bot_scope
 from app.tools.request_context import set_current_user_id, reset_current_user_id
 
 
-@pytest.fixture(autouse=True)
-def unified_mode(monkeypatch):
-    monkeypatch.setattr(settings, 'assistant_just_react', True)
-
-
 def reply(text='', tool=None, args=None):
     calls = [SimpleNamespace(id='call', function=SimpleNamespace(name=tool, arguments=json.dumps(args or {})))] if tool else None
     return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text, tool_calls=calls))])
+
+
+def test_retired_order_draft_cannot_be_written_without_a_task():
+    from app.tools.case_context import save_case_context
+    result = save_case_context(order_id='ORD-A', expected_version=0, intent='refund_service',
+                               state='resolved', summary='claimed complete', fields={})
+    assert result['success'] is False and result['error_code'] == 'retired_path'
 
 
 class Client:
@@ -150,34 +152,6 @@ def test_new_message_during_inflight_write_hands_off_without_rollback(tmp_path):
     assert new['mode'] == 'handoff_pending'
 
 
-def test_drafts_cross_sessions_use_cas_and_do_not_overwrite_business_state(tmp_path, monkeypatch):
-    from app.tools import case_context
-    monkeypatch.setattr(case_context, 'create_case_manager', lambda user: CaseManager(user, str(tmp_path)))
-    monkeypatch.setattr(case_context, 'query_order', lambda oid: {'success': True, 'order': {'order_id': oid}})
-    token = set_current_user_id('user')
-    args = dict(order_id='ORD-A', expected_version=0, intent='invoice_request',
-                state='waiting_user', summary='公司发票缺少税号', fields={'invoice_type': 'company'})
-    try:
-        first = case_context.save_case_context(**args)
-        assert first['success']
-        manager = CaseManager('user', str(tmp_path))
-        guard = MutationGuard(manager, 'old-session')
-        confirmation = guard.request_confirmation('invoice_request', 'issue_invoice', {'order_id': 'ORD-A'})
-        assert case_context.read_case_memory(order_id='ORD-A')['cases']
-        assert case_context.save_case_context(**args)['error_code'] == 'version_conflict'
-        updated = case_context.save_case_context(**{**args, 'expected_version': 1,
-                'summary': '改为个人发票', 'fields': {'invoice_type': 'personal'}})
-        assert updated['case']['draft']['version'] == 2
-        assert updated['case']['draft']['fields'] == {'invoice_type': 'personal'}
-        assert updated['case']['business_state']['value'] == 'unknown'
-        assert guard.peek_confirmation(confirmation) is None
-        identity = set_current_user_id('other-user')
-        try:
-            assert case_context.read_case_memory(order_id='ORD-A')['cases'] == []
-        finally:
-            reset_current_user_id(identity)
-    finally:
-        reset_current_user_id(token)
 
 
 def test_draft_claims_are_not_accepted_as_authoritative_evidence(tmp_path):
@@ -193,24 +167,3 @@ def test_draft_claims_are_not_accepted_as_authoritative_evidence(tmp_path):
     manager.record_tool_result('session', turn, 'read_case_memory', json.dumps(claim))
     assert manager.recent_tool_evidence('session') == []
     assert manager.cases == {}
-
-
-def test_auto_closed_draft_can_resume_with_same_version(tmp_path, monkeypatch):
-    from app.tools import case_context
-    monkeypatch.setattr(case_context, 'create_case_manager', lambda user: CaseManager(user, str(tmp_path)))
-    monkeypatch.setattr(case_context, 'query_order', lambda oid: {'success': True, 'order': {'order_id': oid}})
-    token = set_current_user_id('user')
-    args = dict(order_id='ORD-A', expected_version=0, intent='invoice_request', state='paused',
-                summary='稍后继续', fields={})
-    try:
-        original = case_context.save_case_context(**args)['case']
-        manager = CaseManager('user', str(tmp_path))
-        with manager.transaction():
-            manager.cases[original['case_id']].status = 'closed'
-            manager.save()
-        resumed = case_context.save_case_context(**{**args, 'expected_version': 1})
-        assert resumed['success']
-        assert resumed['case']['case_id'] == original['case_id']
-        assert resumed['case']['draft']['version'] == 2
-    finally:
-        reset_current_user_id(token)

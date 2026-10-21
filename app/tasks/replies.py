@@ -140,6 +140,9 @@ class ReplyCoordinator:
     def publish(self, sid):
         policy_checks = self._check_policy_results(sid)
         with self.store.transaction() as tx:
+            from app.tasks.rollout import running
+            if not running(tx, self.user):
+                return None
             # Also fences an unassociated correction arriving in another session.
             lock_input_user(tx, self.user)
             control = self.store._control(tx, sid, self.user)

@@ -1,7 +1,7 @@
 from app.config.settings import settings
 from app.support.runtime import get_store
 from app.tasks.operations import TaskOperations
-from tests.test_multiturn_tasks_api import api
+from tests.api_fixtures import api
 from tests.test_task_candidates import task
 from tests.test_task_operations import Business
 

@@ -26,7 +26,6 @@ from app.data_plan.enums import Intent
 from app.evaluation.dataset import EvalCase
 from app.evaluation.trace import LLMCallRecord, RunTrace, ToolObservation
 from app.execution import ReactExecutor, ToolRunner
-from app.memory import CaseManager
 
 
 class Sandbox:
@@ -50,81 +49,19 @@ class Sandbox:
             final_resp: CustomerServiceResponse | None = None
             last_intent: str | None = None
             last_execution: str | None = None
-            # 多轮上下文：与 API 保持一致，先识别意图，再按意图做查询改写。
+            # 共享 Agent 离线评测：原话保留，不进行强制查询改写。
             context: list[dict] = []
-            case_manager = CaseManager(f"eval-{case.id}", str(self.tmp_root / "cases"))
-            session_id = f"eval-session-{case.id}"
 
             for turn in case.turns:
                 from app.intent import recognize
-                from app.intent.query_rewrite import make_llm_disambiguator, rewrite_query, RewriteOutcome
-                # 与 API 相同：先尝试消费上一轮的多订单选择，再做意图识别。
-                selection = None if settings.assistant_just_react else case_manager.consume_order_selection(session_id, turn)
-                if selection and selection.get("invalid"):
-                    lines = ["请回复候选序号或完整订单号，例如“2”："]
-                    lines.extend(
-                        f"{index}. {item['order_id']}：{item.get('items_summary', '')}"
-                        for index, item in enumerate(selection["candidates"], 1)
-                    )
-                    reply = "\n".join(lines)
-                    final_resp = CustomerServiceResponse(
-                        intent=Intent.ANSWER_QUESTION,
-                        confidence=1.0, reply=reply, requires_human=False, follow_up_question=None,
-                    )
-                    context.extend([{"role": "user", "content": turn}, {"role": "assistant", "content": reply}])
-                    last_intent, last_execution = "answer_question", "clarification"
-                    continue
-                effective_turn = turn
-                selected_intent = None
-                if selection and selection.get("order_id"):
-                    effective_turn = f"{selection['message']} {selection['order_id']}"
-                    selected_intent = selection["intent"]
-                context.append({"role": "user", "content": effective_turn})
-                intent = (
-                    Intent(selected_intent)
-                    if selected_intent else recognize(effective_turn, messages=context)
-                )
-                rewritten = RewriteOutcome(message=effective_turn, source='conversation') if settings.assistant_just_react else rewrite_query(
-                    effective_turn,
-                    intent=intent,
-                    case_manager=case_manager,
-                    session_context=context[:-1],
-                    disambiguator=make_llm_disambiguator(self.client, self.model),
-                    execute=self._rewrite_execute(trace),
-                )
-                trace.rewrites.append({
-                    "raw_input": turn,
-                    "rewritten_input": rewritten.message,
-                    "source": rewritten.source,
-                    "clarification": rewritten.clarification,
-                    "order_candidates": [item.get("order_id") for item in rewritten.order_candidates],
-                })
-
-                # 多候选订单/Case 时，真实 API 会在此处拦截并要求用户选择；
-                # 评测也必须停止在同一边界，不能绕开澄清直接执行。
-                if rewritten.clarification:
-                    if rewritten.order_candidates:
-                        case_manager.request_order_selection(
-                            session_id, effective_turn, intent.value, list(rewritten.order_candidates),
-                        )
-                    final_resp = CustomerServiceResponse(
-                        intent=intent,
-                        confidence=1.0,
-                        reply=rewritten.clarification,
-                        requires_human=False,
-                        follow_up_question=None,
-                    )
-                    context.append({"role": "assistant", "content": rewritten.clarification})
-                    last_intent = intent.value
-                    last_execution = "clarification"
-                    continue
-
-                # 后续 Agent 只能看到已消歧的消息，保证评估数据流与线上一致。
-                context[-1] = {"role": "user", "content": rewritten.message}
+                context.append({'role': 'user', 'content': turn})
+                intent = recognize(turn, messages=context)
+                trace.rewrites.append(dict(raw_input=turn, rewritten_input=turn,
+                                           source='conversation', clarification=None, order_candidates=[]))
                 engine = AgentEngine(intent, client=self.client, model=self.model)
 
                 result = engine.execute(
-                    rewritten.message,
+                    turn,
                     messages=context,
                     runner=ToolRunner(execute=self._wrapped_execute(trace)),
                     react_executor=self._make_react_executor(trace),
@@ -189,20 +126,6 @@ class Sandbox:
             )
             return result_str
         return wrapper
-
-    def _rewrite_execute(self, trace: RunTrace):
-        """给查询改写层提供同一套已插桩工具，但返回结构化结果。"""
-        wrapped = self._wrapped_execute(trace)
-
-        def execute(name: str, arguments: dict) -> dict:
-            raw = wrapped(name, arguments)
-            try:
-                result = json.loads(raw)
-            except (TypeError, json.JSONDecodeError):
-                return {"success": False, "error": "查询改写工具返回无法解析"}
-            return result if isinstance(result, dict) else {"success": False}
-
-        return execute
 
     def _wrap_create(self, original, trace: RunTrace):
         def wrapper(*args, **kwargs):

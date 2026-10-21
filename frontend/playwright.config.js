@@ -12,6 +12,6 @@ export default defineConfig({
     command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5178',
     url: 'http://127.0.0.1:5178',
     reuseExistingServer: false,
-    env: { VITE_TASK_PIPELINE_ENABLED: 'true', VITE_API_BASE_URL: 'http://127.0.0.1:5178' },
+    env: { VITE_API_BASE_URL: 'http://127.0.0.1:5178' },
   },
 })

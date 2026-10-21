@@ -7,6 +7,8 @@ only synthetic source events in a temporary SQLite database.
 import argparse
 from datetime import datetime, timezone
 import json
+import time
+from collections import Counter
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
@@ -42,6 +44,9 @@ CASES = [
          text="ORD-DEMO-A 这副耳机还是退货吧，不排查了", expected=["update:ear"]),
     dict(name="conditional_quantity", tasks=[], text="ORD-DEMO-A 耳机只退一件，只有免运费才退，否则先不退。",
          expected=["create"], detail=("quantity", 1), conditions=True),
+    dict(name="correct_reason", tasks=[dict(key="ear", goal="耳机退货", order="ORD-DEMO-A")],
+         text="ORD-DEMO-A 更正退货原因：不是不想要了，是左耳没声音。", expected=["update:ear"],
+         detail=("reason", "左耳没声音")),
 ]
 
 
@@ -84,6 +89,8 @@ def main():
     from openai import OpenAI
     settings.memory_enabled = settings.short_term_memory_enabled = False
     raw = OpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url, timeout=25, max_retries=0)
+    from scripts.eval_measurement import Measurement
+    measurement = Measurement(raw)
     client = LlmClient(raw_client=raw, model=settings.deepseek_model_name,
                        default_scene="association_eval", audit_errors_only=True)
     engine = AgentEngine(Intent.GREETINGS, client=client, model=settings.deepseek_model_name)
@@ -96,6 +103,7 @@ def main():
             service.intake.renew(batch, 60)
             snapshot = service.snapshot(batch)
             result = dict(name=case["name"], input=case["text"], expected=case["expected"])
+            since, started = len(measurement.calls), time.monotonic()
             try:
                 proposal = engine.associate(snapshot.context)
                 result["structured_output"] = proposal.model_dump()
@@ -106,6 +114,7 @@ def main():
                 predicted = [d.action + (":" + names.get(d.task_id, "unknown") if d.action == "update" else "")
                              for d in proposal.decisions]
                 result["predicted"] = predicted
+                result['missing_decisions'] = sum((Counter(case['expected']) - Counter(predicted)).values())
                 result["misassociation"] = sorted(predicted) != sorted(case["expected"]) and "clarify" not in predicted
                 result["unnecessary_clarification"] = "clarify" in predicted and "clarify" not in case["expected"]
                 committed = service.commit(batch, snapshot, proposal)
@@ -124,6 +133,8 @@ def main():
                 from pydantic import ValidationError
                 if isinstance(exc, ValidationError):
                     result["schema_errors"] = [dict(path=list(e["loc"]), error=e["msg"]) for e in exc.errors(include_input=False)]
+            result['measurement'] = measurement.report(since)
+            result['elapsed_seconds'] = round(time.monotonic() - started, 3)
             results.append(result)
             print(json.dumps({k: result.get(k) for k in ("name", "passed", "guard", "predicted")}, ensure_ascii=False), flush=True)
     report = dict(
@@ -132,11 +143,14 @@ def main():
         total=len(results), passed=sum(r["passed"] for r in results),
         misassociations=sum(bool(r.get("misassociation")) for r in results),
         unnecessary_clarifications=sum(bool(r.get("unnecessary_clarification")) for r in results),
+        missing_decisions=sum(r.get('missing_decisions', len(r['expected'])) for r in results),
+        measurement=measurement.report(),
         results=results,
     )
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    raw.close()
     print(json.dumps({k: report[k] for k in ("total", "passed", "misassociations", "unnecessary_clarifications")}))
     return 0 if report["passed"] == report["total"] else 1
 

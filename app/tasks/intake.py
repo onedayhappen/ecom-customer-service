@@ -65,6 +65,9 @@ class MessageIntake:
         return row
 
     def _wake(self, tx, control):
+        from app.tasks.rollout import running
+        if not running(tx, control['user_id']):
+            return
         sid = control["session_id"]
         state = self._state(tx, sid)
         if control["mode"] != "bot":
@@ -112,8 +115,8 @@ class MessageIntake:
                 return dict(session_id=sid, request_id=incoming.request_id, sequence=old["sequence"], status="accepted")
             state = tx.one("SELECT * FROM message_intake_sessions WHERE session_id=?", (sid,))
             if state is None:
-                if control["bot_job_id"] or tx.one("SELECT job_id FROM conversation_task_turns WHERE session_id=? LIMIT 1", (sid,)):
-                    raise SupportError("旧链路会话尚未迁移，请使用独立会话测试持续消息入口")
+                if control["bot_job_id"]:
+                    raise SupportError("旧执行尚未停止，请先完成切换或转人工")
                 tx.execute("INSERT INTO message_intake_sessions(session_id) VALUES (?)", (sid,))
             if incoming.action is None:
                 count = tx.one("""SELECT COUNT(*) AS n FROM message_intake_items
@@ -179,12 +182,18 @@ class MessageIntake:
             processing = ("processing" if state["received_sequence"] > state["associated_sequence"] or active
                           else 'waiting_human' if human else "waiting_user" if waiting or clarification
                           else "processing" if ready else "idle")
+            from app.tasks.rollout import running
+            automatic = running(tx, user)
             return {"received_sequence": state["received_sequence"], "associated_sequence": state["associated_sequence"],
+                    "automatic_processing": automatic,
                     "messages": items, "processing": processing, "active_tasks": active,
                     'human_tasks': [r['task_id'] for r in human]}
 
     def claim(self, sid, user):
         with self.store.transaction() as tx:
+            from app.tasks.rollout import running
+            if not running(tx, user):
+                return None
             control = self.store._control(tx, sid, user)
             if control["mode"] != "bot":
                 return None
@@ -217,6 +226,8 @@ class MessageIntake:
         if not 1 <= seconds <= 600:
             raise ValueError("Invalid renewal")
         with self.store.transaction() as tx:
+            from app.tasks.rollout import require_running
+            require_running(tx, batch.user_id)
             c = self.store._control(tx, batch.session_id, batch.user_id)
             state = self._state(tx, batch.session_id)
             timestamp = clock(tx)
@@ -257,6 +268,8 @@ class MessageIntake:
         checked.sort(key=lambda item: item["sequence"])
         fingerprint = TaskRepository._fingerprint(checked)
         with (nullcontext(tx) if tx is not None else self.store.transaction()) as tx:
+            from app.tasks.rollout import require_running
+            require_running(tx, batch.user_id)
             control = self.store._control(tx, batch.session_id, batch.user_id)
             state = self._state(tx, batch.session_id)
             job = tx.one("SELECT * FROM runtime_jobs WHERE job_id=? AND session_id=? AND user_id=? AND kind='association'",

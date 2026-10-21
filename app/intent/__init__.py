@@ -14,7 +14,7 @@ from __future__ import annotations
 from app.data_plan.enums import Intent
 from app.data_plan.taxonomy import CLASSIFICATION_INTENTS
 from app.intent.classifier import get_classifier
-from app.intent.query_rewrite import extract_order_status
+from app.intent.order_status import extract_order_status
 from app.intent.rules import has_order_id
 from app.intent.rules import active_user_text, conversation_messages, recognize as _rule_recognize
 

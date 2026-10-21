@@ -40,7 +40,7 @@ export default function TaskConversation({ identity, onLogout, onStaff }) {
         const revision = operationRevision.current
         const cards = await request(`/api/v1/task-operations/${sessionId}`)
         if (!cancelled && revision === operationRevision.current && Array.isArray(cards)) setOperations(cards)
-      } catch { /* The operation feature is independently disabled by default. */ }
+      } catch { /* Preserve the last cards during a temporary read failure. */ }
       if (!cancelled) timer = setTimeout(refresh, 2000)
     }
     refresh()
@@ -106,7 +106,8 @@ export default function TaskConversation({ identity, onLogout, onStaff }) {
     } catch (e) { setError(e.message) }
   }
   const state = conversation.state
-  const status = progress?.processing === 'processing' ? '正在处理，你可以继续补充。'
+  const status = progress?.automatic_processing === false ? '自动办理暂时暂停，消息会保留，你也可以转人工继续处理。'
+    : progress?.processing === 'processing' ? '正在处理，你可以继续补充。'
     : progress?.processing === 'waiting_human' ? '关联事项正在由人工处理，机器人不会重复办理。'
     : progress?.processing === 'waiting_user' ? '等待你的补充。' : ''
   return <main className="support-shell customer-shell">

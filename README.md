@@ -2,48 +2,32 @@
 
 一个面向电商客服场景的 Agent 服务，提供订单、物流、商品、退款和知识库问答能力。后端使用 FastAPI，默认由统一对话 Agent 接待，按需调用工具；实际业务写入由确定性工具和服务端确认机制执行。前端使用 React/Vite。项目可以接入 DeepSeek 或其他 OpenAI 兼容模型；本地意图模型和 Embedding 模型均作为可选外部依赖，模型权重不会提交到仓库。
 
-## 功能
+## 功能与链路
 
-- 31 类业务标签只作参考，不锁定执行路径；没有本地分类模型时使用规则回退。
-- 订单、物流、商品、退款、知识库和用户记忆工具。
-- 自由多轮对话支持追问、插问和改口；不再自动拆待办或强制填槽。写操作先预检、展示具体内容，再校验确认令牌。
-- 会话原话、后台摘要、历史回查和跨会话订单草稿；草稿使用版本校验，不能覆盖业务工具的权威状态。
-- FastAPI API、JWT/HttpOnly Cookie 登录、PostgreSQL 会话、Redis 队列与独立 Worker。
-- MySQL 订单数据访问层、Chroma RAG、MCP 工具服务和 React 客服工作台。
+用户可以连续发送消息，每条消息先按请求编号保存原话并返回接收回执。一个统一 Agent 结合最近对话、已发布的问题、历史事项和有来源的记忆判断消息归属；关联不明确就澄清，关联错误可以撤销影响并重新判断。
 
-后续重构的总体规则见 [Agent 重构实施方案](docs/AGENT_REFACTOR_PLAN.md)，每次实现从 [分步实施入口](docs/refactoring/README.md) 选择当前小方案。本文描述当前运行方式；部署与故障处理见 [运行手册](docs/CONCURRENCY_RUNBOOK.md)，代码目录见 [项目结构](docs/PROJECT_STRUCTURE.md)。
+事项分别保存进度，独立事项可以并行，共同订单和业务写入受到互斥保护。执行结果先保存，再由回复协调器合并或分批发布；接收消息的次数不决定回复次数。跨会话继续同一事项时复用记录，重新核实已经变化的业务状态。
 
-当前分类器保留 28 个业务意图，加问候、收尾、其他共 31 类标签；原 Workflow / ReAct 分流已退出默认运行链路。分类器输出仍只有意图标签，训练数据格式不变。接待全部意图不代表所有业务动作都已实现；本地演示发票不连接税务系统。
+退款等写操作先展示对象、动作和固定参数，再校验确认、权限、版本和幂等记录。超时结果未知时查询回执或转人工，不自动再提交。RAG 按店铺、渠道、商品及有效时间检索已发布条款；无依据时不编造规则。人工接管、纠错和暂停都会使旧执行与确认失效。
 
-## 架构
+实现规则见 [完整方案](docs/AGENT_REFACTOR_PLAN.md)，各模块提交与验证见 [分步实施入口](docs/refactoring/README.md)。部署、迁移与恢复见 [运行手册](docs/CONCURRENCY_RUNBOOK.md)，目录用途见 [项目结构](docs/PROJECT_STRUCTURE.md)。
 
 ~~~text
-React/Nginx -> FastAPI -> 统一对话 Agent -> 查询 / 计算 / 澄清
-                           |          -> 操作预检 -> 参数绑定确认 -> 业务写入
-                           |          -> 人工接管
-                           +-- 会话上下文 / Case 草稿 / 工具证据
-              PostgreSQL（会话/记忆） Redis（队列/缓存） MySQL（业务数据）
+React -> FastAPI -> 保存消息与接收位置（PostgreSQL）
+                     ↓
+             同一个 Agent 判断消息归属
+                     ↓
+             事项执行 / 查询工具 / 追问
+                     ↓
+             固定参数确认 -> 业务提交与回执
+                     ↓
+             回复协调 -> 公开会话事件 -> SSE / 游标补拉
+
+PostgreSQL：原话、事项、执行、证据、确认、记忆与人工记录
+Redis：唤醒、共享资源额度和通知；MySQL：订单与业务台账
 ~~~
 
-主要代码位于 app/：
-
-~~~text
-app/
-├── api/          FastAPI 路由、认证和健康检查
-├── agents/       Agent 入口和响应结构
-├── data/         订单 DAO、缓存和数据适配
-├── data_plan/    IntentSpec 与工具能力规划
-├── execution/    对话工具循环、操作预检与历史 Workflow 回滚路径
-├── intent/       意图分类、规则回退和查询改写
-├── memory/       长期记忆与 Case
-├── rag/          知识库和 Chroma 检索
-├── session/      会话与上下文压缩
-├── tools/        商品、订单、物流和退款工具
-└── config/       配置模型
-frontend/         React/Vite 客服界面
-scripts/          Worker、订单初始化和密码哈希工具
-tests/            自动化测试
-~~~
+`app/tasks` 管理上述过程，`app/agents` 和 `app/execution` 提供统一工具循环。分类器和训练工具保留为独立能力，31 类标签不承担多事项关联；原 Workflow、强制查询改写与单消息完整执行入口已经退役。
 
 ## Docker 部署
 
@@ -51,7 +35,7 @@ tests/            自动化测试
 
 ~~~powershell
 Copy-Item .env.example .env
-# 编辑 .env，至少设置 API_JWT_SECRET、API_AUTH_USERS；需要模型时再设置 API Key
+# 编辑 .env，至少设置 API_JWT_SECRET、API_AUTH_USERS；自动办理还需设置模型 API Key
 docker compose up -d --build
 ~~~
 
@@ -84,10 +68,12 @@ Copy-Item .env.example .env
 python -m uvicorn app.api.main:app --reload --host 127.0.0.1 --port 8010
 ~~~
 
-另开终端启动 Worker：
+分别在独立终端启动事项 Worker、通知进程和维护进程：
 
 ~~~powershell
-python -m scripts.chat_worker
+python -m scripts.task_worker
+python -m scripts.notification_worker
+python -m scripts.platform_maintenance
 ~~~
 
 启动前端：
@@ -98,7 +84,7 @@ npm ci
 npm run dev
 ~~~
 
-本地不需要模型即可运行规则模式。需要本地意图模型或 Embedding 时，请把权重放在仓库外，并在 .env 中设置 INTENT_BASE_MODEL_PATH、INTENT_ADAPTER_PATH 或 LOCAL_EMBEDDING_MODEL_PATH；不要把权重复制回 Git 工作区。
+自动归属与执行需要可用的模型服务；没有模型时只能使用历史读取和人工服务，不会以规则模式代办。需要本地意图模型或 Embedding 时，请把权重放在仓库外，并在 .env 中设置 INTENT_BASE_MODEL_PATH、INTENT_ADAPTER_PATH 或 LOCAL_EMBEDDING_MODEL_PATH；不要把权重复制回 Git 工作区。
 
 ## LoRA 意图分类器
 
@@ -139,7 +125,7 @@ python scripts/init_commerce_db.py --seed-demo
 
 演示报价支持现有商品 ID、数量 1、上海地区，渠道为 `pdd` 与 `demo_other_shop`；配送示例覆盖上海、杭州、北京。历史价格提供三个 `list` 口径样本，不声称完整历史覆盖。返回的演示记录明确标记 `mysql_demo` / `is_demo`。
 
-开票与重开仅创建**本地演示台账**，不接税务系统、不生成正式发票。写操作必须经过服务端 `MutationGuard` 确认，再核验预览版本；数据库锁定订单并在同一事务中保存台账和幂等回执。查询、比较和金额估算均不提交交易。新增 Workflow 的 `execution_ready` 保持原状态，本次完成的是工具层。
+开票与重开仅创建**本地演示台账**，不接税务系统、不生成正式发票。写操作必须经过服务端 `MutationGuard` 确认，再核验预览版本；数据库锁定订单并在同一事务中保存台账和幂等回执。查询、比较和金额估算均不提交交易。工具是否可调用仍由事项范围和服务端能力检查决定。
 
 本地工具测试：
 
@@ -155,7 +141,7 @@ MySQL 测试使用随机订单/用户和独立记录，结束后按精确 ID 清
 
 .env.example 只有占位值，真正的 .env 永远不要提交。常用配置：
 
-- DEEPSEEK_API_KEY、DEEPSEEK_BASE_URL、DEEPSEEK_MODEL_NAME：业务模型，可留空运行规则模式。
+- DEEPSEEK_API_KEY、DEEPSEEK_BASE_URL、DEEPSEEK_MODEL_NAME：业务模型，自动办理必须配置。
 - API_JWT_SECRET：随机 JWT 密钥。
 - API_AUTH_USERS：username:pbkdf2_sha256$...，可用脚本生成密码哈希。
 - ORDER_DB_DSN：订单 MySQL 连接；为空时使用明确标注的演示 mock 数据。
@@ -181,17 +167,22 @@ python scripts/hash_password.py admin "your-password"
 
 公开接口：GET /health、GET /ready、GET /metrics 和 POST /api/v1/auth/login。其余业务接口需要登录 Cookie 或 Authorization: Bearer <jwt>。
 
-- POST /api/v1/chat：提交客服消息；异步模式返回 job_id。
-- GET /api/v1/chat/{job_id}：查询任务状态和回复。
-- GET /api/v1/chat/{job_id}/events：SSE 事件流。
-- GET /api/v1/sessions/{session_id}：读取会话。
-- POST /api/v1/sessions/{session_id}/reset：清空会话。
+- `POST /api/v1/task-messages`：提交 `session_id`、稳定的 `request_id` 和 `message`，返回 202 接收回执；网络结果未知时使用同一请求编号重试。
+- `GET /api/v1/task-messages/{session_id}`：查询接收及处理位置、自动办理是否暂停。
+- `GET /api/v1/sessions/{session_id}/transcript`、`/support-events`：读取公开记录或订阅变化，断线按游标补拉。
+- `GET /api/v1/task-operations/{session_id}`：获取操作卡片；使用 `/api/v1/task-operations/{operation_id}/confirm|cancel|refresh` 确认、取消或核查状态。
+- `/api/v1/sessions/{session_id}/handoff`：转人工；人工工作台继续使用客服接口及数据库角色权限。
+- 旧 `POST /api/v1/chat` 返回 410；历史 Job 状态和事件接口保留读取。旧 reset/close 写入口返回 409，保留审计记录，前端用新建会话开始下一次咨询。
+
+新安装的四项 `TASK_*_ENABLED` 能力配置默认开启；已有数据升级后数据库自动办理状态为 `stopped`。上线以数据库中的用户放量控制为准，不用各实例不同的环境变量分流。执行 `python -m scripts.pipeline_rollout status` 查看状态，切换步骤见运行手册。
 
 ## 测试
 
 ~~~powershell
-python -m pytest -q
+python scripts/run_platform_checks.py
 Set-Location frontend
+npm test
+npm run test:browser
 npm run build
 ~~~
 

@@ -73,7 +73,7 @@ SCHEMA = (
     """CREATE TABLE IF NOT EXISTS support_bot_runs (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
 ) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + CASE_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA + MEMORY_RUNTIME_SCHEMA
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 
 class Tx:
@@ -177,6 +177,9 @@ class SupportStore:
                         if (applied or 0) < 19:
                             from app.tasks.migrations import migrate_external_progress
                             migrate_external_progress(tx)
+                        if (applied or 0) < 20:
+                            from app.tasks.migrations import migrate_pipeline_rollout
+                            migrate_pipeline_rollout(tx)
                         tx.execute('CREATE TABLE IF NOT EXISTS support_schema_versions (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
                         tx.execute('INSERT INTO support_schema_versions VALUES (?,?) ON CONFLICT(version) DO NOTHING', (SCHEMA_VERSION, now()))
                 self._initialized = True
@@ -185,6 +188,9 @@ class SupportStore:
     def transaction(self, read_only=False):
         self.initialize()
         with self._connection(read_only=read_only) as tx:
+            if self.postgres:
+                from app.tasks.rollout import DEPLOYMENT_LOCK
+                tx.execute('SELECT pg_advisory_xact_lock_shared(?)', (DEPLOYMENT_LOCK,))
             yield tx
 
     def _control(self, tx, sid, user=None):

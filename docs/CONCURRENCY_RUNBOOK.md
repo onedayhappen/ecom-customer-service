@@ -1,15 +1,15 @@
 # 并发平台运行手册
 
-本手册说明现有服务的部署、运维和恢复方式。PostgreSQL 保存会话、事项和执行记录，MySQL 保存订单等业务数据，Redis 负责调度、共享额度和通知。后续代码改造以 [Agent 重构实施方案](AGENT_REFACTOR_PLAN.md) 为准；方案中的目标能力需要实现并验收后才能用于生产。测试只使用独立测试库、Redis namespace 和合成订单。
+本手册说明现有服务的部署、运维和恢复方式。PostgreSQL 保存会话、事项和执行记录，MySQL 保存订单等业务数据，Redis 负责调度、共享额度和通知。当前只有事项链路负责自动办理；验收记录见 [第 14 部分](refactoring/14-rollout-and-retirement.md)。测试只使用独立测试库、Redis namespace 和合成订单。
 
 ## 进程与扩容
 
 | 角色 | 入口 | 扩容依据 |
 |---|---|---|
 | API | `uvicorn app.api.main:app` | 受理延迟、在线 SSE、连接池等待 |
-| Dispatcher | `python -m scripts.chat_dispatcher` | 最老等待年龄、投递重试、通知积压 |
-| Worker | `python -m scripts.chat_worker` | 执行耗时、排队年龄、可用模型额度 |
-| 维护 | `python -m scripts.platform_maintenance` | 已完成任务体积；默认每 300 秒归档最多 200 条 |
+| 通知进程（Compose 服务名 dispatcher） | `python -m scripts.notification_worker` | 通知积压、SSE 延迟 |
+| Worker | `python -m scripts.task_worker` | 执行耗时、排队年龄、可用模型额度 |
+| 维护 | `python -m scripts.platform_maintenance` | 摘要、记忆清理、外部进度核查及终态归档；默认每 300 秒运行 |
 | 检索 | `uvicorn app.services.retrieval:app --port 8020` | 检索耗时、共享槽位、CPU/GPU 占用 |
 
 Compose 由 gateway 对外提供原来的 8010 端口，backend 不绑定宿主机固定端口，可水平扩容。入口仍是前端 5173、API 8010。扩容例子：
@@ -23,19 +23,47 @@ nginx 在启动/重载时解析 backend 的多个地址；每次副本数或容�
 
 示例 Compose 仍是开发部署：数据库密码、端口暴露、TLS、备份和基础设施高可用应由部署环境配置。单机 Redis 与 Redis 高可用部署可以使用当前客户端；不宣称支持 Redis Cluster 多分片，现有跨键 Lua 没有实现 Cluster hash-slot 分区。
 
-## 升级和旧数据
+## 升级、放量和旧数据
 
-1. 备份 PostgreSQL 和原 Case 目录；停止接收新请求并停止旧 API、Worker、Dispatcher。
-2. 保留相同数据库和队列前缀。设置 PostgreSQL 连接后运行 `python -m scripts.init_support_db`。数据库版本以 `app/support/store.py` 的 `SCHEMA_VERSION` 和数据库迁移记录为准，采用增量建表/索引，并为旧任务消息关联补数据。迁移可能持有 DDL 锁，升级阶段执行，不在业务流量中启动多个新旧版本混跑。
-3. 若原 Case 使用 JSON，先运行下面的验证，再执行导入。导入以用户为事务单位；相同数据可重跑，已有不同状态会拒绝覆盖。源文件始终保留。导入必须在所有 Case 写进程停止后进行。
-4. 设置 `CASE_STORAGE_BACKEND=postgres`，启动 Dispatcher、Worker、API 和网关；观察 ready、指标与队列年龄后恢复流量。
+API、事项 Worker、通知、维护进程与前端必须来自同一发布版本。`TASK_INTAKE_ENABLED`、`TASK_WORKER_ENABLED`、`TASK_OPERATIONS_ENABLED`、`TASK_EXTERNAL_PROGRESS_ENABLED` 默认开启，只控制能力是否装配；不要让不同实例用不同开关决定同一用户的路径。没有模型密钥时不要启动自动执行 Worker。旧 `ASSISTANT_JUST_REACT`、`API_CHAT_EXECUTION_MODE`、`API_CHAT_WORKER_ENABLED`、`ROUTER_*` 和前端 `VITE_TASK_PIPELINE_ENABLED` 已退役，应从部署配置移除；旧环境中的多余字段会忽略，不会重新开启旧路径。
+
+1. 在网关停止新写入，停止旧 API、Worker、Dispatcher、维护及所有草稿写进程，确认在途业务请求已经结束或登记为待核实。仅修改新版本数据库开关不能约束已经运行的旧程序；必须停掉旧进程并撤销其写入凭据。
+2. 备份整个会话 PostgreSQL、业务 MySQL、Case/记忆和知识索引；记录发布版本、备份时间与摘要。先将备份恢复到隔离数据库核对原话、来源、业务回执，再升级原库。测试中的单 schema 备份只是恢复演练，不代替生产全库及业务备份。
+3. 用新版本运行 `python -m scripts.init_support_db`。当前结构版本为 20；已有会话数据升级后自动办理为 `stopped`，全新空库为 `all`。迁移失败可重试；不要在带流量时混跑新旧版本执行迁移。运行 `python -m scripts.pipeline_rollout status` 核对模式、发布标识及未决操作。
+4. 若 Case 仍在 JSON，保持所有写进程停止，先校验后导入，再设置 `CASE_STORAGE_BACKEND=postgres`。旧记录和回执保留为历史依据；只有用户归属、原话来源和版本均明确的一条未结旧事项允许转换，转换结果为 `paused`，不复制推测的订单、字段或授权。多轮改写、来源无效或有未知操作的记录拒绝自动转换，等待用户重新说明或人工核实。
+5. 启动同版本 API、Worker、通知、维护和前端。确认 `/ready` 的 `release=task-pipeline-v1` 和 `automation`，历史读取与人工接管可用；将全局切到 `selected`，再启用少量已核对用户。每个用户的所有 session 共用数据库控制记录。
+6. 观察归属、证据、确认、未决业务、延迟和错误，再逐步添加用户，最后切到 `all`。显式 `disabled` 的用户在 `all` 下仍停用；使用 `enabled` 才恢复。每次控制变更都会使受影响用户旧执行和确认失效，避免无意义地反复调用。
 
 ```sh
 python -m scripts.migrate_cases_to_postgres --source data/sessions/cases
 python -m scripts.migrate_cases_to_postgres --source data/sessions/cases --apply
+python -m scripts.pipeline_rollout status
+python -m scripts.pipeline_rollout set selected --operator deploy-admin --reason "开始小范围验收"
+python -m scripts.pipeline_rollout set enabled --user customer-id --operator deploy-admin --reason "该用户已核对"
+python -m scripts.pipeline_rollout set all --operator deploy-admin --reason "观察通过后扩大范围"
 ```
 
-切换共享存储后，回滚到只支持 JSON 的版本前必须重新规划状态迁移，不能直接切回旧目录：新确认令牌和幂等结果已写入 PostgreSQL。旧版本任务已开始或写入结果未知时，保持人工核实流程。
+可选的历史事项转换必须在该用户暂停时逐条执行：
+
+```sh
+python -m scripts.pipeline_rollout set disabled --user customer-id --operator deploy-admin --reason "迁移历史事项"
+python -m scripts.pipeline_rollout import --task legacy-task-id --user customer-id --version 3 --operator deploy-admin --reason "核对原话及归属" --backup /verified-backups/support.dump
+```
+
+`--backup` 要求非空文件并把 SHA-256 记入迁移审计，不自动证明备份可恢复；第 2 步的恢复验证仍必须完成。相同事项和版本重复导入返回原迁移结果，不覆盖原记录。恢复用户开关不会自动办理这条 `paused` 事项，需要用户明确续接。
+
+## 停止和恢复
+
+```sh
+python -m scripts.pipeline_rollout set stopped --operator oncall --reason "暂停自动办理并核查回执"
+python -m scripts.pipeline_rollout status
+```
+
+停止后继续接收和保存消息，前端显示暂停；历史读取、人工消息和人工处置保持可用。所有相关会话控制版本前进，尚未使用的确认、运行中的模型结果、过期工具结果不得继续发布或产生新提交。已经取得提交资格的外部业务请求可能完成，必须保存真实回执，不能把暂停解释成退款撤销。
+
+恢复前先核实 `running/unknown` 操作及下游幂等流水，修复故障并确保旧进程已经停止。以 `selected` 恢复少量用户，验证后再 `all`；Worker 从已保存的消息位置重新调度，旧执行编号不会被复用。恢复不重放业务写入。旧 Redis 队列不再有消费者，保留审计所需内容并按保留政策处理，不执行共享 `FLUSHDB`。
+
+回退以暂停自动办理、保留读取和人工服务为默认方案。旧二进制不支持新结构，不能直接指回升级后的数据库；需要旧版本排障时将备份恢复到独立环境且禁止业务写入。恢复业务库备份也不能撤销外部支付或售后系统已经完成的操作，必须先对账。
 
 ## 人工客服初始化与使用
 
@@ -66,13 +94,15 @@ python -m scripts.support_staff agent1 agent
 - 默认 SSE 每用户共享上限 5，每 API 进程最多 2000。Redis 故障时每用户退回本进程限制，进程总限制始终有效；租约失效会结束旧连接。发送超过 10 秒断开，客户端可补拉恢复。
 - PostgreSQL 连接池按“每进程、每 DSN”分配。例：2 API + 2 Worker + 2 Dispatcher + 1 维护进程，单池最大 10 时上限约 70；审计/记忆若使用不同 DSN，需要另外计算。预留管理连接，并观察池等待指标后调整。扩容 Worker 时同时核对模型额度与数据库总连接预算。
 
-## 入队、重试、取消
+## 接收、重试、取消
 
-202 表示消息、路由和执行任务已经在 PostgreSQL 同一事务提交。API 提交后退出不影响投递。Dispatcher 在数据库领取短租约，事务外提交 Redis，再确认投递；确认前崩溃允许重复投递，数据库执行占位防止重复执行。
+202 仅表示原话、请求编号和接收位置已经提交到数据库，不表示已判断归属或完成业务。暂停状态仍可受理。客户端网络结果未知时复用原 `request_id`；重复内容不能仅靠文本相同判定重复消息。
 
-尚未开始的任务可以重新投递；已经开始的任务不会自动重跑。执行期限默认 600 秒，超过期限会使旧会话控制版本失效并转人工。心跳丢失后，旧 Worker 在后续模型/工具调用和结果发布前停止；已经送到下游的网络请求不能靠取消撤销。退款等业务仍需下游幂等键/业务查询及人工对账，不能把队列机制解释成跨系统 exactly-once。
+事项 Worker 分别领取消息归属和事项执行，数据库版本、执行占位、租约和唤醒记录约束多进程竞争；Redis 负责唤醒及共享资源额度。独立事项并行；同一事项和共同订单写入不并发提交。关联时使用当时已接收的消息范围，后续消息进入后续处理，不预测用户总共会发几条。
 
-控制操作会改变会话版本，使旧任务进入 superseded。未消费的旧确认不能继续推进业务。用户改口、取消待办只取消后续处理，不撤销已提交业务。
+关联进程退出后可以从原消息重新判断；只读执行过期可重新核实。已开始的业务写入先查询原操作回执，结果未知时转人工，不自动重放。Worker 后续调用、保存及发布前复核事项和会话版本。取消不能撤销已经送到下游的网络请求，也不能把这些机制解释成跨系统 exactly-once。
+
+人工接管、明确取消、纠错及放量控制会使旧执行失效。仍需等待的信息作为事项待答问题保存，不占住 Worker；回复协调器避免把每条接收消息机械地变成一次回复。
 
 ## 推送与查询
 
@@ -90,21 +120,24 @@ vLLM 支持 `VLLM_API_KEY` 服务鉴权，参见 [官方 Quickstart](https://doc
 
 启用 `remote-rag` profile，并在 API/Worker 配置 `RETRIEVAL_SERVICE_URL=http://retrieval:8020`，所有相关进程设置相同的至少 32 字符 `RETRIEVAL_SERVICE_TOKEN`。检索服务自身强制空 URL，避免递归。请求限制 query 4000 字符、top_k 1..5，客户端在下载时限制响应大小为 512000 字节，并检查结构。服务可用共享 Redis 并发额度拒绝过载请求。
 
+知识条款必须带审核后的范围、有效期与来源元数据，通过 `python -m app.rag.commands.policy_index --kb-dir reviewed-knowledge publish` 发布；缺少店铺、渠道或时间等必要条件时澄清或转人工。远程检索服务启动时验证发布版本与 Embedding 标识，未配置模型或索引会拒绝启动。
+
 当前向量库是嵌入式 Chroma：多主机检索副本应各自获得同一个经过版本校验的索引快照与相同 Embedding 模型；不要将本地目录当成分布式数据库。构建/更新索引应在离线目录完成，发布版本化快照后重启副本，避免在线全量删除重建索引。实际 GPU Embedding/LLM 性能需要在目标硬件上单独压测。
 
 ## 监控与处置
 
-API `/metrics`、Worker 默认 9101、Dispatcher 默认 9102。后台端口在 Compose 内网暴露；每个进程单独作为 Prometheus target，不能把不同进程指标当作同一个累计计数器。启用 `monitoring` profile 可运行 Prometheus（本机 9090），DNS 服务发现跟随副本数变化；参考采集配置见 `deploy/prometheus.yml`，告警见 `deploy/platform-alerts.yml`。
+API `/metrics`、Worker 默认 9101、通知进程默认 9102。后台端口在 Compose 内网暴露；每个进程单独作为 Prometheus target，不能把不同进程指标当作同一个累计计数器。启用 `monitoring` profile 可运行 Prometheus（本机 9090），DNS 服务发现跟随副本数变化；参考采集配置见 `deploy/prometheus.yml`，告警见 `deploy/platform-alerts.yml`。
 
 | 指标/现象 | 处理 |
 |---|---|
-| `platform_oldest_waiting_job_seconds` 增长 | 检查 Dispatcher、Worker 就绪、资源额度及模型延迟，再考虑扩容 |
+| `platform_oldest_waiting_job_seconds` 增长 | 检查事项 Worker 就绪、资源额度及模型延迟，再考虑扩容 |
 | `platform_jobs{status=...}`、投递重试 | DB 全局量在每个进程重复采集，使用 max；不能跨实例求和当成真实积压 |
-| Worker/Dispatcher 心跳过旧 | 检查对应进程和 Redis；Worker 所有线程执行长任务时轮询心跳也会变旧，结合运行数量判断 |
+| Worker/通知进程心跳过旧 | 检查对应进程和 Redis；Worker 所有线程执行长任务时轮询心跳也会变旧，结合运行数量判断 |
 | `platform_db_pool_timeouts_total` 增长 | 查慢 SQL、事务、连接预算；不要直接把每实例池调到很大 |
-| 通知积压但消息仍能显示 | 游标补拉正在兜底，恢复 Redis/Dispatcher 后通知会继续 |
-| interrupted 或未知业务 | 核实下游流水，确认旧进程已停止，由人工登记结果；不要重新投递退款 |
+| 通知积压但消息仍能显示 | 游标补拉正在兜底，恢复 Redis/通知进程后通知会继续 |
+| `platform_business_operations{status="unknown"}` 或未知业务 | 核实下游流水，确认旧进程已停止，由人工登记结果；不要重新投递退款 |
 | Redis 重启/短暂中断 | 保留数据库；恢复连接后自动重投未开始任务；禁止清空共享 Redis |
+| `platform_pipeline_mode{mode="stopped"}=1` | 自动办理已停止；核实变更审计和未决业务后决定恢复范围 |
 | PostgreSQL 不可用 | 停止受理；修复数据库后验证 ready，不返回虚假的“已接收” |
 
 直方图按各进程的 bucket 求和后计算 P95/P99；DB 全局 Gauge 用 max，SSE/连接池等进程 Gauge 可求和。告警阈值是初始示例，应根据业务 SLO 和实际运行超时调整。
@@ -113,12 +146,14 @@ API `/metrics`、Worker 默认 9101、Dispatcher 默认 9102。后台端口在 C
 
 ```sh
 python scripts/run_platform_checks.py
-docker compose -p ecom-concurrency-test -f deploy/compose.integration.yml up -d --wait
+docker compose -p ecom-refactor-tests -f deploy/compose.integration.yml up -d --wait
 python scripts/run_platform_checks.py --integration
 python scripts/run_platform_checks.py --integration tests/test_platform_browser.py
+npm --prefix frontend test
+npm --prefix frontend run test:browser
 npm --prefix frontend run build
 ```
 
-集成依赖 psycopg、Redis、Chroma；浏览器验证还需要 Playwright 和 Chromium/Edge，非默认位置可设置 `ECOM_BROWSER_EXECUTABLE`。测试基础设施只绑定本机 25432/26379，数据库名固定 `ecom_concurrency_test`，每次使用新 schema 和 Redis namespace。日志、浏览器截图保留在 `.codex/platform-checks-*`，负载报告在 `.codex/concurrency-load-report.json`。完成测试后可停止专用 Compose 项目。
+集成依赖 psycopg、Redis、Chroma；浏览器验证还需要 Playwright 和 Chromium/Edge，非默认位置可设置 `ECOM_BROWSER_EXECUTABLE`。测试基础设施只绑定本机 PostgreSQL 25432、Redis 26379、MySQL 23306，数据库名固定 `ecom_concurrency_test`，每次使用新 schema 和 Redis namespace。日志、浏览器截图保留在 `.codex/platform-checks-*`，负载报告在 `.codex/concurrency-load-report.json`。完成测试后可停止专用 Compose 项目。
 
 负载报告为小型回归证据，记录硬件、客户端数、受理/完成延迟和错误。合成模型与订单不会测出真实供应商限额、模型质量或 GPU 吞吐；上线前使用实际请求分布、目标并发和目标硬件补充容量测试。

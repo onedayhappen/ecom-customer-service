@@ -2,7 +2,7 @@
 
 仓库按运行边界组织，提交到 GitHub 的内容只包含源代码、配置模板、测试、文档和意图识别数据集。密钥、模型权重、数据库文件、会话和日志留在本地或 Docker 挂载目录中。
 
-后续实现依据 [Agent 重构实施方案](AGENT_REFACTOR_PLAN.md)，从 [分步实施入口](refactoring/README.md) 按编号逐次推进；部署、人工客服初始化和故障处理见 [运行手册](CONCURRENCY_RUNBOOK.md)。本文只说明现有目录用途。
+实现依据 [Agent 重构实施方案](AGENT_REFACTOR_PLAN.md)，从 [分步实施入口](refactoring/README.md) 按编号逐次推进；部署、人工客服初始化和故障处理见 [运行手册](CONCURRENCY_RUNBOOK.md)。本文只说明现有目录用途。
 
 ```text
 ecom-customer-service/
@@ -12,20 +12,20 @@ ecom-customer-service/
 │   ├── config/           配置模型和环境变量
 │   ├── data/             订单、物流、商品 DAO 与 service
 │   ├── data_plan/        意图规格、能力规划和工具白名单
-│   ├── execution/        Workflow、ReAct 和执行器
+│   ├── execution/        共享 ReAct 工具循环与执行器
 │   ├── harness/          评估和故障注入运行器
-│   ├── intent/           意图分类、规则回退和查询改写
+│   ├── intent/           可选意图分类、规则回退和订单状态提取
 │   ├── mcp/              MCP 客户端、服务端和认证
 │   ├── memory/           长期记忆、检索和 Case
 │   ├── observability/    审计、追踪、指标和脱敏
 │   ├── prompts/          Agent、意图和工具提示词
 │   ├── rag/              知识库、Embedding 和索引更新
 │   ├── reliability/      证据校验、失败策略和幂等变更
-│   ├── runtime/          并发、队列和运行时协调
+│   ├── runtime/          并发额度、唤醒队列、通知和运行时协调
 │   ├── session/          会话存储、生命周期和上下文预算
 │   ├── skills/           可复用业务技能
 │   ├── support/          会话事件、人工客服和共享事务存储
-│   ├── tasks/            事项存储、来源记录、迁移与旧事项入口
+│   ├── tasks/            事项、归属纠错、并行执行、回复、确认和放量
 │   └── tools/            订单、物流、商品、退款等工具
 ├── data/
 │   ├── fine_tuning/      意图微调训练集及 ShareGPT 转换集
@@ -53,7 +53,7 @@ ecom-customer-service/
 ```powershell
 git status --short
 git diff --check
-python -m pytest -q
+python scripts/run_platform_checks.py
 Set-Location frontend
 npm ci
 npm run build

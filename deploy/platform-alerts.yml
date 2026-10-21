@@ -13,12 +13,18 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "Accepted jobs have waited over 60 seconds; inspect workers and downstream capacity"
-      - alert: EcomDispatcherStalled
-        expr: time() - max(platform_runtime_last_success_unixtime{role="dispatcher"}) > 60
+      - alert: EcomNotificationsStalled
+        expr: time() - max(platform_runtime_last_success_unixtime{role="notifications"}) > 60
         for: 1m
         labels: {severity: critical}
         annotations:
-          summary: "No dispatcher has completed a delivery/recovery iteration recently"
+          summary: "No notification publisher has completed an iteration recently"
+      - alert: EcomTaskWorkerStalled
+        expr: time() - max(platform_runtime_last_success_unixtime{role="worker"}) > 60
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "No task worker has completed an iteration recently"
       - alert: EcomDatabasePoolSaturated
         expr: sum(rate(platform_db_pool_timeouts_total[5m])) > 0
         for: 2m
@@ -26,7 +32,7 @@ groups:
         annotations:
           summary: "Database connection waits are timing out"
       - alert: EcomUnknownExecutions
-        expr: sum(increase(platform_job_recoveries_total{status="interrupted"}[5m])) > 0
+        expr: max(platform_business_operations{status="unknown"}) > 0
         labels: {severity: warning}
         annotations:
           summary: "Execution outcomes require human verification; do not replay writes"

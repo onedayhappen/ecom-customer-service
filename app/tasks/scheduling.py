@@ -177,7 +177,8 @@ class TaskSchedule:
             for row in active:
                 old = json.loads(row["payload"])
                 effective_version = old.get("provenance", {}).get("tasks", {}).get(record.task_id)
-                if record.version in {old["request"]["expected_version"], effective_version} and old.get("schedule"):
+                if (record.version in {old["request"]["expected_version"], effective_version} and old.get("schedule")
+                        and self.runs.control_versions_valid(tx, old.get('controls'))):
                     if old["schedule"]["dependencies"] != deps or old["scope"] != vars(self.runs.candidates.scope):
                         raise SupportError("同一事项版本已有不同的执行条件")
                     return row["job_id"]

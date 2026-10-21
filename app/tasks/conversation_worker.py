@@ -76,7 +76,9 @@ class ConversationWorker:
                     if not source:
                         raise SupportError("事项尚无可用于执行的用户消息来源")
                     schedule = TaskSchedule(self.store, row["user_id"])
-                    request = dict(job_id=_id(row["task_id"], "execute:" + str(row["version"])),
+                    control = self.store._control(tx, source['session_id'], row['user_id'])
+                    generation = f"execute:{row['version']}:{control['control_version']}"
+                    request = dict(job_id=_id(row["task_id"], generation),
                                    task_id=row["task_id"], expected_version=row["version"],
                                    session_id=source["session_id"], source=dict(kind="message", **source))
                     jid = schedule.enqueue(request, tx=tx)
@@ -100,6 +102,19 @@ class ConversationWorker:
                     pass  # Lost lease/control is retried through durable intake.
                 except Exception:
                     log.exception("Association worker failed")
+        # A stopped deployment retains messages but does not enqueue work. On
+        # re-enable recover those accepted messages even when no old job exists.
+        with self.store.transaction(read_only=True) as tx:
+            pending = tx.all('''SELECT DISTINCT i.session_id,i.user_id FROM message_intake_items i
+                JOIN support_conversations c ON c.session_id=i.session_id
+                JOIN task_pipeline_state p ON p.singleton=1
+                LEFT JOIN task_pipeline_users u ON u.user_id=i.user_id
+                WHERE i.association_status='pending' AND c.mode='bot' AND p.mode<>'stopped'
+                AND (u.enabled=1 OR (u.user_id IS NULL AND p.mode='all'))
+                ORDER BY i.session_id LIMIT 100''')
+        for row in pending:
+            with self.store.transaction() as tx:
+                self.intake._wake(tx, self.store._control(tx, row['session_id'], row['user_id']))
         while len(self.associations) < self.capacity:
             batch = self.intake.claim_next()
             if not batch:

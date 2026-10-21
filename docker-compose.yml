@@ -75,8 +75,6 @@ services:
       ORDER_DB_DSN: mysql://ecom:ecom_dev_password@mysql:3306/ecom_agent_orders
       ORDER_CACHE_REDIS_URL: redis://redis:6379/0
       API_CONCURRENCY_REDIS_URL: redis://redis:6379/0
-      API_CHAT_EXECUTION_MODE: async
-      API_CHAT_WORKER_ENABLED: "false"
       CASE_STORAGE_BACKEND: postgres
       INTENT_MODEL_ENABLED: "false"
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
@@ -132,7 +130,7 @@ services:
       RUNTIME_METRICS_PORT: "9101"
       RUNTIME_METRICS_HOST: "0.0.0.0"
       CASE_STORAGE_BACKEND: postgres
-    command: ["python", "-m", "scripts.chat_worker"]
+    command: ["python", "-m", "scripts.task_worker"]
     volumes:
       - ./.docker-data/app:/app/data
       - ./.docker-data/logs:/app/logs
@@ -149,7 +147,7 @@ services:
       API_CONCURRENCY_REDIS_URL: redis://redis:6379/0
       RUNTIME_METRICS_PORT: "9102"
       RUNTIME_METRICS_HOST: "0.0.0.0"
-    command: ["python", "-m", "scripts.chat_dispatcher"]
+    command: ["python", "-m", "scripts.notification_worker"]
     depends_on:
       backend:
         condition: service_healthy
@@ -163,6 +161,7 @@ services:
       MEMORY_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/ecom_agent
       MEMORY_REDIS_URL: redis://redis:6379/0
       API_CONCURRENCY_REDIS_URL: redis://redis:6379/0
+      ORDER_DB_DSN: mysql://ecom:ecom_dev_password@mysql:3306/ecom_agent_orders
     command: ["python", "-m", "scripts.platform_maintenance"]
     volumes:
       - ./.docker-data/app:/app/data

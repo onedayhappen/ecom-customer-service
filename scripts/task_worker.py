@@ -1,4 +1,5 @@
-"""Controlled task worker; disabled until explicitly enabled for isolated trials."""
+"""Single Agent worker: associate input, advance matters and coordinate replies."""
+import logging
 import signal
 import threading
 
@@ -10,7 +11,9 @@ from app.tasks.conversation_worker import ConversationWorker
 
 def main():
     if not settings.task_worker_enabled or not settings.task_intake_enabled:
-        raise SystemExit("持续对话 Worker 默认关闭；受控测试需同时启用 TASK_WORKER_ENABLED 和 TASK_INTAKE_ENABLED")
+        raise SystemExit("事项 Worker 或消息入口已在配置中关闭")
+    from app.runtime.metrics import install, RUNTIME_HEARTBEAT
+    install(settings.runtime_metrics_port, settings.runtime_metrics_host)
     from openai import OpenAI
     from app.agents.engine import AgentEngine
     from app.observability.llm_client import LlmClient
@@ -25,7 +28,11 @@ def main():
             queue=TaskQueue(settings.api_concurrency_redis_url, prefix=settings.api_chat_queue_prefix + ":tasks"))
         try:
             while not stop.is_set():
-                worker.tick()
+                try:
+                    worker.tick()
+                    RUNTIME_HEARTBEAT.labels(role='worker').set_to_current_time()
+                except Exception:
+                    logging.exception('Task iteration failed; durable input and receipts retained')
                 stop.wait(.2)
         finally:
             worker.close()

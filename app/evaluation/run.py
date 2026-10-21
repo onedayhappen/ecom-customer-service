@@ -109,7 +109,7 @@ def main():
 
     print("=" * 78)
     print("  并夕夕 · Agent 评估体系")
-    print("  模式      : intent → 查询改写 → DataPlan → Workflow/ReAct")
+    print("  模式      : 原话 → 共享 Agent → 工具循环")
     print(f"  数据集    : {dataset_path}")
     print(f"  LLM judge : {'开启' if args.judge else '关闭（仅规则）'}")
     print(f"  裁判模型  : {settings.model_name}")
@@ -125,7 +125,7 @@ def main():
         sys.exit(1)
     print(f"   共 {len(cases)} 条用例")
 
-    print("\n[2/3] 在沙箱中重跑测试集（意图→查询改写→DataPlan→Workflow/ReAct）...")
+    print("\n[2/3] 在沙箱中重跑测试集（原话→共享 Agent→工具循环）...")
     client = OpenAI(
         api_key=settings.openai_api_key,
         base_url=settings.openai_base_url,

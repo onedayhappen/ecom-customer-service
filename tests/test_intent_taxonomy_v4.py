@@ -16,7 +16,6 @@ from app.data_plan.taxonomy import (
 from app.execution import dispatch, dispatch_async
 from app.intent.classifier import IntentClassifier, parse_intent
 from app.intent.rules import recognize, conversation_messages
-from app.tasks.routing import task_matches
 from scripts.eval_intent_model import prepare_example
 from scripts.train_intent_lora import validate_training_row
 
@@ -103,25 +102,18 @@ def test_classifier_context_excludes_future_answers_and_tool_output():
                                   if not build_data_plan(i).spec.execution_ready])
 def test_pending_execution_never_calls_a_tool_or_requires_a_client(intent, monkeypatch):
     from app.config.settings import settings
-    monkeypatch.setattr(settings, 'assistant_just_react', False)
     class Forbidden:
         def __getattr__(self, name):
             raise AssertionError(f'未接入执行路径不能调用 {name}')
     plan = build_data_plan(intent)
     results = [dispatch(plan, runner=Forbidden(), react_executor=Forbidden()),
-               asyncio.run(dispatch_async(plan, runner=Forbidden(), react_executor=Forbidden())),
-               AgentEngine(intent).execute('测试'),
-               asyncio.run(AgentEngine(intent).execute_async('测试'))]
+               asyncio.run(dispatch_async(plan, runner=Forbidden(), react_executor=Forbidden()))]
     for result in results:
         assert result.intent == intent and result.blocked and result.tool_steps == []
         assert not result.needs_confirmation
         assert '尚未接入' in result.reply
 
 
-def test_persisted_legacy_tasks_match_new_control_targets():
-    assert task_matches({'intent': 'after_sale_request', 'request_text': '我要换货'}, 'exchange_service')
-    assert task_matches({'intent': 'refund_status', 'request_text': '钱到哪了'}, 'after_sale_status')
-    assert not task_matches({'intent': 'after_sale_request', 'request_text': '我要退款'}, 'exchange_service')
 
 
 def test_refund_keeps_existing_guarded_chain_with_narrow_tool_set():

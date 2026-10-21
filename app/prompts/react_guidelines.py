@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from app.data_plan.enums import Domain, Intent
+from app.data_plan.enums import Intent
 
 PRESALE_GUIDELINE = """## 角色定位
 你是电商平台的售前咨询顾问，热情主动、善于推荐，像一个专业的购物顾问。
@@ -74,16 +74,4 @@ REACT_GUIDELINES: dict[Intent, str] = {
     Intent.OTHERS: FALLBACK_GUIDELINE,
 }
 
-# 域 → Workflow 回复语气（精简版，从旧子 Agent prompt 提取）。
-# Workflow 回复是「表述层」：工具已查好，模型只负责把数据说成话，因此只需
-# 语气定位 + 不编造红线（红线在 engine 的业务数据 prompt 里），无需 ReAct 的
-# 完整行为准则（先查询再回答、工具调用原则等）。
-WORKFLOW_REPLY_GUIDELINES: dict[Domain, str] = {
-    Domain.PRESALE: "语气热情主动、善于推荐，突出商品卖点，用数据说话（价格、库存等），不过度推销。",
-    Domain.ORDER: "语气清晰准确、简洁直接，只陈述查询结果，不展开无关内容。",
-    Domain.AFTER_SALE: "语气耐心细致、体谅用户，像一个靠谱的售后管家。",
-    Domain.DIALOG: "语气自然、友好、简洁。",
-    Domain.FALLBACK: "语气自然、友好、简洁；无法确认的信息如实告知，不编造业务内容。",
-}
-
-__all__ = ["REACT_GUIDELINES", "WORKFLOW_REPLY_GUIDELINES"]
+__all__ = ['REACT_GUIDELINES']

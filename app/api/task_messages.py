@@ -1,4 +1,4 @@
-"""Disabled-by-default intake endpoint for incremental pipeline development."""
+"""Durable message admission; database rollout controls automatic processing."""
 import asyncio
 from typing import Literal
 from uuid import UUID

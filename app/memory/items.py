@@ -102,8 +102,13 @@ class JsonMemoryItemRepository:
         self._transaction = ContextVar(f'ltm_json_transaction_{id(self)}', default=None)
 
     def _path(self, user_id: str) -> Path:
+        if not user_id or any(character in user_id for character in ('/', '\\', ':', '\x00')):
+            raise ValueError('Invalid memory user path')
         path = self.memory_dir / f"{user_id}.items.json"
-        if path.resolve().parent != self.memory_dir.resolve():
+        # The file is atomically replaced by another process. Resolve only its
+        # stable parent; on Windows resolving the changing file can fall back
+        # to an incomplete path while another writer replaces it.
+        if path.parent.resolve() != self.memory_dir.resolve() or path.is_reserved() or path.is_symlink():
             raise ValueError('Invalid memory user path')
         return path
 

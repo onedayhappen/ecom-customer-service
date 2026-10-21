@@ -33,7 +33,7 @@ def main():
             'MEMORY_DIR': str(Path(directory) / 'memory'), 'CASE_DIR': str(Path(directory) / 'cases'),
             'CASE_STORAGE_BACKEND': 'json',
             'INTENT_MODEL_ENABLED': 'false', 'OBSERVABILITY_ENABLED': 'true', 'AUDIT_ENABLED': 'false',
-            'API_CHAT_EXECUTION_MODE': 'sync', 'MCP_ENABLED': 'false', 'RETRIEVAL_SERVICE_URL': '',
+            'MCP_ENABLED': 'false', 'RETRIEVAL_SERVICE_URL': '',
             'DEEPSEEK_API_KEY': '', 'OPENAI_API_KEY': '', 'DASHSCOPE_API_KEY': '', 'ROUTER_API_KEY': '',
             'EMBEDDING_API_KEY': '', 'EMBEDDING_BASE_URL': '', 'AUDIT_POSTGRES_DSN': '',
             'API_AUTH_USERS': '', 'API_JWT_SECRET': 'isolated-test-runner-jwt-key-32-characters',
@@ -42,7 +42,7 @@ def main():
         from app.session import repository
         repository.JSON_SESSION_DIR = Path(directory) / 'sessions'
         import pytest
-        files = ['tests/test_concurrency_runtime.py', 'tests/test_concurrency_integration.py', 'tests/test_platform_http.py'] if integration else ['tests']
+        files = ['tests']
         files = args.paths or files
         return pytest.main(['-q', '-p', 'no:cacheprovider', '--basetemp', str(artifacts / 'tmp'), *files])
 

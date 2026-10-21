@@ -13,6 +13,27 @@ def json_value(value, fallback=None):
         return fallback
 
 
+def migrate_pipeline_rollout(tx):
+    from app.tasks.rollout import RELEASE
+    from app.support.store import now
+    tx.execute('''CREATE TABLE IF NOT EXISTS task_pipeline_state (
+        singleton INTEGER PRIMARY KEY, release TEXT NOT NULL, mode TEXT NOT NULL,
+        version INTEGER NOT NULL, updated_at TEXT NOT NULL)''')
+    # An existing installation starts stopped. A new empty installation has no
+    # old writers or customer state to migrate.
+    populated = tx.one('SELECT COUNT(*) AS n FROM support_conversations')['n']
+    tx.execute('INSERT INTO task_pipeline_state VALUES (1,?,?,1,?) ON CONFLICT DO NOTHING',
+               (RELEASE, 'stopped' if populated else 'all', now()))
+    tx.execute('''CREATE TABLE IF NOT EXISTS task_pipeline_users (
+        user_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL)''')
+    tx.execute('''CREATE TABLE IF NOT EXISTS task_rollout_audit (
+        event_id TEXT PRIMARY KEY, created_at TEXT NOT NULL, actor TEXT NOT NULL,
+        user_id TEXT, mode TEXT NOT NULL, reason TEXT NOT NULL, version INTEGER NOT NULL)''')
+    tx.execute('''CREATE TABLE IF NOT EXISTS task_legacy_imports (
+        legacy_task_id TEXT PRIMARY KEY, legacy_version INTEGER NOT NULL, user_id TEXT NOT NULL,
+        task_id TEXT NOT NULL UNIQUE, actor TEXT NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL)''')
+
+
 def encoded(tx, value):
     """Use native JSONB in PostgreSQL and canonical JSON in the SQLite adapter."""
     if tx.postgres:

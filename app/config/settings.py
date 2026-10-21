@@ -39,28 +39,13 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model_name: str = "deepseek-v4-flash"
-    # 路由是独立的低成本调用，使用阿里百炼的 Qwen Flash。
-    router_api_key: str = Field(
-        default="",
-        validation_alias=AliasChoices("DASHSCOPE_API_KEY", "ROUTER_API_KEY"),
-    )
-    router_base_url: str = Field(
-        default="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        validation_alias=AliasChoices("ROUTER_BASE_URL", "DASHSCOPE_BASE_URL"),
-    )
-    router_model_name: str = Field(
-        default="qwen-flash",
-        validation_alias=AliasChoices("ROUTER_MODEL_NAME", "DASHSCOPE_MODEL_NAME"),
-    )
     temperature: float = 0.7
 
-    # 统一对话入口；False 仅用于旧版本回滚和历史流程回归。
-    assistant_just_react: bool = True
-    # 重构中的持续消息接口，仅在隔离测试中开启；尚不启动 Agent 执行。
-    task_intake_enabled: bool = False
-    task_worker_enabled: bool = False
-    task_operations_enabled: bool = False
-    task_external_progress_enabled: bool = False
+    # One task pipeline. Database rollout controls govern users across instances.
+    task_intake_enabled: bool = True
+    task_worker_enabled: bool = True
+    task_operations_enabled: bool = True
+    task_external_progress_enabled: bool = True
     task_external_interval_seconds: float = Field(default=300, ge=1, le=86400)
     task_external_max_attempts: int = Field(default=12, ge=1, le=100)
     task_external_timeout_seconds: float = Field(default=10, ge=0.05, le=30)
@@ -184,8 +169,6 @@ class Settings(BaseSettings):
     api_distributed_lease_seconds: float = Field(default=90.0, ge=6)
     api_queue_wait_seconds: float = Field(default=30.0, ge=0)
     # async：API 入队后由 Agent Worker 执行；sync 仅用于本地兼容调试。
-    api_chat_execution_mode: str = "async"
-    api_chat_worker_enabled: bool = False
     api_chat_worker_concurrency: int = Field(default=2, ge=1)
     api_chat_queue_prefix: str = "ecom:chat"
     api_chat_queue_max_depth: int = Field(default=1000, ge=1)
@@ -265,20 +248,16 @@ class Settings(BaseSettings):
     context_model_window_tokens: int = Field(default=0, ge=0)
     context_window_margin_tokens: int = Field(default=1024, ge=0)
 
-    model_config = {"env_file": ".env"}
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
     def validate_runtime_configuration(self) -> None:
         """拒绝把示例占位符带入运行环境。
 
-        本地规则模式可以不配置模型 API key，但认证密钥必须存在；启用 MCP
+        只读和人工服务可以不配置模型 API key，但认证密钥必须存在；启用 MCP
         时则要求服务间认证和上下文签名密钥同时配置。把校验放在 lifespan
         启动阶段，避免服务启动后才在第一次请求时暴露配置错误。
         """
         errors: list[str] = []
-        if self.api_chat_execution_mode not in {"sync", "async"}:
-            errors.append("API_CHAT_EXECUTION_MODE 只支持 sync/async")
-        if self.api_chat_execution_mode == "async" and not self.api_concurrency_redis_url:
-            errors.append("异步任务必须配置 API_CONCURRENCY_REDIS_URL")
         if self.api_max_concurrent_llm < 1:
             errors.append("API_MAX_CONCURRENT_LLM 必须大于 0")
 
@@ -292,7 +271,6 @@ class Settings(BaseSettings):
 
         check("api_jwt_secret", "API_JWT_SECRET", required=True)
         check("openai_api_key", "DEEPSEEK_API_KEY")
-        check("router_api_key", "DASHSCOPE_API_KEY")
         if self.mcp_enabled:
             check("mcp_service_token", "MCP_SERVICE_TOKEN", required=True)
             check("mcp_context_jwt_secret", "MCP_CONTEXT_JWT_SECRET", required=True)
@@ -312,10 +290,6 @@ class Settings(BaseSettings):
             return {"extra_body": {"thinking": {"type": "disabled"}}}
         return {}
 
-    @property
-    def router_chat_completion_options(self) -> dict:
-        """Qwen 路由调用不附带 DeepSeek 专有的 thinking 参数。"""
-        return {}
 
 
 settings = Settings()

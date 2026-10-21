@@ -3,7 +3,7 @@ from uuid import uuid4
 from app.config.settings import settings
 from app.support.runtime import get_store
 from app.tasks.intake import MessageIntake
-from tests.test_multiturn_tasks_api import api
+from tests.api_fixtures import api
 
 
 def test_intake_is_off_by_default(api, monkeypatch):
@@ -32,7 +32,7 @@ def test_authenticated_api_accepts_while_processing_without_running_tools(api, m
     assert client.get(f"/api/v1/task-messages/{sid}", headers=headers("other")).status_code == 404
     state = client.get(f"/api/v1/task-messages/{sid}", headers=headers()).json()
     assert state["associated_sequence"] == 0 and len(state["messages"]) == 2
-    assert old_send("测试旧入口").status_code == 409
+    assert old_send("测试旧入口").status_code == 410
     assert effects == []
 
 

@@ -25,12 +25,21 @@ class PlatformCollector:
         age = GaugeMetricFamily('platform_oldest_waiting_job_seconds', 'Age of oldest job not yet started')
         notification = GaugeMetricFamily('platform_notification_backlog', 'Coalesced sessions awaiting notification')
         retries = GaugeMetricFamily('platform_delivery_retry_jobs', 'Waiting jobs with multiple delivery attempts')
+        operations = GaugeMetricFamily('platform_business_operations', 'Business operations requiring reconciliation', labels=['status'])
+        pipeline = GaugeMetricFamily('platform_pipeline_mode', 'Current automatic processing mode', labels=['mode'])
         try:
             with get_store().transaction(read_only=True) as tx:
                 timestamp = clock(tx)
                 rows = tx.all("SELECT status,COUNT(*) AS n,MIN(created_at) AS oldest FROM runtime_jobs WHERE status IN ('pending','dispatched','running') GROUP BY status")
                 notification.add_metric([], tx.one('SELECT COUNT(*) AS n FROM runtime_notifications')['n'])
                 retries.add_metric([], tx.one("SELECT COUNT(*) AS n FROM runtime_jobs WHERE status IN ('pending','dispatched') AND attempts>1")['n'])
+                unresolved = tx.all("SELECT status,COUNT(*) AS n FROM support_operations WHERE status IN ('running','unknown') GROUP BY status")
+                mode = tx.one('SELECT mode FROM task_pipeline_state WHERE singleton=1')
+            operation_counts = {r['status']: r['n'] for r in unresolved}
+            for state in ('running', 'unknown'):
+                operations.add_metric([state], operation_counts.get(state, 0))
+            for state in ('all', 'selected', 'stopped'):
+                pipeline.add_metric([state], int(bool(mode) and mode['mode'] == state))
             counts = {r['status']: r for r in rows}
             for state in ('pending', 'dispatched', 'running'):
                 depth.add_metric([state], counts.get(state, {}).get('n', 0))
@@ -41,6 +50,8 @@ class PlatformCollector:
             yield age
             yield notification
             yield retries
+            yield operations
+            yield pipeline
         except Exception:
             up.add_metric([], 0)
         yield up
