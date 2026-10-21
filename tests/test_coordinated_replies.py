@@ -363,7 +363,7 @@ def test_v15_upgrade_preserves_pending_work_and_rolls_back_as_one_transaction(st
     a, sa = task(store, "s")
     jid = ready(store, a, sa)
     with store.transaction() as tx:
-        for table in ("task_handoffs", "task_operation_resources", "task_operation_proposals",
+        for table in ("task_external_receipts", "task_external_waits", "task_handoffs", "task_operation_resources", "task_operation_proposals",
                       "task_reply_items", "task_reply_sessions", "task_execution_wakes"):
             tx.execute("DROP TABLE " + table)
         tx.execute("DROP INDEX runtime_task_reply_scan")

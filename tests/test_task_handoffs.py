@@ -186,6 +186,8 @@ def test_migration_preserves_existing_handoff_and_rolls_back_atomically(store, m
     record, _, _ = linked(store)
     tid = claim(store)
     with store.transaction() as tx:
+        tx.execute('DROP TABLE task_external_receipts')
+        tx.execute('DROP TABLE task_external_waits')
         tx.execute('DROP TABLE task_handoffs')
         tx.execute('DELETE FROM support_schema_versions WHERE version>17')
         tx.execute("INSERT INTO support_schema_versions VALUES (17,'before-upgrade') ON CONFLICT DO NOTHING")

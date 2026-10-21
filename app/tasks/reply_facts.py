@@ -75,6 +75,27 @@ def facts(record, receipts):
                 status = logistics.get("status")
                 if isinstance(status, str) and status:
                     lines.append(f"订单 {label(oid) if oid else '对应包裹'}的物流状态：{label(status, 80)}。")
+        elif tool == 'query_after_sale':
+            from app.tasks.external_evidence import after_sale_observation, timestamp
+            binding = {k: record.details[k] for k in ('order_id', 'after_sale_id', 'item_id', 'item_name', 'sku_id', 'product_id',
+                'quantity', 'tracking_number', 'store_id', 'platform_code') if record.details.get(k) is not None}
+            binding['kind'] = 'return' if '退货' in record.goal else 'refund'
+            try:
+                previous = record.waiting_for.get('external_progress') if isinstance(record.waiting_for, dict) else None
+                if previous:
+                    binding = dict(previous['binding'])
+                    if previous['source'] != 'mysql_order_fields':
+                        binding['after_sale_id'] = previous['reference']
+                progress = after_sale_observation(binding, result)
+                if previous and (timestamp(progress['observed_at']) < timestamp(previous['observed_at'])
+                                 or progress['rank'] < previous['rank']):
+                    continue
+                text = '订单 ' + label(binding['order_id']) + '：' + progress['content']
+                if progress['is_demo']:
+                    text += ' 本次使用演示业务数据。'
+                lines.append(text)
+            except (ValueError, KeyError, TypeError):
+                continue
         elif tool == "query_product":
             products = result.get("matched_products") or result.get("products") or []
             if not isinstance(products, list):

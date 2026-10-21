@@ -73,7 +73,7 @@ SCHEMA = (
     """CREATE TABLE IF NOT EXISTS support_bot_runs (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
 ) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + CASE_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA + MEMORY_RUNTIME_SCHEMA
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 
 class Tx:
@@ -174,6 +174,9 @@ class SupportStore:
                         if (applied or 0) < 18:
                             from app.tasks.migrations import migrate_task_handoffs
                             migrate_task_handoffs(tx)
+                        if (applied or 0) < 19:
+                            from app.tasks.migrations import migrate_external_progress
+                            migrate_external_progress(tx)
                         tx.execute('CREATE TABLE IF NOT EXISTS support_schema_versions (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
                         tx.execute('INSERT INTO support_schema_versions VALUES (?,?) ON CONFLICT(version) DO NOTHING', (SCHEMA_VERSION, now()))
                 self._initialized = True

@@ -55,6 +55,8 @@ class MySqlLogisticsDAO:
             **parse_mysql_dsn(self._dsn),
             charset="utf8mb4",
             connect_timeout=3,
+            read_timeout=10,
+            write_timeout=10,
             cursorclass=pymysql.cursors.DictCursor,
         )
 

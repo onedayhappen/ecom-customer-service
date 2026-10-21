@@ -380,6 +380,8 @@ def test_v17_migration_rolls_back_and_preserves_original_receipts(store, monkeyp
     from app.tasks import migrations
     with store.transaction() as tx:
         tx.execute("INSERT INTO support_operations VALUES ('legacy','s',0,'apply_refund','succeeded','old','{}')")
+        tx.execute("DROP TABLE task_external_receipts")
+        tx.execute("DROP TABLE task_external_waits")
         tx.execute("DROP TABLE task_handoffs")
         tx.execute("DROP TABLE task_operation_resources")
         tx.execute("DROP TABLE task_operation_proposals")

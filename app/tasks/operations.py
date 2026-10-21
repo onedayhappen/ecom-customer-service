@@ -316,10 +316,15 @@ class TaskOperations:
                 and control["mode"] == "bot" and not tx.one("""SELECT c.session_id FROM task_sessions s
                     JOIN support_conversations c ON c.session_id=s.session_id
                     WHERE s.task_id=? AND c.mode<>'bot' LIMIT 1""", (tid,))):
-            self.runs.repo.update(tid, row["session_id"], expected_version=record.version, change_id="receipt:" + oid,
+            from app.tasks.external_progress import only_submission_requested
+            submission_complete = settings.task_external_progress_enabled and only_submission_requested(tx, record)
+            after = self.runs.repo.update(tid, row["session_id"], expected_version=record.version, change_id="receipt:" + oid,
                 source=dict(kind="tool_result", session_id=row["session_id"], event_id=eid),
-                patch=dict(status="waiting_external", waiting_for=dict(kind="external", operation_id=oid,
+                patch=dict(status="completed" if submission_complete else "waiting_external", waiting_for=dict(kind="external", operation_id=oid,
                     evidence_id=eid, reason="业务申请已登记，仍需核实最终处理结果")), tx=tx)
+            if settings.task_external_progress_enabled:
+                tx.execute('UPDATE task_execution_wakes SET version=?,job_id=NULL,retry_at=0 WHERE task_id=?',
+                           (after.version, tid))
         control = self.store._control(tx, row["session_id"], self.user)
         prepared = json.loads(row["payload"])["prepared"]
         subject = "订单 " + str(prepared["arguments"]["order_id"])

@@ -54,13 +54,21 @@ class ConversationWorker:
     def reconcile(self):
         """Recover the commit-to-enqueue gap by scanning durable task versions."""
         with self.store.transaction() as tx:
-            rows = tx.all("""SELECT t.task_id,t.user_id,t.version FROM conversation_tasks t
+            rows = tx.all("""SELECT t.task_id,t.user_id,t.version,t.status FROM conversation_tasks t
                 JOIN task_execution_wakes w ON t.task_id=w.task_id
                 WHERE t.version<>w.version AND w.retry_at<=?
                 ORDER BY w.retry_at,t.updated_at,t.task_id LIMIT 64""", (clock(tx),))
         for row in rows:
             try:
                 with self.store.transaction() as tx:
+                    if settings.task_external_progress_enabled and row['status'] in {'waiting_external', 'completed'}:
+                        # External progress belongs to bounded maintenance; the
+                        # original Agent/operation already owns its first reply.
+                        tx.execute('''UPDATE task_execution_wakes SET version=?,job_id=NULL,retry_at=0
+                            WHERE task_id=? AND EXISTS(SELECT 1 FROM conversation_tasks t
+                                WHERE t.task_id=? AND t.version=? AND t.status=?)''',
+                            (row['version'], row['task_id'], row['task_id'], row['version'], row['status']))
+                        continue
                     source = tx.one("""SELECT e.session_id,e.sequence FROM support_task_messages m
                         JOIN support_events e ON e.session_id=m.session_id AND e.sequence=m.sequence
                         WHERE m.task_id=? AND e.kind='message' AND e.actor=?

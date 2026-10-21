@@ -30,6 +30,9 @@ def main():
             count = archive_jobs(get_store(), args.retention_days, args.batch_size)
             logging.info('Archived %s terminal jobs; execution tombstones retained', count)
             backfill_ticket_snapshots(get_store())
+            if settings.task_external_progress_enabled:
+                from app.tasks.external_progress import ExternalProgress
+                logging.info('External business progress: %s', ExternalProgress(get_store()).tick(limit=min(args.batch_size, 4)))
             invalidations = process_memory_invalidations(get_store(), limit=min(args.batch_size, 20))
             logging.info('Memory source maintenance: %s', invalidations)
             if settings.short_term_memory_enabled:

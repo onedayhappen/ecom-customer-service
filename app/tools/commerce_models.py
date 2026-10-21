@@ -321,6 +321,19 @@ class AfterSaleRecord(Evidence):
     status: Text
     is_demo: bool
     note: Text | None = None
+    item_id: Text | None = None
+    item_name: Text | None = None
+    sku_id: Text | None = None
+    quantity: Count | None = None
+    tracking_number: Text | None = None
+    deadline: datetime | None = None
+    required_materials: Annotated[list[Text], Field(max_length=20)] = Field(default_factory=list)
+    settled_at: datetime | None = None
+    transaction_id: Text | None = None
+    request_id: Text | None = None
+    platform_code: Text = 'pdd'
+    store_id: Text | None = None
+    product_id: Text | None = None
 
 
 class PaymentRecord(Evidence):

@@ -216,7 +216,7 @@ class _TaskContext:
             args = READ_SCHEMAS[name].model_validate(arguments).model_dump(exclude_none=True)
         except (KeyError, ValidationError):
             return None
-        if name in {"query_order", "query_logistics"}:
+        if name in {"query_order", "query_logistics", 'query_after_sale'}:
             order = self.record.details.get("order_id")
             if not order:
                 return None
@@ -230,6 +230,12 @@ class _TaskContext:
             if tracking and tracking not in allowed_tracking:
                 return None
             args["order_id"] = order
+            if name == 'query_after_sale':
+                known = self.record.details.get('after_sale_id')
+                if args.get('after_sale_id') and args['after_sale_id'] != known:
+                    return None
+                if known:
+                    args['after_sale_id'] = known
         return args
 
     def tool(self, name, arguments):
@@ -305,7 +311,7 @@ class _TaskContext:
         # Reuse only a recent successful query for the same object and exact
         # parameters; changing a reason need not repeat an order read.
         reused = next((e for e in reversed(self.historical + self.receipts)
-                       if name != 'search_knowledge' and e["tool"] == name and e["arguments"] == args and e["result"].get("success")
+                       if name not in {'search_knowledge', 'query_after_sale'} and e["tool"] == name and e["arguments"] == args and e["result"].get("success")
                        and e["observed_epoch"] >= self.evidence_time - 60), None)
         if reused:
             if not any(e["event_id"] == reused["event_id"] for e in self.receipts):

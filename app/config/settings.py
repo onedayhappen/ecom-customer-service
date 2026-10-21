@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     task_intake_enabled: bool = False
     task_worker_enabled: bool = False
     task_operations_enabled: bool = False
+    task_external_progress_enabled: bool = False
+    task_external_interval_seconds: float = Field(default=300, ge=1, le=86400)
+    task_external_max_attempts: int = Field(default=12, ge=1, le=100)
+    task_external_timeout_seconds: float = Field(default=10, ge=0.05, le=30)
     task_global_concurrency: int = Field(default=8, ge=1, le=64)
     task_user_concurrency: int = Field(default=2, ge=1, le=16)
 

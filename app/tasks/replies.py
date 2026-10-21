@@ -223,6 +223,9 @@ class ReplyCoordinator:
                 if result.get("state") == "interrupted":
                     self._mark(tx, sid, key, disposition="interrupted")
                     continue
+                if record.status == 'completed':
+                    self._mark(tx, sid, key, disposition='covered')
+                    continue
                 metadata = dict(key=key, task_versions={tid: record.version},
                                 decision_ids=stamp["decisions"], evidence_ids=[])
                 if record.status == "waiting_user":

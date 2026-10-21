@@ -195,3 +195,16 @@ def migrate_task_handoffs(tx):
         tx.execute('INSERT INTO task_handoffs VALUES (?,?,?,?,?,?,NULL) ON CONFLICT DO NOTHING',
             (row['ticket_id'], row['task_id'], row['user_id'], row['version'], '{}', now()))
 
+
+def migrate_external_progress(tx):
+    tx.execute('''CREATE TABLE task_external_waits (
+        task_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT NOT NULL,
+        task_version INTEGER NOT NULL, binding TEXT NOT NULL, state TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0, next_check DOUBLE PRECISION NOT NULL,
+        lease_owner TEXT, lease_until DOUBLE PRECISION,
+        last_observation TEXT, last_error TEXT)''')
+    tx.execute('''CREATE INDEX task_external_due ON task_external_waits(state,next_check)''')
+    tx.execute('''CREATE TABLE task_external_receipts (
+        task_id TEXT NOT NULL, event_id TEXT NOT NULL, payload TEXT NOT NULL,
+        PRIMARY KEY(task_id,event_id))''')
+
