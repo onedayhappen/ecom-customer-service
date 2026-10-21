@@ -146,12 +146,11 @@ def test_blocked_when_mutating_tool_missing():
     assert build_data_plan(Intent.REFUND_STATUS).blocked is False
 
 
-def test_prompt_tools_include_load_skill_when_skill_assembled():
-    plan = build_data_plan(Intent.AFTER_SALE_REQUEST)
-    assert LOAD_SKILL in plan.prompt_tool_names  # 装配了 process-return
-
-    plan_no_skill = build_data_plan(Intent.ORDER_INQUIRY)
-    assert LOAD_SKILL not in plan_no_skill.prompt_tool_names
+def test_builtin_plans_do_not_offer_removed_business_skills():
+    for intent in Intent:
+        plan = build_data_plan(intent)
+        assert plan.skills == ()
+        assert LOAD_SKILL not in plan.prompt_tool_names
 
 
 def test_init_pending_slots_deducts_resolved_entities():

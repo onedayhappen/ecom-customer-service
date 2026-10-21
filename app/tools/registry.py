@@ -216,7 +216,7 @@ TOOL_DEFINITIONS: list[dict] = [
                 "properties": {
                     "skill_name": {
                         "type": "string",
-                        "description": "要加载的技能名称，如 process-return、track-order、product-recommend",
+                        "description": "当前可用技能目录中的技能名称",
                     }
                 },
                 "required": ["skill_name"],
