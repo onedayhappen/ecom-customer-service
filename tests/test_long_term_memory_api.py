@@ -12,7 +12,7 @@ from app.memory.long_term import MemoryFact
 from app.memory.runtime import build_memory_manager, process_memory_jobs
 from app.session.request_budget import apply_request_budget
 from app.support.runtime import get_store
-from app.tools import memory_tool
+from app.memory import recall as memory_tool
 from app.tools.request_context import get_current_user_id, set_current_user_id, reset_current_user_id
 from tests.api_fixtures import api  # noqa: F401
 

@@ -89,7 +89,7 @@ def test_notification_outbox_does_not_drop_update_during_publish(tmp_path):
 
 def test_retrieval_service_auth_and_remote_result(monkeypatch):
     from app.services.retrieval import app
-    from app.tools import knowledge
+    from app.rag import service as knowledge
     from app.rag import remote
     token = 'test-retrieval-internal-token-32chars'
     monkeypatch.setattr(settings, 'retrieval_service_token', token)

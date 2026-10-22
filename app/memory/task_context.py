@@ -80,7 +80,7 @@ class TaskMemory:
 
     def recall(self, query):
         from app.memory.runtime import build_memory_manager
-        from app.tools.memory_tool import recall_user_memory, set_memory_manager, reset_memory_manager
+        from app.memory.recall import recall_user_memory, set_memory_manager, reset_memory_manager
         try:
             if self.manager is None:
                 self.manager = build_memory_manager(self.user, store=self.store)

@@ -52,7 +52,7 @@ services:
       - .env
     environment:
       ORDER_DB_DSN: mysql://ecom:ecom_dev_password@mysql:3306/ecom_agent_orders
-    command: ["python", "scripts/init_order_db.py"]
+    command: ["python", "scripts/migrate_mysql_business_schema.py"]
     depends_on:
       mysql:
         condition: service_healthy

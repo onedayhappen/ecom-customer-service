@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-async function prepare(page, { status = 'prepared', canConfirm = true, confirm } = {}) {
+async function prepare(page, { status = 'prepared', canConfirm = true, confirm, review } = {}) {
   const operation = {
     operation_id: '9b581291-86dc-46e9-a7d8-44a16d5cbb52', status, can_confirm: canConfirm,
     confirmation_token: 'server-bound-confirmation-token', expires_at: Date.now() / 1000 + 600,
@@ -8,6 +8,7 @@ async function prepare(page, { status = 'prepared', canConfirm = true, confirm }
       reason: '左耳没声音', amount_minor: 12999, amount_kind: 'order_reference', is_demo: true,
       impact: '本次仅登记申请，退款金额和优惠券处理等待审核。' },
   }
+  if (review) operation.review = review
   const calls = [], messages = []
   await page.addInitScript(() => {
     window.EventSource = class { addEventListener() {} close() {} }
@@ -47,7 +48,7 @@ test('review binds fixed details; confirmation in flight allows new input and re
     operation.status = 'succeeded'
     await route.fulfill({ json: operation })
   } })
-  await expect(page.getByText('订单金额（参考，非承诺退款金额）：¥129.99')).toBeVisible()
+  await expect(page.getByText('订单金额（参考，非承诺退款金额）：CNY 129.99')).toBeVisible()
   await expect(page.getByText('耳机 × 1')).toBeVisible()
   await page.getByRole('button', { name: '确认这项操作' }).click()
   await expect.poll(() => app.calls.length).toBe(1)
@@ -86,4 +87,21 @@ test('lost confirm response restores unknown state and only queries the original
   await page.getByRole('button', { name: '核实操作结果' }).click()
   await expect(page.getByText(/已收到业务回执/)).toBeVisible()
   expect(app.calls.map(c => c.path.split('/').at(-1))).toEqual(['confirm', 'refresh'])
+})
+
+test('core refund review uses decimal money and selected item quantities', async ({ page }) => {
+  await prepare(page, { review: { title: '申请仅退款', order_id: 'NEW-ORDER', currency: 'CNY',
+    amount: '10.00', amount_kind: 'refund_estimate', quantity: 1, items: [{ name: '耳机', quantity: 1 }],
+    impact: '申请提交不等于退款成功' } })
+  await expect(page.getByText('申请退款金额（待审核）：CNY 10.00')).toBeVisible()
+  await expect(page.getByText('耳机 × 1')).toBeVisible()
+})
+
+test('private invoice and address reviews show the exact requested destination', async ({ page }) => {
+  await prepare(page, { review: { title: '提交开票申请', order_id: 'NEW-ORDER', invoice_type: 'company',
+    invoice_title: '示例公司', tax_number: 'TEST-TAX',
+    address: { region: ['省', '市', '区'], detail: '新地址', recipient_name: '张三', phone: '13800000000' } } })
+  await expect(page.getByText('抬头：示例公司；类型：企业；税号：TEST-TAX')).toBeVisible()
+  await expect(page.getByText(/目标收货地址：省 \/ 市 \/ 区 新地址/)).toBeVisible()
+  await expect(page.getByText(/共.*件/)).toHaveCount(0)
 })

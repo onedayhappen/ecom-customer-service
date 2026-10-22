@@ -1,7 +1,6 @@
 """商品 DAO：公开目录数据（无用户归属），支持全量加载与模糊搜索。
 
-商品检索的评分/过滤逻辑保留在 ``app/tools/product.py``（内存实现，质量高），
-本层只负责数据源：MySQL 全量加载（19 条规模，加载成本可忽略）或 mock 回退。
+旧商品工具已移除；本层保留 MySQL 数据访问和离线测试数据源。
 """
 
 from __future__ import annotations
@@ -135,7 +134,7 @@ class MockProductDAO:
     """内置 mock 商品目录。"""
 
     def list_all(self) -> list[ProductDTO]:
-        from app.tools.mock_data import PRODUCTS
+        from app.data.mock_data import PRODUCTS
 
         return [ProductDTO.from_mock(product) for product in PRODUCTS.values()]
 

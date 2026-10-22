@@ -1,7 +1,6 @@
-"""MySQL commerce evidence and local invoice ledger, with scoped transactions.
+"""Legacy commerce DAO retained temporarily for tool refactoring.
 
-The new tables do not change existing order/product rows. JSON payloads hold
-versioned domain contracts; indexed columns hold identity and lookup keys.
+Its former ``commerce_*`` tables have been dropped; schema creation is disabled.
 """
 import hashlib
 import json
@@ -66,9 +65,7 @@ class MySqlCommerceDAO(MySqlOrderDAO):
                                connect_timeout=3, read_timeout=10, write_timeout=10)
 
     def ensure_schema(self):
-        with self._connection() as conn, conn.cursor() as cur:
-            for statement in DDL:
-                cur.execute(statement)
+        raise RuntimeError("commerce_* 旧表已退役；请使用新版 MySQL 业务表迁移")
 
     def insert_seed(self, records):
         """Insert missing demo fixtures only; never overwrite business records."""

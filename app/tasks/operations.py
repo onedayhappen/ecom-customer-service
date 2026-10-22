@@ -4,6 +4,8 @@ from types import SimpleNamespace
 
 from app.config.settings import settings
 from app.execution.business_operations import BusinessOperations
+from app.services.commerce.common import BusinessError
+from app.services.commerce.writes import PREPARES
 from app.harness.bounded_call import bounded_calls
 from app.tasks import confirmation_tokens
 from app.runtime.outbox import clock
@@ -36,10 +38,16 @@ class TaskOperations:
         self.store, self.user = store, user
         self.runs = TaskRuns(store, user, scope=scope)
         self.business = business or backend()
+        if isinstance(self.business, BusinessOperations):
+            self.business.scope = scope
 
     def _enabled(self):
         if not settings.task_operations_enabled:
             raise SupportError("事项业务提交入口未启用", 404)
+
+    def _require_business(self):
+        if not getattr(self.business, "available", True):
+            raise SupportError("业务工具已移除，暂时无法提交操作", 503)
 
     def _row(self, tx, oid, *, lock=False):
         row = tx.one("""SELECT p.*,o.session_id,o.control_version,o.tool,o.status,o.result
@@ -70,10 +78,12 @@ class TaskOperations:
         # operation owns the resource. The operation ledger is authoritative
         # even after that newer holder releases its single resource row.
         order = "p.payload::jsonb->'prepared'->'arguments'->>'order_id'" if tx.postgres else "json_extract(p.payload,'$.prepared.arguments.order_id')"
+        platform = "p.payload::jsonb->'prepared'->'arguments'->>'platform_code'" if tx.postgres else "json_extract(p.payload,'$.prepared.arguments.platform_code')"
         return bool(tx.one(f"""SELECT p.operation_id FROM task_operation_proposals p
             JOIN support_operations o ON o.operation_id=p.operation_id
-            WHERE p.operation_id<>? AND o.status IN ('running','unknown') AND {order}=? LIMIT 1""",
-            (row["operation_id"], payload["prepared"]["arguments"]["order_id"])))
+            WHERE p.operation_id<>? AND o.status IN ('running','unknown') AND {order}=?
+            AND COALESCE({platform},'pdd')=? LIMIT 1""",
+            (row["operation_id"], payload["prepared"]["arguments"]["order_id"],payload["prepared"]["arguments"].get('platform_code','pdd'))))
 
     def _check(self, tx, sid, record, payload=None):
         self.store._control(tx, sid, self.user)
@@ -106,15 +116,19 @@ class TaskOperations:
             return False
         return confirmation_tokens.token_matches(token, row["token_hash"]) and confirmation_tokens.token_matches(current, row["token_hash"])
 
-    def _view(self, tx, row, sid):
+    def _view(self, tx, row, sid, *, private=True):
         p = json.loads(row["payload"])
         status, error, token = row["status"], None, None
+        review=p['prepared']['review']
         result = json.loads(row["result"]) if row["result"] else None
         if isinstance(result, dict) and "manual_evidence" in result:
             # Administrative notes remain private; a customer sees the outcome.
             result = dict(status=status, verification_source="human")
         if status == "prepared":
             try:
+                self._require_business()
+                if isinstance(self.business, BusinessOperations) and row["tool"] not in __import__('app.services.commerce.writes', fromlist=['PREPARES']).PREPARES:
+                    raise SupportError("此操作契约已移除，请重新准备", 409)
                 self.runs._scope(tx, row["task_id"])
                 record = self.runs.repo._record(self.runs.repo._row(tx, row["task_id"]))
                 self._check(tx, sid, record, p)
@@ -127,8 +141,11 @@ class TaskOperations:
                     raise SupportError("确认凭证已失效，请重新准备操作")
             except (SupportError, ValueError) as exc:
                 token, error = None, str(exc)
+        if private and isinstance(self.business,BusinessOperations) and row['tool'] in PREPARES:
+            try: review=self.business.review(self.user,p['prepared'])
+            except BusinessError as exc: token,error=None,exc.message
         return dict(operation_id=row["operation_id"], task_id=row["task_id"], task_version=row["task_version"],
-                    status=status, review=p["prepared"]["review"], can_confirm=bool(token), confirmation_token=token,
+                    status=status, review=review, can_confirm=bool(token), confirmation_token=token,
                     expires_at=row["expires_at"], error=error, result=result)
 
     def list(self, sid):
@@ -140,9 +157,14 @@ class TaskOperations:
                 ORDER BY p.created_at DESC LIMIT 20""", (self.user, sid))
             return [self._view(tx, self._row(tx, r["operation_id"]), sid) for r in rows]
 
-    def prepare(self, sid, task_id, expected_version, action, *, fence=None, timeout=15):
+    def prepare(self, sid, task_id, expected_version, action, *, arguments=None, fence=None, timeout=15):
         self._enabled()
-        oid = _id(task_id, "operation:" + str(expected_version) + ":" + action)
+        self._require_business()
+        if isinstance(self.business, BusinessOperations) and action not in __import__('app.services.commerce.writes', fromlist=['PREPARES']).PREPARES:
+            raise SupportError("此操作契约已移除，请重新准备", 409)
+        from app.services.commerce.common import digest
+        suffix = (":" + digest(arguments)) if arguments is not None else ""
+        oid = _id(task_id, "operation:" + str(expected_version) + ":" + action + suffix)
         with self.store.transaction(read_only=True) as tx:
             record = self.runs.repo._record(self.runs.repo._row(tx, task_id))
             self._check(tx, sid, record)
@@ -150,11 +172,11 @@ class TaskOperations:
                 raise SupportError("事项已变化，请重新准备操作")
             old = tx.one("SELECT operation_id FROM task_operation_proposals WHERE operation_id=?", (oid,))
             if old:
-                view = self._view(tx, self._row(tx, oid), sid)
+                view = self._view(tx, self._row(tx, oid), sid, private=False)
                 return {k: v for k, v in view.items() if k != "confirmation_token"}
         identity = set_current_user_id(self.user)
         try:
-            prepared = bounded_calls.run(lambda: self.business.preview(record, action), timeout)
+            prepared = bounded_calls.run(lambda: self.business.preview(record, action, arguments=arguments) if arguments is not None else self.business.preview(record, action), timeout)
         finally:
             reset_current_user_id(identity)
         with self.store.transaction() as tx:
@@ -175,10 +197,7 @@ class TaskOperations:
                     WHERE i.user_id=d.user_id AND i.kind='decision' AND i.source_id=d.decision_id)""", (self.user, task_id))]
             payload = dict(prepared=prepared, provenance=self.runs.guard.capture([task_id], decisions, tx=tx),
                            controls=self.runs.controls(tx, SimpleNamespace(session_id=sid, task_id=task_id)),
-                           # Existing commerce tools share the global (pdd,
-                           # order_id) business primary key, irrespective of
-                           # whether the dialogue explicitly mentioned pdd.
-                           resources=[json.dumps(["order", "pdd", current.details["order_id"]])])
+                           resources=[json.dumps(["order", prepared["arguments"].get("platform_code", "pdd"), prepared["arguments"]["order_id"]])])
             if fence and fence[1].get("schedule"):
                 payload["schedule"] = fence[1]["schedule"]
             encoded, expiry = json.dumps(payload, ensure_ascii=False), clock(tx) + 600
@@ -207,6 +226,9 @@ class TaskOperations:
             self._session(tx, row, sid)
             if row["status"] != "prepared":
                 return self._view(tx, row, sid)  # Read-only replay, including unknown.
+            self._require_business()
+            if isinstance(self.business, BusinessOperations) and row["tool"] not in __import__('app.services.commerce.writes', fromlist=['PREPARES']).PREPARES:
+                raise SupportError("此操作契约已移除，请重新准备", 409)
             if not self._token_valid(row, token) or clock(tx) >= row["expires_at"]:
                 raise SupportError("确认凭证无效或已过期")
             payload = json.loads(row["payload"])
@@ -276,7 +298,10 @@ class TaskOperations:
             entity = result.get("invoice") or result
             verified = (result.get("success") is True and result.get("request_id") == oid
                         and isinstance(entity, dict) and entity.get("order_id") == p["arguments"]["order_id"]
-                        and entity.get("status") == ("submitted" if row["tool"] == "apply_refund" else "issued_local"))
+                        and entity.get("status") == ({"prepare_after_sale": "submitted", "prepare_invoice": "submitted",
+                            "prepare_order_address_change": "updated", "prepare_order_cancel": "cancelled",
+                            "prepare_after_sale_cancel": "cancelled", "apply_refund": "submitted"}.get(row["tool"], "issued_local"))
+                        and (not row["tool"].startswith("prepare_") or entity.get("platform_code") == p["arguments"]["platform_code"]))
             status = ("succeeded" if verified else "failed" if result.get("success") is False and
                       result.get("error_code") in {"business_rejection", "validation_error", "confirmation_invalid", "evidence_unavailable"}
                       else "unknown")
@@ -311,10 +336,10 @@ class TaskOperations:
                     JOIN support_conversations c ON c.session_id=s.session_id
                     WHERE s.task_id=? AND c.mode<>'bot' LIMIT 1""", (tid,))):
             from app.tasks.external_progress import only_submission_requested
-            submission_complete = settings.task_external_progress_enabled and only_submission_requested(tx, record)
+            submission_complete = row["tool"] in {"prepare_order_cancel", "prepare_order_address_change", "prepare_after_sale_cancel"} or (settings.task_external_progress_enabled and only_submission_requested(tx, record))
             after = self.runs.repo.update(tid, row["session_id"], expected_version=record.version, change_id="receipt:" + oid,
                 source=dict(kind="tool_result", session_id=row["session_id"], event_id=eid),
-                patch=dict(status="completed" if submission_complete else "waiting_external", waiting_for=dict(kind="external", operation_id=oid,
+                patch=dict(status="completed" if submission_complete else "waiting_external", waiting_for=None if submission_complete else dict(kind="external", operation_id=oid,
                     evidence_id=eid, reason="业务申请已登记，仍需核实最终处理结果")), tx=tx)
             if settings.task_external_progress_enabled:
                 tx.execute('UPDATE task_execution_wakes SET version=?,job_id=NULL,retry_at=0 WHERE task_id=?',
@@ -323,8 +348,13 @@ class TaskOperations:
         prepared = json.loads(row["payload"])["prepared"]
         subject = "订单 " + str(prepared["arguments"]["order_id"])
         if status == "succeeded":
-            content = subject + ("：退款申请已登记，审核结果和实际到账仍待确认。" if row["tool"] == "apply_refund"
-                                 else "：本地演示发票记录已保存，不是真实税务发票。")
+            messages = {"prepare_after_sale": "：售后申请已登记，审核和退款结果仍待核实。",
+                        "prepare_invoice": "：开票申请已登记，尚未开具正式发票。",
+                        "prepare_order_address_change": "：收货地址已更新。",
+                        "prepare_order_cancel": "：订单已取消。",
+                        "prepare_after_sale_cancel": "：售后申请已撤回。",
+                        "apply_refund": "：退款申请已登记，审核结果和实际到账仍待确认。"}
+            content = subject + messages.get(row["tool"], "：业务操作已处理，请查看回执。")
             if prepared["review"].get("is_demo") and row["tool"] == "apply_refund":
                 content += "本次使用演示业务数据。"
         elif status == "failed":

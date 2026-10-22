@@ -16,7 +16,7 @@ TOKEN = 'isolated-policy-service-token-32-characters'
 
 def serve(root, port):
     import uvicorn
-    from app.tools import knowledge
+    from app.rag import service as knowledge
     from app.rag.releases import PolicyIndex
     from app.rag.retriever import PolicyRetriever
     from app.services.retrieval import app
@@ -92,7 +92,7 @@ def test_policy_http_auth_scope_and_cross_process_revocation(servers, monkeypatc
 
 
 def test_remote_failure_never_uses_local_or_old_policy_cache(servers, monkeypatch):
-    from app.tools import knowledge
+    from app.rag import service as knowledge
     _, _, urls = servers
     saved = knowledge.search_policy('退货规则', 3, context())
     assert saved['success']

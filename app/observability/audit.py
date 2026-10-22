@@ -35,6 +35,7 @@ from app.db import ensure_schema_once, get_connection_pool
 
 #: 命中这些 key 的字段值整体打码（保留前 1 后 1 字符）
 _SENSITIVE_KEYS = frozenset({
+    "tax_number", "title", "sealed", "business_data_keys",
     "phone", "mobile", "tel", "telephone", "name", "address",
     "id_card", "idcard", "identity", "token", "password", "secret",
     "手机号", "电话", "姓名", "地址", "身份证",

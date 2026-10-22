@@ -210,7 +210,7 @@ def test_migration_preserves_existing_handoff_and_rolls_back_atomically(store, m
     assert upgraded.detail(tid, 'agent1')['task_handovers'][0]['active']
 
 
-def test_agent_escalation_creates_one_real_ticket_and_returns_durable_receipt(store):
+def test_blocked_tool_hands_off_and_returns_durable_receipt(store):
     record, source, _ = linked(store)
     req = request(record, source)
     client = Client(response(calls=[('escalate_to_human', {})]))
@@ -225,16 +225,13 @@ def test_agent_escalation_creates_one_real_ticket_and_returns_durable_receipt(st
 
 def test_agent_cannot_escalate_another_session_or_claim_fake_transfer(store):
     record, source, _ = linked(store)
-    def invalid(params):
-        value = json.loads(next(m['content'] for m in reversed(params['messages']) if m['role'] == 'tool'))
-        assert value['success'] is False and value['error'] == 'invalid_handoff_arguments'
-        return response('已经转人工并完成赔付。')
-    client = Client(response(calls=[('escalate_to_human', {'session_id': 'other'})]), invalid)
-    engine(client).execute_task(store, 'alice', request(record, source))
+    client = Client(response(calls=[('escalate_to_human', {'session_id': 'other'})]))
+    result = engine(client).execute_task(store, 'alice', request(record, source))
+    assert result['state'] == 'needs_human' and result['tool_calls'] == 0
+    assert len(client.requests) == 1
     with store.transaction(read_only=True) as tx:
-        assert tx.one('SELECT COUNT(*) AS n FROM support_tickets')['n'] == 0
-    reply = ReplyCoordinator(store, 'alice').publish('s')
-    assert '已经转人工' not in reply['content'] and '完成赔付' not in reply['content']
+        assert tx.one('SELECT COUNT(*) AS n FROM support_tickets')['n'] == 1
+        assert tx.one('SELECT session_id FROM support_tickets')['session_id'] == 's'
 
 
 def test_failed_handoff_rolls_back_ticket_confirmation_and_job_together(store, monkeypatch):
@@ -283,7 +280,7 @@ def test_concurrent_staff_updates_do_not_overwrite_each_other(store):
         assert tx.one("SELECT COUNT(*) AS n FROM support_events WHERE kind='task_staff_update'")['n'] == 1
 
 
-def test_resume_uses_fresh_query_and_never_trusts_staff_promise_as_authority(store):
+def test_resume_without_tools_never_trusts_staff_promise_as_authority(store):
     record, source, _ = linked(store)
     ready(store, record, source, total=12.5)
     tid = claim(store)
@@ -299,11 +296,11 @@ def test_resume_uses_fresh_query_and_never_trusts_staff_promise_as_authority(sto
         context = json.dumps(params['messages'], ensure_ascii=False)
         assert '客服说可以额外赔付一千元' in context and '不是业务回执或权益授权' in context
         assert '不应进入交接的私有备注' not in context
-        return response(calls=[('query_order', {'order_id': 'ORD-A'})])
-    result = engine(Client(inspect, response('已赔付一千元'))).execute_task(store, 'alice', request(current, source), tools=query)
-    assert result['state'] == 'ready' and calls == ['query_order']
+        return response('当前无法查询业务数据，需要进一步核实。')
+    result = engine(Client(inspect)).execute_task(store, 'alice', request(current, source), tools=query)
+    assert result['state'] == 'ready' and calls == []
     published = ReplyCoordinator(store, 'alice').publish('s')['content']
-    assert '¥39.00' in published and '运输中' in published and '赔付' not in published
+    assert '¥39.00' not in published and '运输中' not in published and '赔付' not in published
 
 
 def test_staff_cannot_move_started_operation_and_retains_external_wait(store):

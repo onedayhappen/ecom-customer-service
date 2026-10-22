@@ -118,9 +118,11 @@ class Settings(BaseSettings):
     # FastAPI 服务与认证配置
     api_jwt_secret: str = ""
     api_jwt_algorithm: str = "HS256"
-    # 登录用户表：逗号分隔的 username:pbkdf2_sha256$iterations$salt$hex 条目。
-    # 用 scripts/hash_password.py 生成哈希；留空则 /api/v1/auth/login 返回 503。
+    # MySQL 模式下 API_AUTH_USERS 仅用于旧账号一次性导入；无 DSN 时为本地兼容模式。
     api_auth_users: str = ""
+    api_auth_backend: str = "auto"
+    api_registration_enabled: bool = True
+    api_allow_legacy_jwt: bool = False
     # Empty reuses the shared PostgreSQL session DB. SQLite is explicit local/test mode.
     support_database_url: str = ""
     # 登录签发的 JWT 有效期（秒）。
@@ -135,6 +137,8 @@ class Settings(BaseSettings):
     # 配置后 MySQL 为权威数据源，查询异常 fail-closed（TRANSIENT_FAILURE），
     # 绝不静默回退 mock，防止演示数据冒充真实订单。
     order_db_dsn: str = ""
+    business_data_keys: str = "{}"  # JSON: key version -> base64url AES-256 key
+    business_data_key_version: int = 1
     order_db_pool_size: int = 10
     order_db_pool_timeout: float = 5.0
     # 订单查询缓存：留空跳过缓存（Redis 不可用自动降级为 no-op，不阻塞读）。

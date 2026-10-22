@@ -268,9 +268,15 @@ def test_reconcile_recovers_association_commit_gap_and_reuses_progress_version(s
         worker.close()
 
 
-def test_agent_asks_once_despite_its_own_progress_version_change(store):
+def test_question_result_is_saved_once_despite_its_own_progress_version_change(store, monkeypatch):
     a, sa = task(store, "s")
-    client = Client(response(calls=[("ask_user", {"field": "reason", "prompt": "原因是什么？", "options": []})]))
+    from app.execution.react import ReactExecutor
+    from app.execution.types import ExecutionResult
+    def waiting_result(self, messages, plan, **kwargs):
+        return ExecutionResult(plan.intent, plan.execution, reply='原因是什么？',
+            question=dict(field='reason', prompt='原因是什么？', options=[]))
+    monkeypatch.setattr(ReactExecutor, 'run', waiting_result)
+    client = Client()
     worker = ConversationWorker(store, engine(client))
     try:
         worker.reconcile()

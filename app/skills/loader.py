@@ -3,7 +3,7 @@
 遵循 Anthropic Agent Skills 开放标准（agentskills.io/specification）：
 - 每个 Skill 是一个目录，包含 SKILL.md 文件（YAML frontmatter + Markdown 指令）
 - 启动时只加载 name + description（~100 tokens/skill），注入 system prompt
-- Agent 调用 load_skill 工具时，加载完整 SKILL.md body 到上下文
+- 内部调用 load_skill 方法时，加载完整 SKILL.md body；当前没有模型工具入口
 """
 
 from __future__ import annotations
@@ -150,8 +150,6 @@ class SkillManager:
         return matched[0][1]
 
 
-    """硬编码匹配成功 → 系统强制注入 SOP，直接生效；模型不能拒绝、不能更换 skill；
-    硬编码匹配失败 → 释放决策权给大模型，模型想加载哪个技能自己调用 load_skill。"""
     def build_selected_skill_prompt(self, user_input: str, route: str) -> str:
         """仅注入当前请求命中的完整 SOP；未命中时不增加上下文。"""
         skill = self.select_for_request(user_input, route)

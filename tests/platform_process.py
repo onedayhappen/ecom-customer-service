@@ -95,7 +95,7 @@ elif role == 'model':
 elif role == 'retrieval':
     import uvicorn
     from app.config.settings import settings
-    from app.tools import knowledge
+    from app.rag import service as knowledge
     from app.rag.backends.chroma_backend import ChromaBackend
     from app.rag.chunker import Chunk
     from app.rag.retriever import KnowledgeRetriever

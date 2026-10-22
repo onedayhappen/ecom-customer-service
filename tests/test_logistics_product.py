@@ -21,7 +21,6 @@ from app.data.logistics_dao import MockLogisticsDAO
 from app.data.order_dao import OrderDAO
 from app.data.product_dao import MockProductDAO, ProductDAO
 from app.tools.request_context import set_current_user_id
-from app.tools.product import query_product
 
 
 @pytest.fixture(autouse=True)
@@ -151,22 +150,6 @@ def test_product_dao_mock():
     assert len(products) == 19
     assert all(isinstance(p, ProductDTO) for p in products)
     assert any(p.product_id == "SHOE-270-BK-42" for p in products)
-
-
-def test_product_query_keeps_scoring(user_context):
-    """商品评分检索在数据源切到 data 层后行为保持。"""
-    result = query_product("Nike", top_k=3)
-    assert result["success"] is True
-    assert len(result["products"]) <= 3
-    assert "match_score" in result["products"][0]
-
-
-def test_product_mysql_fail_closed(user_context):
-    settings.order_db_dsn = "mysql://u:p@127.0.0.1:3306/db"
-    product_service._dao = _FakeProductDAO(error=RuntimeError("db down"))
-    result = query_product("Nike")
-    assert result["success"] is False
-    assert result["error_code"] == "transient_failure"
 
 
 class _FakeProductDAO:

@@ -184,33 +184,18 @@ def test_new_task_extraction_does_not_segment_oversize_source(memory_env, monkey
         _extraction_segments([dict(role='user', content=text, whole_source_required=True)], [])
 
 
-def test_task_executor_recalls_owned_preferences_and_rechecks_deletion(memory_env):
-    store = memory_env
-    _, source = remember(store)
-    record, current = task(store, 's', goal='查询订单和历史偏好')
-    def second(params):
-        tools = [json.loads(m['content']) for m in params['messages'] if m['role'] == 'tool']
-        assert any(v.get('long_term_facts') for v in tools)
-        forget_source(store, 'alice', 'old', source['sequence'])
-        return response('我记得你的偏好')
-    client = Client(response(calls=[('recall_user_memory', {'query': '黑色耳机'})]), second)
-    outcome = TaskExecutor(store, 'alice').run(request(record, current), engine(client))
-    assert outcome['state'] == 'deferred'
-    assert outcome['reason'] == 'memory_context_changed'
-    assert len(client.requests) == 2
-
-
 def test_memory_failure_still_supplies_original_task_context(memory_env, monkeypatch):
     import app.memory.runtime as runtime
     store = memory_env
     record, source = task(store, 's')
     monkeypatch.setattr(runtime, 'build_memory_manager', lambda *a, **k: (_ for _ in ()).throw(RuntimeError()))
-    client = Client(response(calls=[('recall_user_memory', {'query': '耳机偏好'})]), response('需要继续核实订单'))
+    client = Client(response('需要继续核实订单'))
     outcome = TaskExecutor(store, 'alice').run(request(record, source), engine(client))
     assert outcome['state'] == 'ready'
     original = next(m for m in client.requests[0]['messages'] if m['role'] == 'user')
     assert record.task_id in original['content'] and 'ORD-A' in original['content']
-    assert 'false' in next(m['content'] for m in client.requests[1]['messages'] if m['role'] == 'tool')
+    names={t['function']['name'] for t in client.requests[0]['tools']}
+    assert 'read_task_context' in names and 'recall_user_memory' not in names
 
 
 def test_cross_session_refund_progress_has_receipt_without_confirmation_or_replay(memory_env, monkeypatch):
@@ -232,7 +217,7 @@ def test_cross_session_refund_progress_has_receipt_without_confirmation_or_repla
     assert card['confirmation_token'] not in json.dumps(history)
     assert 'confirmation_token' not in json.dumps(history)
     assert len(business.writes) == 1
-    client = Client(response(calls=[('read_task_context', {})]), response('退款申请已受理，需核实后续进度'))
+    client = Client(response('需核实后续进度'))
     result = TaskExecutor(store, 'alice').run(request(current, resumed_source), engine(client))
     assert result['state'] == 'ready'
     assert len(business.writes) == 1
@@ -262,7 +247,7 @@ def test_preference_retrieval_does_not_allow_switching_order(memory_env):
         request(record, source), engine(client))
     assert calls == []
     tool_results = [json.loads(m['content']) for m in client.requests[-1]['messages'] if m['role'] == 'tool']
-    assert any(r.get('error') == 'arguments_or_object_outside_task' for r in tool_results)
+    assert tool_results == [] and outcome['state'] == 'needs_human'
     assert outcome['task_id'] == record.task_id
 
 
@@ -396,28 +381,6 @@ def test_cross_session_summary_only_restores_full_originals_of_this_task(memory_
         tx.execute("UPDATE support_context_snapshots SET payload='broken-cache'")
     recovered = task_history(TaskRuns(store, 'alice'), record)
     assert recovered['historical_sources'] == [] and len(recovered['sources']) == 8
-
-
-def test_slow_memory_lookup_releases_execution_without_a_late_model_call(memory_env, monkeypatch):
-    import threading
-    import app.memory.runtime as runtime
-    store = memory_env
-    record, source = task(store, 's')
-    release = threading.Event()
-    entered = threading.Event()
-    def delayed(*args, **kwargs):
-        entered.set()
-        release.wait(5)
-        raise RuntimeError('delayed optional memory')
-    monkeypatch.setattr(runtime, 'build_memory_manager', delayed)
-    client = Client(response(calls=[('recall_user_memory', {'query': '黑色耳机'})]))
-    try:
-        result = TaskExecutor(store, 'alice').run(request(record, source, call_seconds=.3), engine(client))
-        assert entered.is_set()
-        assert result['state'] == 'deferred' and result['reason'] == 'memory_timeout_or_capacity'
-        assert len(client.requests) == 1
-    finally:
-        release.set()
 
 
 def test_deletion_source_sequence_cannot_create_an_ineffective_tombstone(memory_env):

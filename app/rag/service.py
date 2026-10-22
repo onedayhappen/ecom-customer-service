@@ -1,14 +1,4 @@
-"""知识库检索工具：通过向量检索回答 FAQ、政策类问题。
-
-与查订单/查物流这类「结构化数据查询」工具不同，
-search_knowledge 面向非结构化文本（退换货政策、配送说明、FAQ 等），
-返回 Top-K 命中片段及其来源，由 LLM 引用回答。
-
-向量后端固定为 Chroma：嵌入式向量数据库，使用 HNSW 索引。
-
-为避免每次进程启动都重建索引，单例缓存 Retriever。
-"""
-
+"""Internal knowledge retrieval service shared by HTTP retrieval and evidence checks."""
 from pathlib import Path
 from typing import Optional
 import threading

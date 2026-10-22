@@ -72,6 +72,29 @@ def confirm(service, card, sid="s"):
     return service.confirm(sid, card["operation_id"], card["confirmation_token"])
 
 
+def test_retired_backend_preserves_old_cards_but_cannot_submit(store):
+    service, record, _, card = ready(store)
+    disabled = TaskOperations(store, "alice")
+    view = disabled.list("s")[0]
+    assert view["status"] == "prepared" and view["can_confirm"] is False
+    assert view["confirmation_token"] is None and "已移除" in view["error"]
+    with pytest.raises(SupportError, match="已移除"):
+        disabled.prepare("s", record.task_id, record.version, "apply_refund")
+    with pytest.raises(SupportError, match="已移除"):
+        confirm(disabled, card)
+    assert disabled.list("s")[0]["status"] == "prepared"
+    assert service.business.writes == []
+
+
+def test_retired_backend_keeps_completed_receipts_readable(store):
+    service, _, _, card = ready(store)
+    confirm(service, card)
+    disabled = TaskOperations(store, "alice")
+    assert disabled.list("s")[0]["status"] == "succeeded"
+    assert confirm(disabled, card)["status"] == "succeeded"
+    assert len(service.business.writes) == 1
+
+
 def change(store, record, patch, sid="s"):
     return TaskRepository(store, "alice").update(record.task_id, sid, expected_version=record.version,
         change_id=str(uuid4()), source=message(store, sid, "alice", "修改需求"), patch=patch)
@@ -262,35 +285,6 @@ def test_shared_order_lock_blocks_other_task_but_not_other_order(store):
     assert len(service.business.writes) == 2
 
 
-def test_agent_prepares_without_writing_or_receiving_confirmation_secret(store, monkeypatch):
-    from tests.test_task_execution import Client, engine, request, response
-    from app.tasks.replies import ReplyCoordinator
-    business = Business()
-    monkeypatch.setattr("app.tasks.operations.backend", lambda: business)
-    record, source = task(store, "s", details=dict(order_id="ORD-A", reason="不想要了"))
-    client = Client(response(calls=[("prepare_operation", dict(action="apply_refund", expected_version=1))]))
-    result = engine(client).execute_task(store, "alice", request(record, source))
-    assert result["state"] == "needs_confirmation" and result["operation_id"]
-    assert business.writes == []
-    published = ReplyCoordinator(store, "alice").publish("s")
-    assert published["operation_ids"] == [result["operation_id"]]
-    card = TaskOperations(store, "alice", business=business).list("s")[0]
-    assert card["confirmation_token"] not in json.dumps(client.requests)
-    assert card["confirmation_token"] not in json.dumps(store.public_history("s", "alice"))
-
-
-def test_unsupported_scope_hands_off_without_expanding_operation(store, monkeypatch):
-    from tests.test_task_execution import Client, engine, request, response
-    monkeypatch.setattr("app.tasks.operations.backend", Business)
-    record, source = task(store, "s", details=dict(order_id="ORD-A", reason="退一个", quantity=2))
-    result = engine(Client(response(calls=[("prepare_operation", dict(action="apply_refund", expected_version=1))]))).execute_task(
-        store, "alice", request(record, source))
-    assert result["state"] == "needs_human"
-    assert store.state("s", "alice")["mode"] == "handoff_pending"
-    with store.transaction(read_only=True) as tx:
-        assert not tx.one("SELECT * FROM support_operations")
-
-
 def test_flag_disabled_blocks_all_preparation(store, monkeypatch):
     monkeypatch.setattr(settings, "task_operations_enabled", False)
     record, _ = task(store, "s")
@@ -438,8 +432,8 @@ def test_confirmation_rechecks_related_scheduling_evidence_not_just_own_version(
     from app.tasks.execution_models import TaskExecutionInput
     from app.tasks.scheduling import TaskSchedule
     parent, source = task(store, "s")
-    receipt = engine(Client(response(calls=[("query_order", dict(order_id="ORD-A"))]), response("已发货"))).execute_task(
-        store, "alice", request(parent, source), tools=order_result)
+    from tests.test_coordinated_replies import ready as seed_evidence
+    receipt = {"job_id": seed_evidence(store, parent, source)}
     child, source = task(store, "s", details=dict(order_id="ORD-B", reason="不想要了"))
     req = TaskExecutionInput.model_validate(request(child, source))
     TaskSchedule(store, "alice").enqueue(req.model_dump(), dependencies=[dict(

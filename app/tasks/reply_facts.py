@@ -14,7 +14,7 @@ QUESTION_LABELS = {
 
 def label(value, limit=100):
     # Quote data as a single bounded line. The frontend also renders it as text.
-    return re.sub(r"[\r\n\t\x00-\x1f]", " ", str(value or ""))[:limit]
+    return re.sub(r"[\r\n\t\x00-\x1f]", " ", str(value if value is not None else ""))[:limit]
 
 
 def money(value):
@@ -36,6 +36,14 @@ def facts(record, receipts):
     lines = []
     for receipt in receipts:
         result, tool = receipt["result"], receipt["tool"]
+        if tool=='search_policies':
+            lines.extend(label(v,300) for v in result.get('limitations',[]))
+            result=result.get('data',{}).get('policy_evidence',{})
+            tool='search_knowledge'
+        elif tool in __import__('app.tools.catalog',fromlist=['BY_NAME']).BY_NAME:
+            from app.tasks.tool_facts import render
+            lines.extend(render(receipt['tool'],result))
+            continue
         if tool == 'search_knowledge' and result.get('backend') == 'chroma-policy':
             for clause in result.get('results', []):
                 scope = '；'.join(QUESTION_LABELS[key] + '：' + (
@@ -121,6 +129,8 @@ def question_text(record):
         return None
     prefix = f"关于订单 {label(record.details['order_id'])}，" if record.details.get("order_id") else ""
     text = prefix + "请补充" + QUESTION_LABELS.get(field, "这件事项需要的补充信息") + "。"
+    if field=='details' and isinstance(question.get('prompt'),str):
+        text=prefix+label(question['prompt'],500)
     options = question.get("options", [])
     if options:
         text += "\n" + "；".join(f"{i + 1}. {label(o.get('label') or o.get('value'), 80)}"

@@ -24,10 +24,8 @@
    → 无效或过期：401 MCP 用户上下文无效或已过期
 7. MCP Server 将可信 user_id 写入 ContextVar
    → set_current_user_id(user_id)
-8. MCP 工具执行
-   → query_order / query_logistics / apply_refund
-   → 从 ContextVar 读取 user_id
-   → 校验订单是否属于当前用户
+8. 工具重建后，显式注册的 MCP 工具从 ContextVar 读取 user_id 并校验数据归属
+   → 当前提供 29 个核心读取／判断／试算工具；事项变更工具由本地 Harness 执行
 9. 请求结束
    → reset_current_user_id(...)
    → 防止身份泄漏到下一次请求

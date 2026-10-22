@@ -18,7 +18,7 @@ async def lifespan(app):
         raise RuntimeError('RETRIEVAL_SERVICE_TOKEN must contain at least 32 characters')
     if settings.retrieval_service_url:
         raise RuntimeError('Retrieval service must use local backend, not recursively call itself')
-    from app.tools.knowledge import _get_retriever, _get_policy_retriever
+    from app.rag.service import _get_retriever, _get_policy_retriever
     if settings.task_intake_enabled:
         retriever = await asyncio.to_thread(_get_policy_retriever)
         head = await asyncio.to_thread(retriever.index.head)
@@ -70,7 +70,7 @@ def metrics(authorization: str | None = Header(default=None)):
 def search(request: SearchRequest, authorization: str | None = Header(default=None)):
     authorize(authorization)
     from app.runtime.budgets import lease
-    from app.tools.knowledge import search_knowledge_local
+    from app.rag.service import search_knowledge_local
     resource = lease(settings.api_concurrency_redis_url, settings.api_chat_queue_prefix + ':retrieval-global',
                      settings.retrieval_global_concurrency, settings.api_distributed_lease_seconds)
     try:
@@ -88,7 +88,7 @@ def search(request: SearchRequest, authorization: str | None = Header(default=No
 def search_policies(request: PolicySearchRequest, authorization: str | None = Header(default=None)):
     authorize(authorization)
     from app.runtime.budgets import lease
-    from app.tools.knowledge import search_policy
+    from app.rag.service import search_policy
     resource = lease(settings.api_concurrency_redis_url, settings.api_chat_queue_prefix + ':retrieval-global',
                      settings.retrieval_global_concurrency, settings.api_distributed_lease_seconds)
     try:
@@ -108,5 +108,5 @@ def validate_policy(request: PolicyValidationRequest, authorization: str | None 
     import json
     if len(json.dumps(request.result, ensure_ascii=False).encode()) > 512000:
         raise HTTPException(413, 'Policy result exceeds allowed size')
-    from app.tools.knowledge import policy_result_current
+    from app.rag.service import policy_result_current
     return {'valid': policy_result_current(request.result, request.expected_context, local=True)}

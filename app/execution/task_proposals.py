@@ -7,7 +7,7 @@ MUTATION_INTENTS = {
     'issue_invoice': 'invoice_request',
     'reissue_invoice': 'invoice_request',
 }
-from app.tools.commerce_models import InvoiceFields
+from app.tasks.business_models import InvoiceFields
 
 
 class PreparationRejected(ValueError):

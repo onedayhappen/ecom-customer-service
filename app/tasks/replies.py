@@ -40,12 +40,12 @@ class ReplyCoordinator:
             evidence = json.loads(row["payload"]) if row else {}
             if not self._valid_receipt(tx, record, evidence):
                 continue
-            if evidence.get('tool') == 'search_knowledge':
+            if evidence.get('tool') in {'search_knowledge','search_policies'}:
                 if eid not in policy_checks:
                     return None
                 if not policy_checks[eid]:
                     continue
-                if not self._policy_context_current(tx, record, evidence['result'], source):
+                if evidence['tool']=='search_knowledge' and not self._policy_context_current(tx, record, evidence['result'], source):
                     continue
             receipts.append(evidence)
         return receipts
@@ -86,7 +86,7 @@ class ReplyCoordinator:
         independent preflight and confirmation against its actual backend.
         """
         from app.harness.bounded_call import bounded_calls, CallCapacityExceeded
-        from app.tools.knowledge import policy_result_current
+        from app.rag.service import policy_result_current
         with self.store.transaction(read_only=True) as tx:
             self.store._control(tx, sid, self.user)
             rows = tx.all("""SELECT j.response FROM runtime_jobs j LEFT JOIN task_reply_items r
@@ -104,16 +104,34 @@ class ReplyCoordinator:
                 value = json.loads(row['payload']) if row else {}
                 if value.get('tool') == 'search_knowledge' and value.get('result', {}).get('success'):
                     evidence.append((eid, value['result']))
+                elif value.get('tool')=='search_policies' and value.get('result',{}).get('success'):
+                    evidence.append((eid, value['result']))
         checked, deadline = {}, time.monotonic() + 3
         for eid, result in evidence:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
             try:
-                checked[eid] = bounded_calls.run(lambda r=result: policy_result_current(r), remaining)
+                checked[eid] = bounded_calls.run(lambda r=result: self._new_policy_current(r) if 'data' in r else policy_result_current(r), remaining)
             except (TimeoutError, CallCapacityExceeded):
                 checked[eid] = False
         return checked
+
+    def _new_policy_current(self,result):
+        from app.rag.service import policy_result_current
+        from app.services.commerce import service
+        from app.services.commerce.common import ref
+        try:
+            data=result['data']; policy=data['policy_evidence']; context=policy['context']
+            if any(not c['text_version_matches'] for c in data.get('rule_checks',[])): return False
+            if not policy_result_current(policy): return False
+            if context.get('order_id'):
+                svc=service(self.user,self.runs.candidates.scope)
+                with svc.store.transaction() as tx:
+                    order=svc.owned_order(tx,ref('order',context['platform_code'],context['order_id']))
+                    if context.get('order_evidence_id')!='mysql:'+svc.snapshot(tx,order): return False
+            return True
+        except Exception: return False
 
     def _open_question(self, tx, sid):
         # Only questions actually sent and still at their original version count.
@@ -264,10 +282,10 @@ class ReplyCoordinator:
                         self._mark(tx, sid, key, disposition="deferred")
                         continue
                     text = facts(record, receipts)
-                    if any(r['tool'] == 'search_knowledge' for r in receipts):
+                    if any(r['tool'] in {'search_knowledge','search_policies'} for r in receipts):
                         from app.memory.source_policy import POLICY_REFRESH
                         metadata['context_content'] = '\n'.join(filter(None, (
-                            facts(record, [r for r in receipts if r['tool'] != 'search_knowledge']), POLICY_REFRESH)))
+                            facts(record, [r for r in receipts if r['tool'] not in {'search_knowledge','search_policies'}]), POLICY_REFRESH)))
                     metadata["evidence_ids"] = [r["event_id"] for r in receipts]
                     if not text:
                         subject = "订单 " + label(record.details["order_id"]) if record.details.get("order_id") else label(record.goal)

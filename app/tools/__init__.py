@@ -1,11 +1,4 @@
-"""Tool package exports.
-
-Keep the registry imports lazy.  Data access modules import
-``app.tools.request_context`` during database initialisation; eagerly loading
-the registry here creates a cycle through the refund tool and the order
-service, which prevents the Docker order-init job from starting.
-"""
-
+"""Lazy exports for tool infrastructure; the core registry is defined in catalog.py."""
 __all__ = ["TOOL_DEFINITIONS", "execute_tool", "ToolManager"]
 
 

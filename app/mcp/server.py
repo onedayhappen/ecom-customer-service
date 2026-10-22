@@ -10,7 +10,6 @@
 → 返回响应
 """
 
-import json
 import hmac
 import sys
 from pathlib import Path
@@ -26,15 +25,28 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from app.config.settings import settings
 from app.tools.request_context import reset_current_user_id, set_current_user_id
 from app.mcp.auth import verify_mcp_user_context
-from app.tools.order import query_order as _query_order
-from app.tools.product import query_product as _query_product
-from app.tools.logistics import query_logistics as _query_logistics
-from app.tools.refund import apply_refund as _apply_refund
-from app.tools.knowledge import search_knowledge as _search_knowledge
-# 订单详情（第15期）：MCP 工具只做编排，SQL 在 app/data 数据访问层。
-from app.data.order_service import query_order_detail as _query_order_detail
-
 mcp = FastMCP("ecom-tools", host="127.0.0.1", port=9123)
+
+
+from mcp import types
+from app.tools.catalog import TOOLS, BY_NAME
+from app.tools.registry import execute_tool
+import asyncio
+import json
+
+@mcp._mcp_server.list_tools()
+async def list_business_tools():
+    # Standalone MCP carries identity, but no durable task/confirmation context.
+    return [types.Tool(name=t.name, description=t.description, inputSchema=t.arguments.model_json_schema(),
+        annotations=types.ToolAnnotations(readOnlyHint=True, destructiveHint=False))
+        for t in TOOLS if not t.task_only]
+
+@mcp._mcp_server.call_tool()
+async def call_business_tool(name: str, arguments: dict):
+    if name not in BY_NAME or BY_NAME[name].task_only:
+        from app.services.commerce.common import BusinessError, failure
+        return failure(BusinessError('unsupported_capability', '此工具需要可信事项执行器'))
+    return json.loads(await asyncio.to_thread(execute_tool, name, arguments))
 
 
 class MCPAuthenticationMiddleware:
@@ -73,54 +85,6 @@ class MCPAuthenticationMiddleware:
         finally:
             # ContextVar 是请求级状态，必须复位，不能泄漏到后续用户请求。
             reset_current_user_id(user_context)
-
-
-@mcp.tool()
-def query_order(order_id: str) -> str:
-    """根据订单号查询订单详情，包括订单状态、商品信息、金额、物流单号等"""
-    # MCP 边界统一返回 JSON 字符串，便于远端 Agent 无歧义地解析工具结果。
-    result = _query_order(order_id)
-    return json.dumps(result, ensure_ascii=False)
-
-
-@mcp.tool()
-def query_product(keyword: str) -> str:
-    """根据商品名称关键词或商品ID查询商品信息，包括价格、库存、规格等。支持模糊搜索"""
-    result = _query_product(keyword)
-    return json.dumps(result, ensure_ascii=False)
-
-
-@mcp.tool()
-def query_order_detail(order_id: str, platform_code: str = "pdd") -> str:
-    """根据订单号与平台代码查询订单详情（状态、商品、金额、物流信息）。
-    归属校验由服务端完成，不要传 user_id。platform_code 仅支持配置的白名单平台。
-    数据源：本地订单库（MySQL），未配置时降级内置演示数据。"""
-    result = _query_order_detail(order_id, platform_code)
-    return json.dumps(result, ensure_ascii=False)
-
-
-@mcp.tool()
-def query_logistics(order_id: str) -> str:
-    """根据订单号查询物流轨迹信息，包括快递公司、运单号、运输状态和轨迹事件"""
-    result = _query_logistics(order_id)
-    return json.dumps(result, ensure_ascii=False)
-
-
-@mcp.tool()
-def apply_refund(order_id: str, reason: str) -> str:
-    """为指定订单申请退款。注意：这是一个敏感操作，调用前应先与用户确认"""
-    result = _apply_refund(order_id, reason)
-    return json.dumps(result, ensure_ascii=False)
-
-
-@mcp.tool()
-def search_knowledge(query: str, top_k: int = 3) -> str:
-    """检索并夕夕的政策与帮助文档（退换货政策、配送说明、会员权益、FAQ）。
-    当顾客询问规则、流程、时效、是否支持等政策类问题时使用。
-    返回 Top-K 命中片段及来源文档，请基于检索结果回答，不要编造政策。
-    """
-    result = _search_knowledge(query, top_k=top_k)
-    return json.dumps(result, ensure_ascii=False)
 
 
 if __name__ == "__main__":

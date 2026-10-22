@@ -56,13 +56,3 @@ def call_tool(name, arguments, function):
         return {'success': False, 'error_code': 'confirmation_invalid',
                 'error': '业务写入必须通过事项确认卡片提交'}
     return function(**arguments)
-
-
-def escalate_to_human():
-    scope = _scope.get()
-    if not scope:
-        return {"success": False, "error": "转人工需要已验证的会话上下文"}
-    store, sid, user, version = scope
-    store.check_bot(sid, user, version)
-    state = store.handoff(sid, user, "agent_escalation")
-    return {"success": True, "ticket_id": state["ticket"]["ticket_id"], "message": "已进入人工队列"}

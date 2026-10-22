@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
-from app.api.auth import router as auth_router
+from app.api.auth import router as auth_router, get_auth_store, use_mysql_auth
 from app.api.middleware import AuthMiddleware
 from app.api.support import router as support_router, identity
 from app.config.settings import settings
@@ -19,6 +19,8 @@ from app.runtime.concurrency import CoordinationUnavailable
 async def lifespan(app: FastAPI):
     """初始化会话库、审计与连接池；模型和工具执行由独立 Worker 承担。"""
     settings.validate_runtime_configuration()
+    if use_mysql_auth():
+        await asyncio.to_thread(get_auth_store().ensure_schema)
     from app.runtime.metrics import install
     install()
     from app.db import get_connection_pool
@@ -66,7 +68,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "Last-Event-ID"],
 )
 
-# 登录认证路由（POST /api/v1/auth/login：用户名密码 → JWT）。
+# 注册与登录认证路由。
 app.include_router(auth_router)
 app.include_router(support_router)
 from app.api.task_messages import router as task_messages_router

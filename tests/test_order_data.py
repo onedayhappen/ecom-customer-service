@@ -251,28 +251,3 @@ def test_list_user_orders_mysql_fail_closed(user_context):
     order_service._dao = _FakeDAO(error=RuntimeError("db down"))
     result = order_service.list_user_orders()
     assert result["error_code"] == "transient_failure"
-
-
-def test_tools_query_order_switched_to_data(user_context):
-    """tools/order.py 已切 data 层：mock 路径、输出不含 user_id、他人订单不泄漏。"""
-    from app.tools.order import query_order
-
-    result = query_order("ORD-20240115-001")
-    assert result["success"] is True
-    assert result["source"] == "mock"
-    assert "user_id" not in result["order"]
-    # 他人订单：从 business_rejection 变为 evidence_unavailable（防枚举）
-    denied = query_order("ORD-20240110-003")
-    assert denied["success"] is False
-    assert denied["error_code"] == "evidence_unavailable"
-
-
-def test_tools_user_orders_switched_to_data(user_context):
-    """tools/user_orders.py 已切 data 层：概要结构保持，数量正确。"""
-    from app.tools.user_orders import list_user_orders
-
-    result = list_user_orders()
-    assert result["success"] is True
-    assert result["count"] == 6
-    required = {"order_id", "status", "items_summary", "total", "created_at"}
-    assert required <= set(result["orders"][0].keys())
