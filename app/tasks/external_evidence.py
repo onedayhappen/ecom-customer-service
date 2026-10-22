@@ -8,7 +8,7 @@ import hashlib
 import json
 import re
 
-from app.tools.commerce_models import AfterSaleRecord
+from app.tasks.business_models import AfterSaleRecord
 
 
 class ExternalEvidenceError(ValueError):
@@ -140,50 +140,4 @@ def finished(binding, value):
 
 class BusinessProgress:
     def read(self, user, binding):
-        from app.tools.request_context import get_current_user_id
-        from app.config.settings import settings
-        if not user or get_current_user_id() != user or not settings.order_db_dsn:
-            raise ExternalEvidenceError('缺少已验证的业务身份或数据源')
-        if binding['kind'] in {'refund', 'return'}:
-            from app.tools.commerce import invoke
-            args = {k: binding[k] for k in ('order_id', 'after_sale_id', 'kind') if binding.get(k)}
-            return after_sale_observation(binding, invoke('query_after_sale', args))
-        if binding['kind'] == 'logistics':
-            return self.logistics(user, binding)
-        if binding['kind'] == 'invoice':
-            from app.tools.commerce import invoke
-            result = invoke('query_invoice', dict(order_id=binding['order_id'], invoice_id=binding['invoice_id']))
-            invoices = result.get('invoices', [])
-            if result.get('success') is not True or len(invoices) != 1:
-                raise ExternalEvidenceError('本地发票记录无法核实')
-            invoice = invoices[0]
-            if (invoice.get('order_id') != binding['order_id'] or invoice.get('invoice_id') != binding['invoice_id']
-                    or invoice.get('status') != 'issued_local' or invoice.get('source') != 'mysql_demo'
-                    or invoice.get('is_demo') is not True):
-                raise ExternalEvidenceError('本地发票记录范围或状态有变化')
-            return observation(binding, phase='issued_local', rank=10,
-                content='本地演示发票记录已核实，不是税务发票。', source='mysql_demo',
-                observed_at=invoice['issued_at'], reference=invoice['invoice_id'], is_demo=True)
-        raise ExternalEvidenceError('当前接口无法跟进这类外部结果')
-
-    def logistics(self, user, binding):
-        # Fresh DAO read deliberately bypasses the conversational query cache.
-        from app.config.settings import settings
-        from app.data.logistics_dao import MySqlLogisticsDAO
-        tracking = binding.get('tracking_number')
-        if not tracking:
-            raise ExternalEvidenceError('需先明确要跟进的运单号')
-        row = MySqlLogisticsDAO(settings.order_db_dsn).query_by_tracking(user, tracking)
-        if not row or row.order_id != binding['order_id'] or row.platform_code != binding.get('platform_code', 'pdd'):
-            raise ExternalEvidenceError('运单不属于当前事项')
-        stages = {'in_transit': ('in_transit', 10, '这票包裹正在运输中。'),
-                  '运输中': ('in_transit', 10, '这票包裹正在运输中。'),
-                  'delivering': ('delivering', 20, '这票包裹正在派送中。'),
-                  '派送中': ('delivering', 20, '这票包裹正在派送中。'),
-                  'delivered': ('delivered', 30, '物流系统记录这票包裹已签收。'),
-                  '已签收': ('delivered', 30, '物流系统记录这票包裹已签收。')}
-        if row.status not in stages:
-            raise ExternalEvidenceError('物流状态需要重新核实')
-        phase, rank, content = stages[row.status]
-        return observation(binding, phase=phase, rank=rank, content=content,
-            source='mysql_logistics', observed_at=datetime.now(timezone.utc), reference=tracking)
+        raise ExternalEvidenceError('业务工具已移除，暂时无法查询外部进度')

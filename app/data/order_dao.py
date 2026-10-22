@@ -38,21 +38,20 @@ CREATE TABLE IF NOT EXISTS orders (
     platform_code        VARCHAR(16)  NOT NULL,
     order_id             VARCHAR(40)  NOT NULL,
     user_id              VARCHAR(64)  NOT NULL,
-    user_name            VARCHAR(64)  NOT NULL DEFAULT '',
     status               VARCHAR(32)  NOT NULL DEFAULT '',
-    items                JSON         NULL,
-    total                DECIMAL(12,2) NOT NULL DEFAULT 0,
     created_at           DATETIME     NULL,
-    shipped_at           DATETIME     NULL,
-    delivered_at         DATETIME     NULL,
-    tracking_number      VARCHAR(64)  NULL,
-    carrier              VARCHAR(32)  NULL,
-    estimated_delivery   DATE         NULL,
-    refund_status        VARCHAR(32)  NULL,
-    refund_reason        VARCHAR(255) NULL,
-    refund_requested_at  DATETIME     NULL,
+    merchant_id          VARCHAR(64)  NULL,
+    currency             CHAR(3)      NULL,
+    goods_amount         DECIMAL(12,2) NULL,
+    discount_amount      DECIMAL(12,2) NULL,
+    shipping_amount      DECIMAL(12,2) NULL,
+    payable_amount       DECIMAL(12,2) NULL,
+    paid_amount          DECIMAL(12,2) NULL,
+    paid_at              DATETIME(6) NULL,
+    updated_at           DATETIME(6) NULL,
     PRIMARY KEY (platform_code, order_id),
-    KEY idx_user (user_id, platform_code)
+    KEY idx_user (user_id, platform_code),
+    UNIQUE KEY uq_orders_owner (platform_code, order_id, user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 """
 
@@ -165,6 +164,8 @@ class MySqlOrderDAO:
                 row = cur.fetchone()
         if row is None:
             return None
+        if "items" not in row:
+            raise RuntimeError("订单工具尚未适配新版 order_items，不能返回不完整的订单金额和商品")
         if isinstance(row.get("items"), str):
             try:
                 row["items"] = json.loads(row["items"])
@@ -185,6 +186,8 @@ class MySqlOrderDAO:
                 rows = cur.fetchall()
         result: list[OrderDTO] = []
         for row in rows:
+            if "items" not in row:
+                raise RuntimeError("订单工具尚未适配新版 order_items，不能返回不完整的订单金额和商品")
             if isinstance(row.get("items"), str):
                 try:
                     row["items"] = json.loads(row["items"])
@@ -196,67 +199,25 @@ class MySqlOrderDAO:
     def request_refund(
         self, user_id: str, order_id: str, platform_code: str, reason: str,
     ) -> str:
-        """原子地提交退款申请，并在 SQL 层校验订单归属与重复申请。"""
-        with self._connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT status, refund_status FROM orders "
-                    "WHERE order_id=%s AND platform_code=%s AND user_id=%s",
-                    (order_id, platform_code, user_id),
-                )
-                row = cur.fetchone()
-                if row is None:
-                    return "not_found"
-                if row.get("refund_status") or row.get("status") == "refund_processing":
-                    return "already_processing"
-                cur.execute(
-                    "UPDATE orders SET "
-                    "refund_status=%s, refund_reason=%s, refund_requested_at=NOW(), "
-                    "status=CASE WHEN status='pending' THEN 'refund_processing' ELSE status END "
-                    "WHERE order_id=%s AND platform_code=%s AND user_id=%s "
-                    "AND (refund_status IS NULL OR refund_status='') "
-                    "AND status <> 'refund_processing'",
-                    ("submitted", reason, order_id, platform_code, user_id),
-                )
-                return "success" if cur.rowcount == 1 else "already_processing"
+        """旧退款写入已退役；后续改为售后申请与退款流水。"""
+        raise RuntimeError("旧退款工具尚未适配 after_sale_requests / refund_transactions")
 
-    # -- 初始化的幂等工具（scripts/init_order_db.py 使用） --------------------
+    # -- 迁移脚本建表入口 --------------------------------------------------
 
     @staticmethod
     def ensure_schema(conn: Any) -> None:
-        """建表（幂等），供初始化脚本与首次启动兜底调用。"""
+        """建立新版订单头；完整业务表由版本化迁移负责。"""
         with conn.cursor() as cur:
             cur.execute(ORDERS_DDL)
         conn.commit()
 
     @staticmethod
     def upsert(conn: Any, order: dict[str, Any], platform_code: str) -> None:
-        """按复合主键幂等写入一条订单（seed 用）。"""
-        items = json.dumps(order.get("items") or [], ensure_ascii=False)
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO orders ("
-                "  platform_code, order_id, user_id, user_name, status, items, total,"
-                "  created_at, shipped_at, delivered_at, tracking_number, carrier,"
-                "  estimated_delivery, refund_status, refund_reason, refund_requested_at"
-                ") VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                "ON DUPLICATE KEY UPDATE status=VALUES(status)",
-                (
-                    platform_code, order["order_id"], order.get("user_id") or "",
-                    order.get("user") or "", order.get("status") or "", items,
-                    float(order.get("total") or 0),
-                    order.get("created_at"), order.get("shipped_at"),
-                    order.get("delivered_at"), order.get("tracking_number"),
-                    order.get("carrier"), order.get("estimated_delivery"),
-                    order.get("refund_status"), order.get("refund_reason"),
-                    order.get("refund_requested_at"),
-                ),
-            )
-        conn.commit()
+        raise RuntimeError("旧订单演示数据写入已退役；请按新版订单表写入")
 
 
 class MockOrderDAO:
-    """内置 mock 数据源（app/tools/mock_data.ORDERS），离线/降级路径。"""
+    """内置 mock 数据源（app/data/mock_data.ORDERS），离线/降级路径。"""
 
     DEFAULT_PLATFORM = "pdd"
 
@@ -264,7 +225,7 @@ class MockOrderDAO:
         # mock 订单全部属于 pdd 平台；其他平台一律视为未命中。
         if platform_code != self.DEFAULT_PLATFORM:
             return None
-        from app.tools.mock_data import ORDERS
+        from app.data.mock_data import ORDERS
 
         order = ORDERS.get(order_id)
         if order is None or order.get("user_id") != user_id:
@@ -274,7 +235,7 @@ class MockOrderDAO:
     def list_by_user(self, user_id: str, platform_code: str) -> list[OrderDTO]:
         if platform_code != self.DEFAULT_PLATFORM:
             return []
-        from app.tools.mock_data import ORDERS
+        from app.data.mock_data import ORDERS
 
         return [
             OrderDTO.from_mock(order, platform_code)
@@ -287,7 +248,7 @@ class MockOrderDAO:
     ) -> str:
         if platform_code != self.DEFAULT_PLATFORM:
             return "not_found"
-        from app.tools.mock_data import ORDERS
+        from app.data.mock_data import ORDERS
 
         order = ORDERS.get(order_id)
         if order is None or order.get("user_id") != user_id:

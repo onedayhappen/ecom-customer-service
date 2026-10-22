@@ -147,23 +147,12 @@ def test_commit_failure_propagates():
         with _PooledConnection(Pool(), Conn()): pass
 
 
-def test_mysql_refund_commits_before_pool_return():
+def test_retired_mysql_refund_never_acquires_a_connection():
     from app.data.order_dao import MySqlOrderDAO
-    events = []
-    class Cursor:
-        rowcount = 1
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def execute(self, *a): pass
-        def fetchone(self): return {"status": "pending", "refund_status": None}
-    class Conn:
-        def cursor(self): return Cursor()
-        def commit(self): events.append("commit")
-        def rollback(self): events.append("rollback")
     dao = MySqlOrderDAO("unused")
-    dao._acquire = Conn
-    assert dao.request_refund("u", "o", "pdd", "reason") == "success"
-    assert events == ["commit", "rollback"]
+    dao._acquire = lambda: pytest.fail("retired refund touched the database")
+    with pytest.raises(RuntimeError, match="旧退款工具"):
+        dao.request_refund("u", "o", "pdd", "reason")
 
 
 def test_historical_ticket_stops_at_resume_boundary(store):

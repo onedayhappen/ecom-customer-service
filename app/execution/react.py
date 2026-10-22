@@ -62,7 +62,6 @@ class ReactExecutor:
         execute: ToolExecutor | None = None,
         chat_completion_options: dict | None = None,
         convergence_detector=None,
-        question_fields: tuple[str, ...] | None = None,
     ):
         self.client = client
         self.model = model
@@ -73,7 +72,6 @@ class ReactExecutor:
         # Harness 测试 / 生产可注入 ConvergenceDetector，触发后终止循环并返回
         # CONVERGENCE_REPLY（不经过 LLM，保证语义稳定）。
         self.convergence_detector = convergence_detector
-        self.question_fields = question_fields
         # 第12期：若传入 LlmClient，绑定 react 场景（与查询改写/主生成分开统计 token）
         if hasattr(client, "bind_scene"):
             from app.observability.llm_client import SCENE_REACT
@@ -177,18 +175,6 @@ class ReactExecutor:
         # 工具 schema 只是给模型的提示，不能当作授权边界：模型可能返回
         # 未在 schema 中声明的函数名。真正的白名单来自事项 Harness 提供的 DataPlan。
         allowed_tool_names = set(plan.prompt_tool_names)
-        # This is a conversation control tool, not a business capability.
-        tools = [*tools, {'type': 'function', 'function': {
-            'name': 'ask_user', 'description': '缺少必要信息时向用户提问并暂停当前任务。回答不会授权退款等写操作。',
-            'parameters': {'type': 'object', 'properties': {
-                'prompt': {'type': 'string', 'minLength': 1, 'maxLength': 1000},
-                'field': {'type': 'string', 'minLength': 1, 'maxLength': 100,
-                          **({'enum': list(self.question_fields)} if self.question_fields else {})},
-                'options': {'type': 'array', 'maxItems': 5, 'items': {'type': 'string', 'minLength': 1, 'maxLength': 200}},
-            }, 'required': ['prompt'], 'additionalProperties': False},
-        }}]
-        allowed_tool_names.add('ask_user')
-        system_prompt += '\n缺少必要信息时调用 ask_user 提问并暂停，支持选项和自由回答。不可将回答问题视为写操作确认。'
         policy = ReActPolicy(mutating_tools=frozenset(MUTATING_CAPABILITIES))
 
         working: list[dict] = [{"role": "system", "content": system_prompt}, *messages]
@@ -217,7 +203,7 @@ class ReactExecutor:
                 model=self.model,
                 messages=working,
                 temperature=self.temperature,
-                tools=tools,
+                **({"tools": tools} if tools else {}),
                 **self.chat_completion_options,
             )
             assistant_msg = response.choices[0].message
@@ -258,38 +244,15 @@ class ReactExecutor:
                         blocked=True,
                     )
 
-                if name == 'ask_user':
-                    prompt, options = args.get('prompt'), args.get('options', [])
-                    field = args.get('field', 'details')
-                    if (not isinstance(prompt, str) or not 0 < len(prompt.strip()) <= 1000
-                            or not isinstance(field, str) or not 0 < len(field.strip()) <= 100
-                            or not isinstance(options, list) or len(options) > 5
-                            or any(not isinstance(o, str) or not 0 < len(o.strip()) <= 200 for o in options)):
-                        return make_result('提问信息不完整，需要人工协助核实。', needs_human=True)
-                    from app.tasks.routing import ORDER
-                    known_orders = set()
-                    for step in steps:
-                        if step.success:
-                            if step.name == 'query_order':
-                                known_orders.add(str((step.result.get('order') or {}).get('order_id', '')).upper())
-                            if step.name == 'list_user_orders':
-                                known_orders.update(str(o.get('order_id', '')).upper() for o in step.result.get('orders', []))
-                    options = [option for option in dict.fromkeys(options)
-                               if all(order.upper() in known_orders for order in ORDER.findall(option))]
-                    result = make_result(prompt)
-                    result.question = {'field': field, 'prompt': result.reply,
-                                       'options': [{'value': option, 'label': option} for option in options]}
-                    return result
+                from app.tools.catalog import BY_NAME
+                if name in MUTATING_CAPABILITIES and name not in BY_NAME:
+                    return make_result('此操作需要可信确认流程，已停止执行。', blocked=True, needs_confirmation=True)
 
                 # 第13期：收敛检测（规则3 工具调用指纹）——相同工具+参数连续重复
                 if self.convergence_detector is not None:
                     report = self.convergence_detector.record_tool_call(name, args)
                     if report is not None:
                         return make_result(CONVERGENCE_REPLY)
-
-                # Only TaskOperations may commit writes after a fixed-card confirmation.
-                if name in MUTATING_CAPABILITIES:
-                    return make_result('业务操作必须通过事项确认卡片提交，本次未执行。', blocked=True)
 
                 # 重复调用拦截：同工具+同参数不再次执行，反馈已有结果
                 pre = policy.before_call(name, args)
@@ -345,6 +308,16 @@ class ReactExecutor:
                 working.append({
                     "role": "tool", "tool_call_id": tc.id, "content": result_str,
                 })
+
+                if result.get("success") and name in {"ask_user", "handoff_to_human", "prepare_after_sale", "prepare_invoice", "prepare_order_address_change", "prepare_order_cancel", "prepare_after_sale_cancel"}:
+                    data = result.get("data", {})
+                    state = data.get("next_state")
+                    if state == "waiting_user":
+                        return make_result(data["question"])
+                    if state == "needs_human":
+                        return make_result(data["reply"], needs_human=True)
+                    if state == "needs_confirmation":
+                        return make_result("已准备办理内容，请查看并确认操作卡片。", needs_confirmation=True)
 
                 # 知识检索无结果 → fail-closed（对重试后的最终结果判定）
                 if name == "search_knowledge" and self._knowledge_unavailable(result):

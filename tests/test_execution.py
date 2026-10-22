@@ -134,13 +134,14 @@ def test_react_tools_pruned_by_plan():
     assert "query_order" in plan.prompt_tool_names
 
 
-def test_react_confirmation_gate_blocks_mutating_tool():
-    # Even a plan containing a write tool cannot authorize a direct mutation.
-    script = [_Msg(content="", tool_calls=[_TC("c1", "apply_refund", {"order_id": "ORD-20240120-002", "reason": "不想要了"})])]
-    executor = ReactExecutor(client=_Client(script), model="test", execute=_fake_execute)
+def test_react_confirmation_gate_blocks_mutating_tool(monkeypatch):
+    # Synthetic capability tests the framework gate without restoring a retired tool.
+    monkeypatch.setattr("app.execution.react.MUTATING_CAPABILITIES", frozenset({"fixture_write"}))
+    script = [_Msg(content="", tool_calls=[_TC("c1", "fixture_write", {})])]
+    executor = ReactExecutor(client=_Client(script), model="test", execute=lambda *_: pytest.fail("write bypassed confirmation"))
     result = executor.run(
         messages=[{"role": "user", "content": "帮我退款"}],
-        plan=_plan("after_sale_request"),
+        plan=build_task_plan("after_sale_request", allowed_tools={"fixture_write"}),
         tool_definitions=[],
     )
     assert result.blocked is True

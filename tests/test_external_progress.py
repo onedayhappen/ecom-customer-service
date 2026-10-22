@@ -304,28 +304,19 @@ def read_wait(store, goal, details, name, result):
     source = message(store, 's', 'alice', goal)
     current = TaskRepository(store, 'alice').update(current.task_id, 's', expected_version=current.version,
         change_id=str(uuid4()), source=source, patch={'goal': goal})
-    def save(params):
-        value = json.loads(next(m['content'] for m in reversed(params['messages']) if m['role'] == 'tool'))
-        return response(calls=[('save_task_progress', dict(expected_version=current.version, state='waiting_external',
-            wait_reason='等待业务进展', evidence_id=value['_task_evidence']['event_id']))])
-    reply = engine(Client(response(calls=[(name, {'order_id': details['order_id']})]), save)).execute_task(
-        store, 'alice', request(current, source), tools=lambda *_: result)
-    assert reply['state'] == 'waiting_external'
+    from app.tasks.execution_store import TaskRuns
+    from app.tasks.execution_models import TaskExecutionInput, ProgressInput
+    runs = TaskRuns(store, 'alice')
+    req = TaskExecutionInput.model_validate(request(current, source))
+    reserved, _ = runs.begin(req)
+    evidence = runs.save_tool(req, reserved['payload'], 1, name,
+        {'order_id': details['order_id']}, result)
+    current, payload = runs.save_progress(req, reserved['payload'], ProgressInput(
+        expected_version=current.version, state='waiting_external',
+        wait_reason='等待业务进展', evidence_id=evidence['event_id']), 1)
+    runs.finish(req, payload, dict(state='waiting_external', task_version=current.version,
+        evidence_ids=[evidence['event_id']]))
     return TaskRepository(store, 'alice').get(current.task_id)
-
-
-def test_query_after_sale_harness_and_warehouse_goal_have_exact_business_scope(store):
-    result = evidence('return_shipped')
-    result['records'][0].update(kind='return', item_id='ITEM-A')
-    current = read_wait(store, '确认仓库收货即可', {'order_id': 'ORD-A', 'item_id': 'ITEM-A', 'after_sale_id': 'AS-A'},
-                        'query_after_sale', result)
-    delivered = evidence('warehouse_received')
-    delivered['records'][0].update(kind='return', item_id='ITEM-A')
-    worker = ExternalProgress(store, business=Business(delivered))
-    assert worker.tick() == ['completed']
-    assert record(store, current.task_id).status == 'completed'
-    content = store.public_history('s', 'alice')[-1]['content']
-    assert '仓库已确认收货' in content and '退款结果仍待确认' in content
 
 
 def test_signed_delivery_dispute_preserves_customer_statement_and_hands_off(store):

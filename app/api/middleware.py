@@ -14,16 +14,19 @@ CORS 预检直接放行，其余请求必须携带有效令牌，否则返回 40
 from __future__ import annotations
 
 import hmac
+import re
+import asyncio
 from http.cookies import SimpleCookie
 
 import jwt
 from starlette.responses import JSONResponse
 
 from app.config.settings import settings
+from app.api.auth import get_auth_store, use_mysql_auth
 
 # 无需登录即可访问的路径（保持与 README 的「除健康检查外均需鉴权」一致，
 # 登录端点自身必须公开，否则用户永远无法获得 token）。
-PUBLIC_PATHS = {"/health", "/ready", "/metrics", "/api/v1/auth/login"}
+PUBLIC_PATHS = {"/health", "/ready", "/metrics", "/api/v1/auth/login", "/api/v1/auth/register"}
 
 
 class AuthMiddleware:
@@ -82,11 +85,29 @@ class AuthMiddleware:
             await _respond(scope, receive, send, 401, "Token 缺少有效用户身份")
             return
 
+        session_id = claims.get("sid")
+        if use_mysql_auth():
+            if session_id is None and settings.api_allow_legacy_jwt:
+                pass
+            elif not isinstance(session_id, str) or not re.fullmatch(r"[0-9a-f]{64}", session_id):
+                await _respond(scope, receive, send, 401, "Token 缺少有效会话")
+                return
+            else:
+                try:
+                    active = await asyncio.to_thread(get_auth_store().session_active, user_id, session_id)
+                except Exception:
+                    await _respond(scope, receive, send, 503, "会话服务不可用")
+                    return
+                if not active:
+                    await _respond(scope, receive, send, 401, "会话已失效")
+                    return
+
         # 校验通过：把用户身份挂到请求 state，端点可通过 request.state.user_id 读取。
         state = dict(scope.get("state") or {})
         state["user_id"] = user_id
         state["auth_via_cookie"] = auth_via_cookie
         state["token_expires_at"] = claims["exp"]
+        state["session_id"] = session_id
         scope["state"] = state
         await self.app(scope, receive, send)
 

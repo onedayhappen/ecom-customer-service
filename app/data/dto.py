@@ -61,7 +61,7 @@ class OrderDTO:
 
     @classmethod
     def from_mock(cls, order: dict[str, Any], platform_code: str) -> "OrderDTO":
-        """内置 mock 订单（app/tools/mock_data）→ OrderDTO，离线/降级用。"""
+        """内置 mock 订单（app/data/mock_data）→ OrderDTO，离线/降级用。"""
         return cls(
             order_id=order["order_id"],
             platform_code=platform_code,

@@ -348,10 +348,12 @@ class CandidateService:
         return context
 
     def _read_orders(self, context, query, order_ids):
-        # Only use the existing read-only tool, with a scoped identity. Reset
+        # Use only an explicitly supplied read adapter with a scoped identity. Reset
         # the ContextVar even if the backend fails or returns malformed output.
         from app.tools.request_context import reset_current_user_id, set_current_user_id
-        from app.tools.user_orders import list_user_orders
+        if self.order_lookup is None:
+            context.gaps.append("orders_unavailable")
+            return
         if self.scope.store_id is not None:
             context.gaps.append("store_scoped_order_lookup_unavailable")
             return
@@ -361,7 +363,7 @@ class CandidateService:
             return
         token = set_current_user_id(self.user)
         try:
-            result = (self.order_lookup or list_user_orders)(platform_code=platform)
+            result = self.order_lookup(platform_code=platform)
             if not isinstance(result, dict) or not result.get("success") or not isinstance(result.get("orders"), list):
                 context.gaps.append("orders_unavailable")
                 return

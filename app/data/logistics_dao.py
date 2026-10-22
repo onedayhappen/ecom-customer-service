@@ -1,6 +1,6 @@
-"""物流 DAO：SQL 层完成「轨迹查询 + 订单归属校验」。
+"""旧物流 DAO；数据库表已退役，待工具切换至 shipments 系列表。
 
-- :class:`MySqlLogisticsDAO`
+- :class:`MySqlLogisticsDAO`（旧查询实现，不适用于新版数据库）
   - ``query_by_order``：先按 ``order_id+platform_code+user_id`` 查订单拿运单号，
     再查轨迹——归属在第一条 SQL 的 WHERE 里完成；
   - ``query_by_tracking``：**JOIN orders 反查归属**——``tracking_number`` 命中
@@ -99,9 +99,7 @@ class MySqlLogisticsDAO:
 
     @staticmethod
     def ensure_schema(conn: Any) -> None:
-        with conn.cursor() as cur:
-            cur.execute(LOGISTICS_DDL)
-        conn.commit()
+        raise RuntimeError("logistics 旧表已退役；请使用 shipments / shipment_events")
 
     @staticmethod
     def upsert(conn: Any, logistics: dict[str, Any], platform_code: str, order_id: str) -> None:
@@ -130,7 +128,7 @@ class MockLogisticsDAO:
     def query_by_order(self, user_id: str, order_id: str, platform_code: str) -> LogisticsDTO | None:
         if platform_code != self.DEFAULT_PLATFORM:
             return None
-        from app.tools.mock_data import LOGISTICS, ORDERS
+        from app.data.mock_data import LOGISTICS, ORDERS
 
         order = ORDERS.get(order_id)
         if order is None or order.get("user_id") != user_id:
@@ -144,7 +142,7 @@ class MockLogisticsDAO:
         return LogisticsDTO.from_mock(logistics, platform_code, order_id)
 
     def query_by_tracking(self, user_id: str, tracking_number: str) -> LogisticsDTO | None:
-        from app.tools.mock_data import LOGISTICS, ORDERS
+        from app.data.mock_data import LOGISTICS, ORDERS
 
         logistics = LOGISTICS.get(tracking_number)
         if logistics is None:

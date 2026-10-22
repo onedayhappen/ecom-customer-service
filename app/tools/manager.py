@@ -1,7 +1,7 @@
 """ToolManager：统一管理本地工具和 MCP 工具。
 
-当 MCP 启用时，通过 Streamable HTTP 连接 MCP Server 获取工具；
-当 MCP 未启用或连接失败时，退回本地工具。
+当 MCP 启用时，通过 Streamable HTTP 获取远端实现，只接受本地目录中登记的工具；
+当 MCP 未启用或连接失败时，退回本地工具。目录由类型化核心工具组成。
 """
 
 import json
@@ -32,8 +32,8 @@ class ToolManager:
         else:
             self._init_local()
 
-        if allowed_tools is not None:
-            self._filter_tools(allowed_tools)
+        registered = {d["function"]["name"] for d in LOCAL_TOOL_DEFINITIONS}
+        self._filter_tools(registered if allowed_tools is None else registered.intersection(allowed_tools))
 
     def _init_local(self):
         """只加载本地工具。"""
@@ -43,9 +43,9 @@ class ToolManager:
 
     def _init_mcp(self, server_url: str, service_token: str, user_context_token: str):
         """连接 MCP Server 加载工具；失败时降级到本地工具。"""
-        from app.mcp import MCPClient
-
         try:
+            from app.mcp import MCPClient
+
             self._mcp_client = MCPClient(server_url, service_token, user_context_token)
             mcp_tools = self._mcp_client.connect()
             print(f"🔗 [MCP] 已连接 {server_url}，发现 {len(mcp_tools)} 个工具")
@@ -53,9 +53,12 @@ class ToolManager:
             mcp_names = set()
             for td in mcp_tools:
                 name = td["function"]["name"]
+                from app.tools.catalog import BY_NAME
+                if name not in BY_NAME or BY_NAME[name].task_only:
+                    continue
                 mcp_names.add(name)
                 self._tool_source[name] = "mcp"
-            self._tool_defs = list(mcp_tools)
+            self._tool_defs = [td for td in LOCAL_TOOL_DEFINITIONS if td["function"]["name"] in mcp_names]
 
             # 远端没有暴露的本地工具仍保留，形成“远端优先、当地补齐”的工具集。
             for td in LOCAL_TOOL_DEFINITIONS:
@@ -110,7 +113,8 @@ class ToolManager:
         if source == "local":
             return local_execute_tool(name, arguments)
 
-        return json.dumps({"error": f"未知工具: {name}"}, ensure_ascii=False)
+        return json.dumps({"success": False, "error_code": "validation_error",
+                           "error": f"未知工具: {name}"}, ensure_ascii=False)
 
     def close(self):
         """清理 MCP 连接。"""

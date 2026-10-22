@@ -1,20 +1,6 @@
-"""Add commerce tables and optional labelled demo evidence; never overwrite orders.
-
-Usage: python scripts/init_commerce_db.py --seed-demo
-Uses ORDER_DB_DSN. Existing rows are preserved; repeats insert only missing IDs.
-"""
-import argparse
+"""Retired legacy commerce demo seeder; demo_records remains for old tests only."""
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from pathlib import Path
-import sys
-
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from app.config.settings import settings
-from app.data.commerce_dao import MySqlCommerceDAO
 
 
 def demo_records(products, orders, at=None):
@@ -95,24 +81,7 @@ def demo_records(products, orders, at=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--seed-demo', action='store_true', help='插入明确标注的演示数据，不覆盖已有行')
-    args = parser.parse_args()
-    if not settings.order_db_dsn:
-        parser.error('请配置 ORDER_DB_DSN')
-    db = MySqlCommerceDAO(settings.order_db_dsn)
-    db.ensure_schema()
-    print('10 张 commerce 表已就绪；未修改原订单、商品或物流表。')
-    if args.seed_demo:
-        with db._connection() as conn, conn.cursor() as cur:
-            cur.execute('SELECT product_id,name,price FROM products ORDER BY product_id')
-            products = cur.fetchall()
-            cur.execute("SELECT order_id,user_id,status,total,refund_status FROM orders WHERE platform_code='pdd'")
-            orders = cur.fetchall()
-        if not products:
-            parser.error('商品表为空，请先准备商品数据')
-        count = db.insert_seed(demo_records(products, orders))
-        print(f'新增 {count} 条 mysql_demo 记录；已存在记录保持原值。')
+    raise SystemExit('旧 commerce_* 演示表已移除；请按 docs/DATABASE_DESIGN.md 为新表准备数据。')
 
 
 if __name__ == '__main__':

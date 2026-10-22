@@ -25,15 +25,24 @@ from tests.test_task_storage import empty_store, message
 
 
 class QueryClient:
-    """Stateless fake provider, safe to share across simultaneous Agent runs."""
+    """Test-only evidence fixture for scheduling; never registers a model tool."""
     def __init__(self):
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
 
     def create(self, **params):
-        if any(m["role"] == "tool" for m in params["messages"]):
-            return response("已保存订单查询结果。")
-        content = json.loads(next(m["content"] for m in params["messages"] if m["role"] == "user"))
-        return response(calls=[("query_order", {"order_id": content["task"]["details"]["order_id"]})])
+        # Scheduling/publication tests seed trusted evidence directly. The
+        # production model receives no tool definitions and cannot do this.
+        from app.tasks.runtime import current_task
+        context = current_task()
+        context.check()
+        if not context.historical:
+            args = {"order_id": context.record.details["order_id"]}
+            result = context.tools("query_order", args)
+            context.check()
+            evidence = context.runs.save_tool(context.request, context.payload, 1,
+                "query_order", args, result)
+            context.receipts.append(evidence)
+        return response("已保存测试回执。")
 
 
 def result(name, args):
@@ -155,38 +164,6 @@ def test_new_version_supersedes_pending_but_unrelated_task_continues(store):
         rows = drain(worker, [old, new, other_job])
         assert [r["status"] for r in rows] == ["superseded", "completed", "completed"]
     finally:
-        worker.close()
-
-
-@pytest.mark.parametrize("edit", ["reason", "order_id"])
-def test_applicable_inflight_read_is_reused_only_for_same_object(store, edit):
-    record, source = task(store, "s")
-    entered, release, calls = threading.Event(), threading.Event(), []
-    def tool(name, args):
-        calls.append(args)
-        entered.set()
-        assert release.wait(5)
-        return result(name, args)
-    old = enqueue(store, record, source)
-    worker = TaskWorker(store, engine(QueryClient()), tools=tool)
-    try:
-        worker.tick()
-        assert entered.wait(5)
-        updated = TaskRepository(store, "alice").update(record.task_id, "old", expected_version=1, change_id="edit",
-            source=source, patch={"details": {**record.details, edit: "ORD-B" if edit == "order_id" else "包装破损"}})
-        new = enqueue(store, updated, source)
-        release.set()
-        rows = drain(worker, [old, new])
-        assert rows[0]["result"]["state"] == "interrupted"
-        assert rows[1]["result"]["state"] == "ready"
-        assert len(calls) == (1 if edit == "reason" else 2)
-        with store.transaction(read_only=True) as tx:
-            evidence = [json.loads(r["payload"]) for r in tx.all("SELECT payload FROM support_events WHERE kind='task_tool_result'")]
-        assert len(evidence) == 1
-        assert evidence[0]["object"]["order_id"] == ("ORD-A" if edit == "reason" else "ORD-B")
-        assert evidence[0]["task_version"] == (1 if edit == "reason" else 2)
-    finally:
-        release.set()
         worker.close()
 
 

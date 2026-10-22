@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS commerce_mutations;
+DROP TABLE IF EXISTS commerce_order_policies;
+DROP TABLE IF EXISTS commerce_payments;
+DROP TABLE IF EXISTS commerce_invoices;
+DROP TABLE IF EXISTS commerce_after_sales;
+DROP TABLE IF EXISTS commerce_price_history;
+DROP TABLE IF EXISTS commerce_delivery;
+DROP TABLE IF EXISTS commerce_coupons;
+DROP TABLE IF EXISTS commerce_promotions;
+DROP TABLE IF EXISTS commerce_offers;
+DROP TABLE IF EXISTS logistics;

@@ -59,3 +59,5 @@
 .support-operation pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; } .support-empty { min-height: 350px; display: grid; place-content: center; }
 .customer-shell { max-width: 950px; } .support-card summary { cursor: pointer; }
 @media (max-width: 800px) { .support-shell { padding: 12px; } .support-columns { grid-template-columns: 1fr; } .support-top { flex-wrap: wrap; } .support-transcript { max-height: 60vh; } }
+.auth-switch { display: block; margin: 18px auto 0; padding: 6px; border: 0; background: none; color: #207f75; font-size: 12px; cursor: pointer; }
+.auth-switch:hover { text-decoration: underline; }

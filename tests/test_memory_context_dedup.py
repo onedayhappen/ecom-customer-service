@@ -9,7 +9,7 @@ import pytest
 from app.config.settings import settings
 from app.memory.long_term import MemoryFact
 from app.memory.ltm_manager import LongTermMemoryManager
-from app.tools import memory_tool
+from app.memory import recall as memory_tool
 from app.tools.request_context import reset_current_user_id, set_current_user_id
 
 

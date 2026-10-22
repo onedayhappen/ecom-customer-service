@@ -6,21 +6,15 @@ import pytest
 from app.support.store import SCHEMA_VERSION, SupportError, SupportStore
 from app.tasks.evidence import find_evidence
 from app.tasks.repository import TaskRepository
-from app.tools.task_context import read_task_context, save_task_progress
 from tests.test_task_candidates import task
 from tests.test_message_association import store
 from tests.test_task_storage import empty_store, message
 
 
-@pytest.mark.parametrize('tool', [read_task_context, save_task_progress])
-def test_context_tools_require_an_active_task(tool):
-    assert tool()['error_code'] == 'validation_error'
-
-
 def test_removed_tools_cannot_be_called_through_registry():
     from app.tools.registry import TOOL_DEFINITIONS, execute_tool
     names = {d['function']['name'] for d in TOOL_DEFINITIONS}
-    assert {'read_task_context', 'save_task_progress'} <= names
+    assert len(names) == 38 and 'read_task_context' in names
     for name in ('read_case_memory', 'save_case_context', 'text_to_sql'):
         assert name not in names
         assert json.loads(execute_tool(name, {}))['error_code'] == 'validation_error'
