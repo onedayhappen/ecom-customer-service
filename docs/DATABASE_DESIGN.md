@@ -2,7 +2,7 @@
 
 本文定义电商客服项目的 MySQL 业务数据模型，供后续建表、迁移和接口改造使用。目标是让用户、商品、订单、支付、物流、优惠券和售后数据有明确的归属、状态与关联，客服工具能够按认证身份查询可靠的业务事实。
 
-**实施状态：新版表结构和旧结构清理已执行。** [迁移脚本](../scripts/migrate_mysql_business_schema.py)依次执行 [001 建表](../migrations/mysql/001_business_schema.sql)与 [002 清理](../migrations/mysql/002_remove_legacy_commerce.sql)，`schema_migrations` 记录版本。`orders` 旧列、`logistics` 和全部 `commerce_*` 表已删除；38 个核心工具已切换到目标表，003 配套迁移需在部署时执行，配置见 [工具设计第 10 节](TOOL_DESIGN.md#10-核心工具实现与运行配置)。下文“原有”指迁移前结构，“目标”指新版结构。PostgreSQL 仍承载客服对话、事项、任务执行和审计等运行数据。
+**实施状态：新版表结构和旧结构清理已执行。** [迁移脚本](../scripts/migrate_mysql_business_schema.py)依次执行 [001 建表](../migrations/mysql/001_business_schema.sql)与 [002 清理](../migrations/mysql/002_remove_legacy_commerce.sql)，`schema_migrations` 记录版本。`orders` 旧列、`logistics` 和全部 `commerce_*` 表已删除；38 个核心工具已切换到目标表，003 配套迁移需在部署时执行，配置见 [工具实现说明](TOOL_IMPLEMENTATION.md)。下文“原有”指迁移前结构，“目标”指新版结构。PostgreSQL 仍承载客服对话、事项、任务执行和审计等运行数据。
 
 ## 1. 当前结构与主要问题
 
@@ -155,4 +155,4 @@ MySQL 索引应按实际查询和写入量选择。[MySQL 索引说明](https://
 | `after_sale_events` | event_id, after_sale_id, operation_id, kind, source, payload, created_at | event_id 主键，operation_id 唯一；本地 submitted/cancelled 过程及来源 |
 | `order_address_changes` | change_id, platform_code, order_id, operation_id, previous_ciphertext, replacement_ciphertext, key_version, created_at | change_id 主键，operation_id 唯一；加密保存旧、新地址，修改订单不覆盖用户地址簿 |
 
-这些表的写入与所对应业务变更共用 MySQL 事务。PostgreSQL 的确认提案保存加密参数及脱敏摘要，不充当 MySQL 业务事实来源。状态和规则契约详见 [工具实现说明](TOOL_DESIGN.md#103-可执行业务规则)。
+这些表的写入与所对应业务变更共用 MySQL 事务。PostgreSQL 的确认提案保存加密参数及脱敏摘要，不充当 MySQL 业务事实来源。状态和规则契约详见 [工具实现说明](TOOL_IMPLEMENTATION.md#3-可执行业务规则)。
