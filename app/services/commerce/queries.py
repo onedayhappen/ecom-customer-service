@@ -1,5 +1,6 @@
 """Resource queries for the 48-tool contract; projections contain recorded facts only."""
 from decimal import Decimal
+import json
 from app.services.commerce.common import BusinessError, at, decoded, money, ok, ref, unref, utcnow
 from app.services.commerce.reads import ReadService, masked, state, ORDER_STATES, SALE_STATES
 from app.services.commerce.rules import RuleService
@@ -53,21 +54,48 @@ class QueryService:
         return self.page(rows,'list_addresses',args,size=10)
 
     def search_products(self, tx, **args):
-        q = args['query'].casefold()
-        rows = tx.all('SELECT product_id,merchant_id,name,category,description FROM products ORDER BY product_id')
-        found = []
+        terms=args['query'].casefold().split(); clauses=[]; values=[]
+        for term in terms:
+            pattern='%'+term.replace('!','!!').replace('%','!%').replace('_','!_')+'%'
+            clauses.append("(p.name LIKE %s ESCAPE '!' OR p.category LIKE %s ESCAPE '!' OR p.description LIKE %s ESCAPE '!' OR m.name LIKE %s ESCAPE '!')")
+            values.extend([pattern]*4)
+        if getattr(self.scope,'store_id',None): clauses.append('p.merchant_id=%s'); values.append(self.scope.store_id)
+        sku_clauses=["s.status='active'"]; sku_values=[]; known_select=[]; known_values=[]
+        cap=args.get('max_price')
+        if cap:
+            sku_clauses += ['s.currency=%s','s.list_price<=%s']; sku_values += [cap['currency'],money(cap['amount'])]
+        for index,spec in enumerate(args.get('specs',[])):
+            path='$.'+json.dumps(spec['name'],ensure_ascii=False)
+            known="EXISTS (SELECT 1 FROM product_skus known WHERE known.product_id=p.product_id AND JSON_CONTAINS_PATH(known.spec_values,'one',%s))"
+            known_select.append(known+' AS known_'+str(index)); known_values.append(path)
+            sku_clauses.append("(JSON_UNQUOTE(JSON_EXTRACT(s.spec_values,%s))=%s OR NOT "+known+')')
+            sku_values += [path,spec['value'],path]
+        sku_where=' AND '.join(sku_clauses)
+        clauses.append('EXISTS (SELECT 1 FROM product_skus s WHERE s.product_id=p.product_id AND '+sku_where+')')
+        query='SELECT p.product_id,p.merchant_id,p.name,p.category,p.description,m.name merchant_name'+(' ,'+','.join(known_select) if known_select else '')+' FROM products p JOIN merchants m ON m.merchant_id=p.merchant_id WHERE '+' AND '.join(clauses)
+        result=self.sql_page(tx,query,known_values+values+sku_values,'search_products',args,keys=('product_id',),size=10)
+        rows=result['data']['items']
+        if not rows: return result
+        ids=[r['product_id'] for r in rows]
+        skus=tx.all('''SELECT * FROM (SELECT s.*,p.merchant_id,p.name product_name,
+            i.available_qty inventory_available_qty,i.updated_at inventory_updated_at,
+            ROW_NUMBER() OVER (PARTITION BY s.product_id ORDER BY s.sku_id) rn,
+            COUNT(*) OVER (PARTITION BY s.product_id) sku_count
+            FROM product_skus s JOIN products p ON p.product_id=s.product_id
+            LEFT JOIN sku_inventory i ON i.sku_id=s.sku_id WHERE s.product_id IN ('''+','.join(['%s']*len(ids))+') AND '+sku_where+') ranked WHERE rn<=5 ORDER BY product_id,sku_id',tuple(ids+sku_values))
         for row in rows:
-            if getattr(self.scope,'store_id',None) and row['merchant_id'] != self.scope.store_id: continue
-            matched_fields = [k for k in ('name','category','description') if q in str(row.get(k) or '').casefold()]
-            if not matched_fields: continue
-            skus = [self.sku(tx,r['sku_id']) for r in tx.all('SELECT sku_id FROM product_skus WHERE product_id=%s ORDER BY sku_id',(row['product_id'],))]
-            matched, unknown = filter_specs(skus,args.get('specs',[]))
-            cap = args.get('max_price')
-            matched = [s for s in matched if s['status']=='active' and (not cap or s['currency']==cap['currency'] and money(s['list_price'])<=money(cap['amount']))]
-            if not matched: continue
-            found.append(dict(row,product_ref=ref('product',row['product_id']),subject_ref=ref('product',row['product_id']),
-                matched_fields=matched_fields,sku_summary=matched[:5],sku_count=len(matched),skus_truncated=len(matched)>5,unapplied_conditions=unknown))
-        return self.page(found,'search_products',args,size=10)
+            matches=[s for s in skus if s['product_id']==row['product_id']]
+            count=matches[0]['sku_count']
+            for sku in matches:
+                sku.pop('rn'); sku.pop('sku_count')
+                available=sku.pop('inventory_available_qty'); updated=sku.pop('inventory_updated_at')
+                sku['inventory']=None if available is None else dict(available_qty=available,updated_at=updated)
+                sku['spec_values']=decoded(sku['spec_values'],{}); sku['subject_ref']=ref('sku',sku['sku_id'])
+            unknown=[s for i,s in enumerate(args.get('specs',[])) if not row.pop('known_'+str(i))]
+            row.update(product_ref=ref('product',row['product_id']),subject_ref=ref('product',row['product_id']),
+                matched_fields=[k for k in ('name','category','description','merchant_name') if any(t in str(row.get(k) or '').casefold() for t in terms)],
+                sku_summary=matches,sku_count=count,skus_truncated=count>5,unapplied_conditions=unknown)
+        return result
 
     def get_product_details(self, tx, **args):
         kind, ident = unref(args['target_ref'],{'product','sku'})
@@ -140,10 +168,42 @@ class QueryService:
         data['recorded_difference']=data['recorded_success_amounts'].get(currency,Decimal(0))-money(paid) if paid is not None and currency else None
         return result
 
+    def parcel_summary(self,tx,ship,reverse=False):
+        key='return_shipment_id' if reverse else 'shipment_id'
+        table='return_shipment' if reverse else 'shipment'
+        items=tx.all('SELECT * FROM '+table+'_items WHERE '+key+'=%s ORDER BY order_item_id LIMIT 20',(ship[key],))
+        for item in items:
+            if 'actual_spec_snapshot' in item: item['actual_spec_snapshot']=decoded(item['actual_spec_snapshot'])
+        events=tx.all('SELECT * FROM '+table+'_events WHERE '+key+'=%s ORDER BY event_time DESC,event_id DESC LIMIT 3',(ship[key],))
+        count=tx.one('SELECT COUNT(*) n FROM '+table+'_events WHERE '+key+'=%s',(ship[key],))['n']
+        item_count=tx.one('SELECT COUNT(*) n FROM '+table+'_items WHERE '+key+'=%s',(ship[key],))['n']
+        return dict(ship,target_ref=ref(table,ship[key]),items=items,item_count=item_count,items_truncated=item_count>20,
+                    events=events,events_total=count,events_truncated=count>3)
+
     def get_logistics(self,tx,**args):
-        parsed=unref(args['target_ref'],{'order','shipment'})
+        parsed=unref(args['target_ref'],{'order','shipment','return_shipment','after_sale'})
         if parsed[0]=='shipment':
             return self.get_shipment_tracking(tx,shipment_id=parsed[1],cursor=args.get('cursor'))
+        if parsed[0]=='return_shipment':
+            ship=tx.one('''SELECT s.*,a.after_sale_id FROM return_shipments s JOIN return_authorizations a
+                ON a.authorization_id=s.authorization_id WHERE s.return_shipment_id=%s''',(parsed[1],))
+            if not ship: raise BusinessError('not_found','退货包裹不存在')
+            self.sale(tx,ship['after_sale_id'])
+            return self.sql_page(tx,'SELECT * FROM return_shipment_events WHERE return_shipment_id=%s',[parsed[1]],
+                'get_return_tracking',args,keys=('event_time','event_id'),data={'shipment':ship})
+        if parsed[0]=='after_sale':
+            self.sale(tx,parsed[1])
+            query="""SELECT CONCAT('r:',s.return_shipment_id) package_key,'return_shipment' kind,s.return_shipment_id ident
+                FROM return_shipments s JOIN return_authorizations a ON a.authorization_id=s.authorization_id WHERE a.after_sale_id=%s
+                UNION ALL SELECT CONCAT('s:',shipment_id) package_key,'shipment' kind,shipment_id ident
+                FROM shipments WHERE after_sale_id=%s AND shipment_kind='exchange' """
+            result=self.sql_page(tx,query,[parsed[1],parsed[1]],'get_logistics',args,keys=('package_key',),size=5)
+            for i,row in enumerate(result['data']['items']):
+                reverse=row['kind']=='return_shipment'; table='return_shipments' if reverse else 'shipments'
+                key='return_shipment_id' if reverse else 'shipment_id'
+                ship=tx.one('SELECT * FROM '+table+' WHERE '+key+'=%s',(row['ident'],))
+                result['data']['items'][i]=self.parcel_summary(tx,ship,reverse)
+            return result
         order=self.owned_order(tx,args['target_ref']); rows=[]
         bought={r['order_item_id']:r['quantity'] for r in self.order_rows(tx,'order_items',order)}
         sent={k:0 for k in bought}; replaced={k:0 for k in bought}; replacements=self.replacement_shipments(tx,order)
@@ -154,8 +214,8 @@ class QueryService:
                 if ship['shipped_at'] and ship['status'] in {'shipped','in_transit','delivered'}:
                     quantities=replaced if ship['shipment_id'] in replacements else sent
                     quantities[item['order_item_id']]+=item['quantity']
-            events=tx.all('SELECT * FROM shipment_events WHERE shipment_id=%s ORDER BY event_time DESC,event_id DESC',(ship['shipment_id'],))
-            rows.append(dict(ship,target_ref=ref('shipment',ship['shipment_id']),replacement=replacements.get(ship['shipment_id']),items=items,events=events[:3],events_total=len(events),events_truncated=len(events)>3,estimated_delivery=None))
+            summary=self.parcel_summary(tx,ship)
+            rows.append(dict(summary,replacement=replacements.get(ship['shipment_id']),estimated_delivery=None))
         return self.page(rows,'get_logistics',args,size=5,data={'quantities':[dict(order_item_id=k,purchased=v,recorded_shipped=sent[k],recorded_replacement_shipped=replaced[k]) for k,v in bought.items()]},limitations=['未记录预计送达时间；发出数量不代表签收数量'])
 
     def find_my_coupons(self,tx,**args):
@@ -259,20 +319,24 @@ class QueryService:
         work=tx.one('SELECT * FROM service_work_orders WHERE after_sale_id=%s',(sale['after_sale_id'],))
         if work: work=dict(work,details=decoded(work['details']))
         auth=tx.one('SELECT authorization_id,status,deadline,source,updated_at FROM return_authorizations WHERE after_sale_id=%s',(sale['after_sale_id'],))
-        ships=tx.all('SELECT * FROM return_shipments WHERE authorization_id=%s ORDER BY created_at,return_shipment_id',(auth['authorization_id'],)) if auth else []
-        for ship in ships:
-            ship['items']=tx.all('SELECT order_item_id,quantity FROM return_shipment_items WHERE return_shipment_id=%s',(ship['return_shipment_id'],))
-            ship['events']=tx.all('SELECT * FROM return_shipment_events WHERE return_shipment_id=%s ORDER BY event_time,event_id',(ship['return_shipment_id'],))
-        events=tx.all('SELECT * FROM after_sale_events WHERE after_sale_id=%s ORDER BY created_at,event_id',(sale['after_sale_id'],))
-        reverse_events=sorted([event for ship in ships for event in ship['events']],key=lambda e:(e['event_time'],e['event_id']))
-        replacements=tx.all("SELECT * FROM shipments WHERE after_sale_id=%s AND shipment_kind='exchange' ORDER BY created_at,shipment_id",(sale['after_sale_id'],))
-        for ship in replacements:
-            ship['items']=[dict(i,actual_spec_snapshot=decoded(i['actual_spec_snapshot'])) for i in tx.all('SELECT * FROM shipment_items WHERE shipment_id=%s',(ship['shipment_id'],))]
-            ship['events']=tx.all('SELECT * FROM shipment_events WHERE shipment_id=%s ORDER BY event_time,event_id',(ship['shipment_id'],))
-        return self.page(events,'get_after_sale_status',args,data={'after_sale':state(masked(sale),SALE_STATES),'order_ref':ref('order',order['platform_code'],order['order_id']),
+        ships=tx.all('SELECT * FROM return_shipments WHERE authorization_id=%s ORDER BY created_at,return_shipment_id LIMIT 5',(auth['authorization_id'],)) if auth else []
+        ship_count=tx.one('SELECT COUNT(*) n FROM return_shipments WHERE authorization_id=%s',(auth['authorization_id'],))['n'] if auth else 0
+        ships=[self.parcel_summary(tx,s,True) for s in ships]
+        reverse_query=''' FROM return_shipment_events e JOIN return_shipments s ON s.return_shipment_id=e.return_shipment_id
+            JOIN return_authorizations a ON a.authorization_id=s.authorization_id WHERE a.after_sale_id=%s'''
+        reverse_events=tx.all('SELECT e.*'+reverse_query+' ORDER BY e.event_time DESC,e.event_id DESC LIMIT 3',(sale['after_sale_id'],))
+        reverse_count=tx.one('SELECT COUNT(*) n'+reverse_query,(sale['after_sale_id'],))['n']
+        replacements=tx.all("SELECT * FROM shipments WHERE after_sale_id=%s AND shipment_kind='exchange' ORDER BY created_at,shipment_id LIMIT 5",(sale['after_sale_id'],))
+        replacement_count=tx.one("SELECT COUNT(*) n FROM shipments WHERE after_sale_id=%s AND shipment_kind='exchange'",(sale['after_sale_id'],))['n']
+        replacements=[self.parcel_summary(tx,s) for s in replacements]
+        return self.sql_page(tx,'SELECT * FROM after_sale_events WHERE after_sale_id=%s',[sale['after_sale_id']],
+            'get_after_sale_status',args,keys=('created_at','event_id'),data={'after_sale':state(masked(sale),SALE_STATES),'order_ref':ref('order',order['platform_code'],order['order_id']),
             'purchase_items':items[:20],'item_count':len(items),'refund_summary':totals(refunds),'work_order':work,'return_authorization':auth,
-            'return_shipment':ships[0] if len(ships)==1 else None,'return_shipments':ships,'replacement_shipments':replacements,
-            'return_events':reverse_events[-3:],'return_events_total':len(reverse_events),'processes_connected':{'return':bool(auth),'service':bool(work)}})
+            'return_shipment':ships[0] if ship_count==1 else None,'return_shipments':ships,'replacement_shipments':replacements,
+            'return_shipments_total':ship_count,'return_shipments_truncated':ship_count>5,
+            'replacement_shipments_total':replacement_count,'replacement_shipments_truncated':replacement_count>5,
+            'logistics_ref':ref('after_sale',sale['after_sale_id']),
+            'return_events':reverse_events,'return_events_total':reverse_count,'processes_connected':{'return':bool(auth),'service':bool(work)}})
 
     def get_invoices(self,tx,**args):
         target=unref(args['target_ref'],{'order','invoice'}) if args.get('target_ref') else None

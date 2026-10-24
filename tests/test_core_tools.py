@@ -196,6 +196,8 @@ def test_address_history_and_scope(svc):
     now=utcnow()
     encrypted={field:svc.cipher.seal(value,'address:alice:'+field) for field,value in [('recipient_name','收件人'),('phone','13800000000'),('detail','新地址') ]}
     with svc.store.transaction(write=True) as tx:
+        tx.execute("INSERT INTO sku_fulfillment VALUES ('s1','warehouse',600,'test',%s)",(now,))
+        tx.execute("INSERT INTO delivery_rules VALUES ('address-rule',1,'shop','m','warehouse','p','*','*','CNY',1000,0,500,0,1,3,'test',%s,NULL,'active')",(now-timedelta(days=1),))
         tx.execute('INSERT INTO user_addresses(user_id,recipient_name_ciphertext,phone_ciphertext,province_code,city_code,district_code,detail_ciphertext,key_version,is_default,created_at,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,1,1,%s,%s)',('alice',encrypted['recipient_name'],encrypted['phone'],'p','c','d',encrypted['detail'],now,now))
         aid=str(tx.one('SELECT address_id FROM user_addresses')['address_id'])
         tx.execute('INSERT INTO order_address_snapshots(platform_code,order_id,recipient_name_ciphertext,phone_ciphertext,province_code,city_code,district_code,detail_ciphertext,key_version,captured_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,1,%s)',('shop','paid',b'oldname',b'oldphone','p','c','d',b'old',now))
@@ -211,7 +213,7 @@ def test_address_history_and_scope(svc):
 def test_shipping_label_does_not_count_as_dispatch(svc):
     with svc.store.transaction(write=True) as tx:
         tx.execute("INSERT INTO shipments(shipment_id,platform_code,order_id,status,created_at) VALUES ('pack','shop','paid','created',%s)",(utcnow(),))
-        tx.execute("INSERT INTO shipment_items VALUES ('pack','i-paid',2)")
+        tx.execute("INSERT INTO shipment_items(shipment_id,order_item_id,quantity) VALUES ('pack','i-paid',2)")
     out=read(svc,'get_shipments',order_ref=ref('order','shop','paid'))
     assert out['data']['quantities'][0]['recorded_shipped']==0
     assert read(svc,'get_shipment_tracking',shipment_id='pack')['data']['total']==0

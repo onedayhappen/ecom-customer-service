@@ -39,6 +39,150 @@ class Provider:
         return value
 
 
+@pytest.mark.parametrize('days,other_delivered,expected',[(1,False,'eligible'),(30,True,'ineligible')])
+@pytest.mark.parametrize('time_basis',['request','delivered'])
+def test_sale_window_uses_requested_original_item(svc,days,other_delivered,expected,time_basis):
+    now=utcnow()
+    with svc.store.transaction(write=True) as tx:
+        tx.execute("UPDATE business_policy_versions SET rules=%s WHERE action='return_refund'",(dumps(dict(schema_version=1,allowed_statuses=['paid'],window_days=7,time_basis=time_basis)),))
+        tx.execute("INSERT INTO order_items(order_item_id,platform_code,order_id,sku_id,product_id,title_snapshot,spec_snapshot,quantity,unit_price,discount_amount,payable_amount) VALUES ('other-item','shop','paid','s2','p','other','{}',1,0,0,0)")
+        for sid,item,qty,delivered in [('original','i-paid',3,now-timedelta(days=days)),('unrelated','other-item',1,now if other_delivered else None)]:
+            tx.execute('INSERT INTO shipments(shipment_id,platform_code,order_id,status,shipped_at,delivered_at,created_at) VALUES (%s,\'shop\',\'paid\',%s,%s,%s,%s)',(sid,'delivered' if delivered else 'in_transit',now-timedelta(days=40),delivered,now))
+            tx.execute('INSERT INTO shipment_items(shipment_id,order_item_id,quantity) VALUES (%s,%s,%s)',(sid,item,qty))
+    result=read(svc,'assess_after_sale',kind='return_refund',items=[dict(order_item_id='i-paid',quantity=1)])
+    assert result['data']['eligibility']==expected,result
+
+
+def test_zero_amount_discount_and_full_discount_stack(extended):
+    svc=extended
+    lines=[dict(sku_id='free',amount=Decimal(0))]
+    svc.allocate_discount(lines,Decimal(0))
+    assert lines[0]['amount']==0
+    with pytest.raises(BusinessError): svc.allocate_discount(lines,Decimal(1))
+    with svc.store.transaction(write=True) as tx:
+        tx.execute("UPDATE coupon_templates SET threshold_amount=0,discount_amount=20 WHERE coupon_id='c'")
+    coupon=svc.claim_coupon({'coupon_ref':ref('coupon_template','c')},'claim-free')['data']['coupon_ref']
+    with svc.store.transaction(write=True) as tx: tx.execute("UPDATE product_skus SET list_price=0 WHERE sku_id='s1'")
+    assert read(svc,'estimate_purchase',items=[dict(sku_id='s1',quantity=1)],coupon_refs=[coupon])['data']['goods_after_discount']==0
+
+
+def test_changed_coupon_rules_invalidate_confirmation(svc):
+    p=svc.preview('claim_coupon',{'coupon_ref':ref('coupon_template','c')})
+    with svc.store.transaction(write=True) as tx: tx.execute("UPDATE coupon_templates SET discount_amount=1 WHERE coupon_id='c'")
+    with pytest.raises(BusinessError,match='规则已变化'):
+        svc.submit('claim_coupon',p['arguments'],'claim-changed',p['business_version'])
+    with svc.store.transaction() as tx: assert tx.one('SELECT COUNT(*) n FROM user_coupons')['n']==0
+
+
+def test_address_change_rechecks_delivery_and_fee(extended):
+    svc=extended
+    quote=svc.quote_checkout(basket(svc))['data']['quote_ref']
+    order=commit(svc,'prepare_purchase',{'quote_ref':quote},'address-order')
+    args={'order_ref':order['order_ref'],'address_id':svc.address_id}
+    prepared=svc.preview('prepare_order_address_change',args)
+    assert prepared['review']['shipping_amount']=='7.00'
+    with svc.store.transaction(write=True) as tx: tx.execute("UPDATE user_addresses SET province_code='unsupported'")
+    with pytest.raises(BusinessError,match='运费规则'): svc.preview('prepare_order_address_change',args)
+    with svc.store.transaction(write=True) as tx:
+        tx.execute("UPDATE user_addresses SET province_code='p'")
+        tx.execute("UPDATE delivery_rules SET base_fee=6")
+    with pytest.raises(BusinessError,match='运费与原订单不同'):
+        svc.submit('prepare_order_address_change',prepared['arguments'],'address-change',prepared['business_version'])
+    with svc.store.transaction() as tx:
+        assert tx.one('SELECT COUNT(*) n FROM order_address_changes')['n']==0
+        assert tx.one('SELECT shipping_amount FROM orders WHERE order_id=%s',(order['order_id'],))['shipping_amount']==7
+
+
+def test_standalone_platform_uses_trusted_business_records(svc):
+    svc.scope=None
+    assert read(svc,'get_membership')['data']['platform_code']=='shop'
+    assert read(svc,'list_claimable_coupons')['data']['total']==1
+    with svc.store.transaction(write=True) as tx:
+        tx.execute('''INSERT INTO orders(platform_code,order_id,user_id,status,created_at,merchant_id,currency,
+            goods_amount,discount_amount,shipping_amount,payable_amount,paid_amount,updated_at)
+            SELECT 'other',order_id,user_id,status,created_at,merchant_id,currency,goods_amount,discount_amount,
+            shipping_amount,payable_amount,paid_amount,updated_at FROM orders WHERE order_id='paid' ''')
+    with pytest.raises(BusinessError,match='平台'): read(svc,'get_membership')
+
+
+def test_new_customer_platform_requires_unique_business_configuration(svc):
+    now=utcnow()
+    with svc.store.transaction(write=True) as tx:
+        tx.execute("INSERT INTO users(user_id,username,username_key,status,created_at,updated_at) VALUES ('new','new','new','active',%s,%s)",(now,now))
+    fresh=CommerceService(svc.store,'new',secret=svc.secret)
+    assert read(fresh,'list_claimable_coupons')['data']['total']==1
+    with svc.store.transaction(write=True) as tx:
+        tx.execute("INSERT INTO business_policy_versions(policy_id,version,action,platform_code,rules,effective_from,source,status) VALUES ('other-pricing',1,'pricing','other','{\"schema_version\":1}',%s,'test','active')",(now-timedelta(days=1),))
+    with pytest.raises(BusinessError,match='平台'): read(fresh,'list_claimable_coupons')
+
+
+def test_dispatch_confirmation_only_queues_and_replays(extended):
+    svc=extended; provider=Provider()
+    with provider_factory(lambda _:provider):
+        p=svc.preview('request_dispatch',{'order_ref':ref('order','shop','paid')})
+        assert not provider.calls
+        with svc.store.transaction() as tx: assert tx.one('SELECT COUNT(*) n FROM commerce_provider_requests')['n']==0
+        result=svc.submit('request_dispatch',p['arguments'],'confirmed-dispatch',p['business_version'])
+        assert result['status']=='queued' and result['success']
+        assert svc.submit('request_dispatch',p['arguments'],'confirmed-dispatch',p['business_version'])==result
+        assert not provider.calls
+        with svc.store.transaction() as tx: assert tx.one('SELECT COUNT(*) n FROM commerce_provider_requests')['n']==1
+
+
+def test_after_sale_logistics_are_bounded_and_pageable(extended):
+    svc=extended; now=utcnow()
+    auth=dict(address={'detail':'退货仓'},carriers=[dict(code='SF',name='顺丰')],requirements=[],deadline=(now+timedelta(days=7)).isoformat())
+    provider=Provider(dict(status='accepted',reference='repair-logistics',return_authorization=auth))
+    with provider_factory(lambda _:provider):
+        sale=commit(svc,'prepare_repair',dict(order_item_id='i-paid',quantity=1,problem='故障'),'repair-logistics')
+        svc.process_provider_request('repair-logistics')
+    aid=sale['after_sale_id']
+    shipment=commit(svc,'prepare_return_shipment',dict(after_sale_id=aid,carrier_code='SF',tracking_number='SF123'))
+    rid=shipment['return_shipment_id']
+    with svc.store.transaction(write=True) as tx:
+        authorization=tx.one('SELECT authorization_id FROM return_authorizations WHERE after_sale_id=%s',(aid,))['authorization_id']
+        for i in range(5):
+            tx.execute("INSERT INTO return_shipments(return_shipment_id,authorization_id,carrier_code,tracking_number,status,operation_id,created_at,updated_at) VALUES (%s,%s,'SF',%s,'registered',%s,%s,%s)",(f'extra{i}',authorization,f'SFextra{i}',f'parcel-op{i}',now,now))
+        with tx.connection.cursor() as cur:
+            cur.executemany("INSERT INTO return_shipment_events(event_id,return_shipment_id,status,description,source,event_time) VALUES (%s,%s,'in_transit','轨迹','test',%s)",[(f'event{i:04}',rid,now+timedelta(seconds=i)) for i in range(61)])
+    detail=read(svc,'get_after_sale_status',after_sale_id=aid)['data']
+    assert detail['return_shipments_total']==6 and detail['return_shipments_truncated']
+    assert len(detail['return_shipments'])==5 and len(detail['return_events'])==3
+    assert detail['return_events_total']==61
+    parcels=read(svc,'get_logistics',target_ref=detail['logistics_ref'])
+    assert parcels['data']['total']==6 and len(parcels['data']['items'])==5
+    assert len(read(svc,'get_logistics',target_ref=detail['logistics_ref'],cursor=parcels['next_cursor'])['data']['items'])==1
+    args=dict(target_ref=ref('return_shipment',rid)); ids=[]
+    while True:
+        page=read(svc,'get_logistics',**args)
+        assert len(page['data']['items'])<=20 and page['data']['total']==61
+        ids += [e['event_id'] for e in page['data']['items']]
+        if not page['next_cursor']: break
+        args['cursor']=page['next_cursor']
+    assert ids==[f'event{i:04}' for i in range(61)]
+    bob=CommerceService(svc.store,'bob',scope=svc.scope,secret=svc.secret)
+    with pytest.raises(BusinessError): read(bob,'get_logistics',target_ref=ref('return_shipment',rid))
+
+
+def test_search_sql_filter_pagination_and_batch_skus(extended):
+    svc=extended; now=utcnow()
+    with svc.store.transaction(write=True) as tx:
+        with tx.connection.cursor() as cur:
+            cur.executemany('INSERT INTO products(product_id,merchant_id,name,category,description,specs) VALUES (%s,\'m\',%s,\'耳机\',\'描述\',\'{}\')',[(f'bulk{i:05}',f'批量耳机{i}') for i in range(10005)])
+            cur.executemany('INSERT INTO product_skus(sku_id,product_id,sku_code,spec_values,list_price,currency,status,created_at,updated_at) VALUES (%s,%s,%s,\'{"颜色":"黑"}\',10,\'CNY\',\'active\',%s,%s)',[(f'bulk{i:05}',f'bulk{i:05}',f'bulk{i:05}',now,now) for i in range(10005)])
+    exact=read(svc,'search_products',query='批量耳机10004')
+    assert exact['data']['total']==1
+    args=dict(query='测试商家 批量',specs=[dict(name='颜色',value='黑')],max_price=dict(amount='10.00',currency='CNY'))
+    first=read(svc,'search_products',**args)
+    assert first['data']['total']==10005 and len(first['data']['items'])==10
+    second=read(svc,'search_products',**args,cursor=first['next_cursor'])
+    assert not {r['product_id'] for r in first['data']['items']} & {r['product_id'] for r in second['data']['items']}
+    assert read(svc,'search_products',query='批量',specs=[dict(name='颜色',value='白')])['data']['total']==0
+    unknown=read(svc,'search_products',query='批量耳机10004',specs=[dict(name='不存在',value='a')])
+    assert unknown['data']['items'][0]['unapplied_conditions']==[dict(name='不存在',value='a')]
+    with pytest.raises(BusinessError): read(svc,'search_products',query='别的条件',cursor=first['next_cursor'])
+
+
 def basket(svc,quantity=2):
     return dict(items=[dict(sku_id='s1',quantity=quantity)],address_id=svc.address_id,coupon_refs=[])
 

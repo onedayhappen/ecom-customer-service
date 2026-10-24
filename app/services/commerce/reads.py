@@ -109,7 +109,8 @@ class ReadService:
         ship=tx.one('SELECT * FROM shipments WHERE shipment_id=%s',(args['shipment_id'],))
         if not ship: raise BusinessError('not_found','包裹不存在')
         self.owned_order(tx,ref('order',ship['platform_code'],ship['order_id']))
-        return self.page(tx.all('SELECT * FROM shipment_events WHERE shipment_id=%s ORDER BY event_time,event_id',(args['shipment_id'],)),'get_shipment_tracking',args,data={'shipment':ship},limitations=['没有预计到达依据时不预测送达日期'])
+        return self.sql_page(tx,'SELECT * FROM shipment_events WHERE shipment_id=%s',[args['shipment_id']],
+            'get_shipment_tracking',args,keys=('event_time','event_id'),data={'shipment':ship},limitations=['没有预计到达依据时不预测送达日期'])
     def list_after_sales(self,tx,**args):
         if args.get('order_ref'): self.owned_order(tx,args['order_ref'])
         rows=tx.all('SELECT * FROM after_sale_requests WHERE user_id=%s ORDER BY created_at DESC,after_sale_id',(self.user,)); found=[]

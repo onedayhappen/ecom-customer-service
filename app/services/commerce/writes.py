@@ -6,7 +6,8 @@ from uuid import uuid4
 from app.services.commerce.common import BusinessError,at,decoded,digest,dumps,money,ok,ref,unref,utcnow
 
 PREPARES={'prepare_after_sale','prepare_invoice','prepare_order_address_change','prepare_order_cancel','prepare_after_sale_cancel',
-    'prepare_price_protection','prepare_exchange','prepare_return_shipment','prepare_repair','prepare_invoice_reissue','prepare_purchase'}
+    'prepare_price_protection','prepare_exchange','prepare_return_shipment','prepare_repair','prepare_invoice_reissue','prepare_purchase',
+    'claim_coupon','request_dispatch'}
 
 def json_binary(row):
     return {k:base64.b64encode(bytes(v)).decode() if isinstance(v,(bytes,bytearray,memoryview)) else v for k,v in row.items()}
@@ -33,7 +34,31 @@ class WriteService:
         return r
     def record_receipt(self,tx,oid,action,args,result):
         tx.execute('INSERT INTO business_operation_receipts(operation_id,user_id,action,arguments_digest,result,created_at) VALUES (%s,%s,%s,%s,%s,%s)',(oid,self.user,action,digest(args),dumps(result),utcnow()))
-    def claim_coupon(self,args,request_id):
+    def claim_plan(self,tx,args):
+        t,instance,scopes=self.coupon(tx,args['coupon_ref'])
+        if instance: raise BusinessError('invalid_arguments','领取需要券模板引用')
+        self.claim_eligibility(tx,t)
+        if not scopes or any(s['scope_type'] not in {'all','merchant','product','sku'} for s in scopes):
+            raise BusinessError('insufficient_data','券适用范围不完整')
+        self.discount(t,max(money(t['threshold_amount']),Decimal(1)))
+        review=dict(title='领取优惠券',coupon_ref=args['coupon_ref'],name=t['name'],platform_code=t['platform_code'],
+                    order_id='coupon:'+t['coupon_id'],impact='确认后领取此券并占用领取额度',
+                    threshold_amount=t['threshold_amount'],discount_amount=t['discount_amount'],currency=t['currency'],
+                    kind=t['kind'],discount_bps=t.get('discount_bps'),cap_amount=t.get('cap_amount'),
+                    valid_days=t['valid_days'],fixed_expires_at=t['fixed_expires_at'])
+        return review,digest({'template':t,'scopes':scopes})
+
+    def dispatch_plan(self,tx,args):
+        self.provider_required('dispatch')
+        order=self.owned_order(tx,args['order_ref'])
+        if order['status'] not in {'paid','pending_receipt'}: raise BusinessError('not_eligible','订单状态不支持催发货')
+        ships=self.order_rows(tx,'shipments',order)
+        if any(s['status'] in {'shipped','in_transit','delivered'} or s['shipped_at'] for s in ships):
+            raise BusinessError('not_eligible','已有发货记录，请查询物流或逐商品核实剩余待发数量')
+        return dict(title='提交催发货请求',order_id=order['order_id'],platform_code=order['platform_code'],
+                    reason=args.get('reason'),impact='确认后登记催单，接收方受理及发货结果仍需核实'),digest({'order':order,'shipments':ships,'args':args})
+
+    def claim_coupon(self,args,request_id,version=None):
         _,cid=unref(args['coupon_ref'],{'coupon_template'})
         with self.store.transaction(write=True) as tx:
             t=tx.one('SELECT * FROM coupon_templates WHERE coupon_id=%s FOR UPDATE',(cid,))
@@ -43,6 +68,8 @@ class WriteService:
             if prior:
                 if prior['action']!='claim_coupon' or prior['arguments_digest']!=digest(args): raise BusinessError('invalid_arguments','请求编号与原操作不一致')
                 return decoded(prior['result'])
+            if version is not None and self.claim_plan(tx,args)[1]!=version:
+                raise BusinessError('state_changed','优惠券规则已变化，请重新确认')
             eligibility=self.claim_eligibility(tx,t)
             scopes=tx.all('SELECT scope_type,scope_id FROM coupon_scopes WHERE coupon_id=%s ORDER BY scope_type,scope_id',(cid,))
             if not scopes or any(s['scope_type'] not in {'all','merchant','product','sku'} for s in scopes): raise BusinessError('insufficient_data','券适用范围不完整')
@@ -58,6 +85,7 @@ class WriteService:
             if t.get('coupon_type')=='newcomer':
                 tx.execute('UPDATE users SET newcomer_coupon_eligible=FALSE WHERE user_id=%s',(self.user,))
             result=decoded(dumps(ok({'coupon_ref':ref('coupon_instance',uid),'status':'available','expires_at':expires})))
+            result.update(request_id=request_id,order_id='coupon:'+cid,platform_code=t['platform_code'],status='available')
             self.record_receipt(tx,request_id,'claim_coupon',args,result)
             return result
     def target_order(self,tx,action,args,lock=False):
@@ -78,7 +106,7 @@ class WriteService:
             review.update(self.sale_assessment(tx,args['kind'],args['items']))
             review['title']='申请仅退款' if args['kind']=='refund_only' else '申请退货退款'
             review['reason']=args['reason']
-            policy=self.policy(tx,args['kind'],order)[0]
+            policy=tx.one('SELECT * FROM business_policy_versions WHERE policy_id=%s AND version=%s',(review['policy_id'],review['policy_version']))
         elif action=='prepare_after_sale_cancel':
             sale,_=self.sale(tx,args['after_sale_id'])
             policy,r=self.policy(tx,'after_sale_cancel',order)
@@ -102,8 +130,14 @@ class WriteService:
                 address=tx.one('SELECT * FROM user_addresses WHERE address_id=%s AND user_id=%s AND deleted_at IS NULL',(args['address_id'],self.user))
                 old=tx.one('SELECT * FROM order_address_snapshots WHERE platform_code=%s AND order_id=%s',(order['platform_code'],order['order_id']))
                 if not address or not old: raise BusinessError('not_found','地址或订单收货快照不存在')
-                extra={'address':json_binary(address),'previous':json_binary(old)}
+                items=self.order_rows(tx,'order_items',order)
+                delivery=self.delivery_for_address(tx,items,address,order['platform_code'])['data']
+                if delivery['currency']!=order['currency'] or money(delivery['shipping_amount'])!=money(order['shipping_amount']):
+                    raise BusinessError('not_eligible','新地址运费与原订单不同，尚不支持自动补退运费',
+                        original_shipping=order['shipping_amount'],new_shipping=delivery['shipping_amount'])
+                extra={'address':json_binary(address),'previous':json_binary(old),'delivery':delivery}
                 review.update(title='修改订单收货地址',address_id=args['address_id'],region=[address[k] for k in ['province_code','city_code','district_code']],impact='仅更新此订单地址，保留变更历史')
+                review.update(shipping_amount=delivery['shipping_amount'],currency=delivery['currency'],delivery_days=delivery['delivery_days'])
             if action=='prepare_order_cancel':
                 self.validate_reservations(tx,order)
                 review.update(title='取消未支付订单',reason=args.get('reason'),impact='取消订单并释放该订单库存与券占用')
@@ -112,6 +146,14 @@ class WriteService:
     def preview(self,action,args):
         if action not in PREPARES: raise BusinessError('unsupported_capability','不支持的业务操作')
         with self.store.transaction() as tx:
+            if action in {'claim_coupon','request_dispatch'}:
+                review,version=(self.claim_plan if action=='claim_coupon' else self.dispatch_plan)(tx,args)
+                review['action']=action
+                target_id=review['order_id']
+                if action=='claim_coupon': review.pop('order_id')
+                sealed=self.cipher.seal(dumps({'action':action,'arguments':args,'user_id':self.user}),'operation:'+self.user)
+                return decoded(dumps({'action':action,'arguments':{'order_id':target_id,'platform_code':review['platform_code'],
+                    'sealed':base64.b64encode(sealed).decode(),'key_version':self.cipher.version},'business_version':version,'review':review}))
             order=self.target_order(tx,action,args); review,version=self.plan(tx,action,args,order)
             private=self.private_review(tx,action,args)
             sealed=self.cipher.seal(dumps({'action':action,'arguments':args,'user_id':self.user,'private_review':private}), 'operation:'+self.user)
@@ -121,6 +163,8 @@ class WriteService:
         body=decoded(self.cipher.open(base64.b64decode(arguments['sealed']),'operation:'+self.user,arguments['key_version']))
         if body['action']!=action or body['user_id']!=self.user: raise BusinessError('invalid_arguments','操作绑定不匹配')
         args=body['arguments']
+        if action=='claim_coupon': return self.claim_coupon(args,oid,version=version)
+        if action=='request_dispatch': return self.request_dispatch(args,oid,version=version,enqueue_only=True)
         with self.store.transaction(write=True) as tx:
             order=self.target_order(tx,action,args,lock=True)
             prior=self.receipt(tx,oid)

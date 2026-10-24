@@ -13,6 +13,7 @@ class BusinessOperations:
         try:
             prepared=service(record.user_id,self.scope).preview(action,arguments)
             for key in ('order_id','platform_code'):
+                if key=='order_id' and action=='claim_coupon': continue
                 if record.details.get(key) and record.details[key] != prepared['arguments'][key]:
                     raise BusinessError('not_eligible','办理对象与当前事项不一致，请先澄清')
             return prepared

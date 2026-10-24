@@ -26,7 +26,22 @@ class Rules(BaseModel):
     allow_exchange_price_difference: bool=False
 
 class RuleService:
-    def policy(self,tx,action,order=None,platform=None):
+    def item_delivery_times(self,tx,order,items):
+        """Original fulfilment only; unrelated lines and replacement parcels cannot extend a window."""
+        times={}
+        for item in items:
+            parcels=tx.all('''SELECT s.shipment_id,s.delivered_at,s.status,i.quantity FROM shipment_items i
+                JOIN shipments s ON s.shipment_id=i.shipment_id
+                WHERE i.order_item_id=%s AND s.platform_code=%s AND s.order_id=%s
+                AND s.shipment_kind='original' AND s.status<>'cancelled' ''',
+                (item['order_item_id'],order['platform_code'],order['order_id']))
+            if (not parcels or sum(p['quantity'] for p in parcels)!=item['quantity']
+                    or any(p['status']!='delivered' or not p['delivered_at'] for p in parcels)):
+                raise BusinessError('insufficient_data','申请商品缺少完整的原始包裹签收记录')
+            # With no per-unit parcel selection, use the earliest delivery conservatively.
+            times[item['order_item_id']]=min(at(p['delivered_at']) for p in parcels)
+        return times
+    def policy(self,tx,action,order=None,platform=None,items=None):
         platform=platform or (order or {}).get('platform_code') or self.sales_platform(tx)
         if not platform: raise BusinessError('insufficient_data','销售平台尚未核实')
         rows=tx.all("SELECT * FROM business_policy_versions WHERE action=%s AND platform_code=%s AND status='active' ORDER BY version DESC"+(' FOR UPDATE' if getattr(tx,'write',False) else ''),(action,platform))
@@ -38,9 +53,14 @@ class RuleService:
             instant=utcnow()
             if rule.time_basis=='order_created': instant=at((order or {}).get('created_at'))
             if rule.time_basis=='delivered':
-                ships=self.order_rows(tx,'shipments',order) if order else []
-                if not ships or any(not x['delivered_at'] for x in ships): instant=None
-                else: instant=max(at(x['delivered_at']) for x in ships)
+                if items:
+                    instants=list(self.item_delivery_times(tx,order,items).values())
+                    if not all(at(row['effective_from'])<=v and (not row['effective_until'] or v<at(row['effective_until'])) for v in instants):
+                        continue
+                    instant=instants[0]
+                else:
+                    ships=[s for s in self.order_rows(tx,'shipments',order) if s.get('shipment_kind')=='original' and s['status']!='cancelled'] if order else []
+                    instant=max(at(x['delivered_at']) for x in ships) if ships and all(x['delivered_at'] for x in ships) else None
             if instant is None: raise BusinessError('insufficient_data','政策适用时间缺失')
             if at(row['effective_from'])<=instant and (not row['effective_until'] or instant<at(row['effective_until'])):
                 eligible.append((row,rule))
@@ -77,13 +97,13 @@ class RuleService:
             owned=self.owned_order(tx,ref('order',row['platform_code'],row['order_id']))
             if order and (owned['platform_code'],owned['order_id'])!=(order['platform_code'],order['order_id']): raise BusinessError('invalid_arguments','售后明细须属于同一订单')
             order=owned; rows.append((row,item['quantity']))
-        p,r=self.policy(tx,kind,order)
+        p,r=self.policy(tx,kind,order,items=[row for row,_ in rows])
         if order['status'] not in r.allowed_statuses and self.order_base_status(order) not in r.allowed_statuses: raise BusinessError('not_eligible','订单状态不支持该售后方式')
         if r.requires_reason_review: raise BusinessError('insufficient_data','该规则需要原因或质检审核，需人工核实')
         if r.window_days is not None:
-            ships=self.order_rows(tx,'shipments',order)
-            if not ships or any(not x['delivered_at'] for x in ships): raise BusinessError('insufficient_data','缺少完整签收时间，无法判断售后期限')
-            if utcnow()>max(at(x['delivered_at']) for x in ships)+timedelta(days=r.window_days): raise BusinessError('not_eligible','超出售后申请期限')
+            times=self.item_delivery_times(tx,order,[row for row,_ in rows])
+            if any(utcnow()>t+timedelta(days=r.window_days) for t in times.values()):
+                raise BusinessError('not_eligible','申请商品超出售后申请期限；同一商品分包时按最早签收时间校验')
         all_sales=self.order_rows(tx,'after_sale_requests',order)
         if any(x['status'] not in {'pending_review','approved','processing','completed','cancelled','rejected','closed'} for x in all_sales): raise BusinessError('insufficient_data','存在未知售后状态')
         allocations=[]
@@ -285,6 +305,9 @@ class RuleService:
             'shipping_amount':None,'payable_amount':None,'promotions':applied,'coupons':coupon_results,'items':lines,'policy_id':p['policy_id'],'policy_version':p['version']},limitations=['仅指定商品和用券组合的商品金额估算，运费未知'])
     def allocate_discount(self,lines,amount):
         total=sum((x['amount'] for x in lines),Decimal(0)); cumulative=Decimal(0); allocated=Decimal(0)
+        if amount<0 or amount>total or any(x['amount']<0 for x in lines):
+            raise BusinessError('insufficient_data','优惠分摊金额超出商品金额')
+        if amount==0: return
         for line in sorted(lines,key=lambda x:x['sku_id']):
             cumulative+=line['amount']; target=(amount*cumulative/total).quantize(Decimal('.01'),rounding=ROUND_HALF_UP)
             line['amount']-=target-allocated; allocated=target

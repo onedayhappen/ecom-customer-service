@@ -15,9 +15,13 @@ class ExtendedService:
 
     def quote_delivery(self,tx,**args):
         address=self.address(tx,args['address_id']); platform=self.sales_platform(tx)
+        return self.delivery_for_address(tx,args['items'],address,platform)
+
+    def delivery_for_address(self,tx,items,address,platform):
         if not platform: raise BusinessError('insufficient_data','销售平台未明确')
+        if not items: raise BusinessError('insufficient_data','缺少待配送商品')
         groups={}; merchant=None; currency=None; merged={}
-        for item in args['items']: merged[item['sku_id']]=merged.get(item['sku_id'],0)+item['quantity']
+        for item in items: merged[item['sku_id']]=merged.get(item['sku_id'],0)+item['quantity']
         for sid,qty in sorted(merged.items()):
             if qty>999: raise BusinessError('invalid_arguments','合并后数量超过上限')
             sku=self.sku(tx,sid)
@@ -72,7 +76,7 @@ class ExtendedService:
 
     def price_protection(self,tx,item_id):
         item,order=self.item_order(tx,item_id)
-        policy,r=self.policy(tx,'price_protection',order)
+        policy,r=self.policy(tx,'price_protection',order,items=[item])
         if order['status'] not in r.allowed_statuses and self.order_base_status(order) not in r.allowed_statuses: raise BusinessError('not_eligible','订单状态不符合价保规则')
         if r.requires_reason_review: raise BusinessError('insufficient_data','价保规则需要人工审核')
         benefit=tx.one('SELECT * FROM order_item_benefits WHERE order_item_id=%s',(item_id,))

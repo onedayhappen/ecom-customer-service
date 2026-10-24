@@ -24,23 +24,13 @@ def invoke(name,arguments):
         commerce=service()
         if tool.effect=='quote':
             return commerce.quote_checkout(args)
-        if tool.effect=='prepare':
+        if tool.effect in {'prepare','claim','dispatch'}:
             from app.tasks.operations import TaskOperations
             result=TaskOperations(ctx.runs.store,ctx.runs.user,scope=ctx.runs.candidates.scope).prepare(
                 ctx.request.session_id,ctx.record.task_id,ctx.record.version,name,
                 arguments=args,fence=(ctx.request,ctx.payload),timeout=ctx.call_timeout())
             ctx.operation_id=result['operation_id']
             return ok(dict(result,next_state='needs_confirmation'))
-        if tool.effect in {'claim','dispatch'}:
-            from app.memory.task_context import task_history
-            history=task_history(ctx.runs,ctx.record)
-            source=next((s['text'] for s in history['sources'] if s['session_id']==ctx.request.source.session_id and s['sequence']==ctx.request.source.sequence),'')
-            # This direct write requires an explicit source-message command, not a generated task goal.
-            pattern=r'(帮我|给我|我要|我想|请).{0,12}(领|领取).{0,20}券|^(领券|领取这张券)[。！!]*$' if tool.effect=='claim' else r'(帮我|给我|我要|我想|请).{0,12}催|^(催单|催发货)[。！!]*$'
-            if not re.search(pattern,source) or re.search(r'不要|别领|不领|别催|不催|能否|能不能|是否|[?？]',source):
-                raise BusinessError('not_eligible','需要用户明确要求办理此操作')
-            request_id=tool.effect+':'+digest([ctx.record.task_id,ctx.record.version,ctx.request.source.model_dump(),args])
-            return commerce.claim_coupon(args,request_id) if tool.effect=='claim' else commerce.request_dispatch(args,request_id)
         return commerce.read(name,args)
     except ValidationError:
         return failure(BusinessError('invalid_arguments','参数类型、范围或必填字段不正确'))

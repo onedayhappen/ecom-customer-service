@@ -29,6 +29,30 @@ def test_mcp_only_exposes_read_tools():
     assert 'prepare_invoice' not in {t.name for t in tools}
     assert not asyncio.run(call_business_tool('claim_coupon',{}))['ok']
 
+
+def test_prepared_claim_is_not_rendered_as_claimed():
+    from app.tasks.tool_facts import render
+    lines=render('claim_coupon',{'success':True,'data':{'next_state':'needs_confirmation'}})
+    assert '尚未执行' in ''.join(lines) and '已领取' not in ''.join(lines)
+
+
+def test_dispatch_task_confirmation_queues_once(store,business):
+    from app.services.commerce.providers import provider_factory
+    from tests.test_extended_tools import Provider
+    provider=Provider()
+    rec,source=task(store,'s',goal='这单催一下发货',details={'order_id':'paid','platform_code':'shop'})
+    client=Client(response(calls=[('request_dispatch',{'order_ref':ref('order','shop','paid')})]))
+    with provider_factory(lambda _:provider):
+        out=engine(client).execute_task(store,'alice',request(rec,source))
+        assert out['state']=='needs_confirmation'
+        with business.store.transaction() as tx: assert tx.one('SELECT COUNT(*) n FROM commerce_provider_requests')['n']==0
+        operations=TaskOperations(store,'alice'); card=operations.list('s')[0]
+        result=operations.confirm('s',card['operation_id'],card['confirmation_token'])
+        assert result['status']=='succeeded',result
+        assert result['result']['status']=='queued'
+        assert operations.confirm('s',card['operation_id'],card['confirmation_token'])==result
+        assert not provider.calls
+
 def test_question_stops_same_turn_before_further_calls(store):
     rec,source=task(store,'s',goal='帮我查询订单')
     client=Client(response(calls=[('ask_user',{'question':'需要查询哪一笔订单？'}),('get_my_profile',{})]))
@@ -66,14 +90,19 @@ def test_prepare_confirm_and_repeat_via_real_adapter(store,business):
     with business.store.transaction() as tx:
         assert tx.one('SELECT COUNT(*) AS n FROM after_sale_requests')['n']==1
 
-def test_claim_requires_source_command_not_model_goal(store,business):
-    rec,source=task(store,'s',goal='有什么券可以领取',details={'platform_code':'shop'})
-    client=Client(response(calls=[('claim_coupon',{'coupon_ref':ref('coupon_template','c')})]),response('请明确是否领取。'))
-    out=engine(client).execute_task(store,'alice',request(rec,source))
-    with business.store.transaction() as tx: assert tx.one('SELECT COUNT(*) AS n FROM user_coupons')['n']==0
-    rec,source=task(store,'s',goal='请帮我领取这张券',details={'platform_code':'shop'})
+@pytest.mark.parametrize('text',['这张券帮我领一下','有什么券可以领取','如果我说“请帮我领取这张券”，会发生什么'])
+def test_claim_always_requires_bound_confirmation(store,business,text):
+    rec,source=task(store,'s',goal=text,details={'platform_code':'shop'})
     client=Client(response(calls=[('claim_coupon',{'coupon_ref':ref('coupon_template','c')})]),response('优惠券已领取。'))
     out=engine(client).execute_task(store,'alice',request(rec,source))
+    assert out['state']=='needs_confirmation'
+    with business.store.transaction() as tx: assert tx.one('SELECT COUNT(*) AS n FROM user_coupons')['n']==0
+    operations=TaskOperations(store,'alice')
+    card=operations.list('s')[0]
+    assert card['review']['name']=='满十减五'
+    result=operations.confirm('s',card['operation_id'],card['confirmation_token'])
+    assert result['status']=='succeeded',result
+    assert operations.confirm('s',card['operation_id'],card['confirmation_token'])==result
     with business.store.transaction() as tx: assert tx.one('SELECT COUNT(*) AS n FROM user_coupons')['n']==1
 
 def test_invoice_card_is_private_and_prepare_replay_stays_masked(store,business):

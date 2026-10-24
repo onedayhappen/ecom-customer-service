@@ -21,6 +21,11 @@ LABELS = {
     'purchase_items':'购买明细','refund_summary':'退款汇总','return_events':'退件轨迹','return_events_total':'退件轨迹数',
     'recorded_replacement_shipped':'已记录换货补发数量','replacement':'换货补发关联',
     'return_authorization':'退货授权',
+    'return_shipments':'寄回包裹','replacement_shipments':'换货补发包裹',
+    'return_shipments_total':'寄回包裹总数','replacement_shipments_total':'补发包裹总数',
+    'return_shipments_truncated':'寄回包裹仅显示部分','replacement_shipments_truncated':'补发包裹仅显示部分',
+    'events_truncated':'轨迹仅显示部分','items_truncated':'明细仅显示部分','merchant_name':'商家名称',
+    'unapplied_conditions':'未应用的筛选条件',
     'username':'用户名','profile':'个人资料','display_name':'昵称','contacts':'联系方式',
     'contact_type':'联系方式类型','value':'内容','verified_at':'验证时间','is_default':'默认地址',
     'recipient':'收件人','phone':'电话','detail':'详细地址','province_code':'省编码','city_code':'市编码','district_code':'区编码',
@@ -74,6 +79,8 @@ STATES={'pending_payment':'待支付','paid':'已支付','fulfilling':'履约中
 def render(name,result):
     if not result.get('success'): return []
     data=result.get('data',{})
+    if isinstance(data,dict) and data.get('next_state')=='needs_confirmation':
+        return ['已准备办理内容，请查看确认卡片；尚未执行。']
     if name=='read_task_context': data={'handoffs':data.get('handoffs',[])}
     if not isinstance(data,dict): return []
     lines=[]; truncated=False
@@ -95,7 +102,8 @@ def render(name,result):
             if field in {'status','source_status','eligibility','invoice_type','kind'}: text=STATES.get(str(value),text)
             lines.append(path+'：'+text)
     walk(data)
-    if name=='claim_coupon': lines.insert(0,'已领取指定优惠券。')
+    if name=='claim_coupon' and data.get('status')=='available' and data.get('coupon_ref'):
+        lines.insert(0,'已领取指定优惠券。')
     lines.extend('说明：'+label(v,300) for v in result.get('limitations',[])[:5])
     if result.get('next_cursor') or truncated: lines.append('以上为部分结果，可以继续查询明细或下一页。')
     return lines

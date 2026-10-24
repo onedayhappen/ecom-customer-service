@@ -1,4 +1,4 @@
-"""Explicit registry for the 38 customer-service tools."""
+"""Explicit registry for the 48 customer-service tools."""
 import importlib
 from app.tools.catalog import TOOLS
 from app.services.commerce.common import BusinessError,dumps,failure

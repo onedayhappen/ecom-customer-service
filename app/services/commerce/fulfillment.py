@@ -22,21 +22,27 @@ class FulfillmentService:
         else:
             tx.execute('UPDATE service_inventory_reservations SET status=%s,updated_at=%s WHERE work_order_id=%s',('consumed' if consumed else 'released',utcnow(),wid))
 
-    def request_dispatch(self,args,request_id):
+    def request_dispatch(self,args,request_id,version=None,enqueue_only=False):
         self.provider_required('dispatch')
         with self.store.transaction(write=True) as tx:
             order=self.owned_order(tx,args['order_ref'],lock=True)
             prior=self.receipt(tx,request_id)
             if prior:
                 if prior['action']!='request_dispatch' or prior['arguments_digest']!=digest(args): raise BusinessError('invalid_arguments','催单请求编号冲突')
+                if enqueue_only: return decoded(prior['result'])
             else:
+                if version is not None and self.dispatch_plan(tx,args)[1]!=version:
+                    raise BusinessError('state_changed','订单状态已变化，请重新确认催单')
                 if order['status'] not in {'paid','pending_receipt'}: raise BusinessError('not_eligible','订单状态不支持催发货')
                 # Pending receipt also includes already dispatched orders. Check
                 # parcel evidence before asking the merchant to dispatch again.
                 if any(s['status'] in {'shipped','in_transit','delivered'} or s['shipped_at'] for s in self.order_rows(tx,'shipments',order)):
                     raise BusinessError('not_eligible','已有发货记录，请查询物流或逐商品核实剩余待发数量')
                 self.queue_provider(tx,request_id,'dispatch',order['order_id'],order,{'platform_code':order['platform_code'],'order_id':order['order_id'],'reason':args.get('reason')})
-                self.record_receipt(tx,request_id,'request_dispatch',args,{'status':'queued','request_id':request_id})
+                queued={**ok({'status':'queued','request_id':request_id}), 'status':'queued','request_id':request_id,
+                        'order_id':order['order_id'],'platform_code':order['platform_code']}
+                self.record_receipt(tx,request_id,'request_dispatch',args,queued)
+                if enqueue_only: return queued
         self.process_provider_request(request_id)
         with self.store.transaction() as tx:
             row=tx.one('SELECT status,provider_reference,result FROM commerce_provider_requests WHERE request_id=%s AND user_id=%s',(request_id,self.user))

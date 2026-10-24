@@ -91,7 +91,7 @@ class AssessOrder(Order):
     action: Literal['cancel_order','change_address','invoice'] = Field(description='只读评估的操作类型')
 
 class Subject(Page):
-    subject_ref: Id | None = Field(None, description='已查询的商家、商品、SKU 或订单引用，限定范围')
+    subject_ref: Id | None = Field(None, description='已查询的商家、商品或 SKU 引用，限定范围')
 
 class Wallet(Page):
     status: Literal['all','available','reserved','used','expired','invalid','unknown'] = Field('all', description='本人持券状态')

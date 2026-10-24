@@ -98,14 +98,23 @@ class BaseService:
     def coupon_scope_check(self,row):
         # A platform coupon has no merchant restriction.
         self.scope_check({**row,'merchant_id':row.get('merchant_id') or getattr(self.scope,'store_id',None)})
+    def default_platform(self,tx):
+        # Resolve from trusted business records, not the legacy routing default.
+        rows=tx.all('''SELECT platform_code FROM orders WHERE user_id=%s
+            UNION SELECT platform_code FROM user_platform_accounts WHERE user_id=%s AND status='active' AND verified_at IS NOT NULL
+            UNION SELECT platform_code FROM memberships WHERE user_id=%s AND status='active' LIMIT 2''',(self.user,self.user,self.user))
+        if rows: return rows[0]['platform_code'] if len(rows)==1 else None
+        rows=tx.all("SELECT DISTINCT platform_code FROM business_policy_versions WHERE status='active' AND effective_from<=%s AND (effective_until IS NULL OR effective_until>%s) LIMIT 2",(utcnow(),utcnow()))
+        return rows[0]['platform_code'] if len(rows)==1 else None
     def sales_platform(self,tx):
         platform=getattr(self.scope,'platform_code',None)
         if platform: return platform
         from app.tasks.runtime import current_task
         ctx=current_task()
-        if not ctx or ctx.runs.user!=self.user: return None
+        if not ctx: return self.default_platform(tx)
+        if ctx.runs.user!=self.user: return None
         candidate=ctx.record.details.get('platform_code')
-        if not candidate: return None
+        if not candidate: return self.default_platform(tx)
         owned=tx.one('SELECT order_id FROM orders WHERE user_id=%s AND platform_code=%s LIMIT 1',(self.user,candidate))
         bound=tx.one("SELECT id FROM user_platform_accounts WHERE user_id=%s AND platform_code=%s AND status='active' AND verified_at IS NOT NULL LIMIT 1",(self.user,candidate))
         return candidate if owned or bound else None
@@ -168,6 +177,34 @@ class BaseService:
             if not row: raise BusinessError('not_found','商家不存在')
             if getattr(self.scope,'store_id',None) and row['merchant_id']!=self.scope.store_id: raise BusinessError('not_found','商家不存在')
         return {**row,'platform_code':self.sales_platform(tx)}
+    def sql_page(self,tx,query,values,tool,args,*,keys,size=20,data=None,limitations=()):
+        """Bounded keyset pagination; query/keys are internal SQL, never model input."""
+        binding=digest([self.user,tool,{k:v for k,v in args.items() if k!='cursor'},
+                        getattr(self.scope,'platform_code',None),getattr(self.scope,'store_id',None)])
+        token=args.get('cursor'); condition=''; parameters=list(values)
+        if token:
+            try:
+                raw,sig=token.rsplit('.',1)
+                if not self.secret or not hmac.compare_digest(sig,hmac.new(self.secret.encode(),raw.encode(),'sha256').hexdigest()): raise ValueError()
+                info=json.loads(base64.urlsafe_b64decode(raw))
+                if info['binding']!=binding or info['expires']<time.time() or info['keys']!=list(keys): raise ValueError()
+                last=info['last']
+                if len(last)!=len(keys): raise ValueError()
+                parameters += [at(v['value']) if v['type']=='datetime' else v['value'] for v in last]
+                condition=' WHERE ('+','.join(keys)+') > ('+','.join(['%s']*len(keys))+')' if len(keys)>1 else ' WHERE '+keys[0]+' > %s'
+            except Exception: raise BusinessError('invalid_cursor','分页游标无效或已过期') from None
+        total=tx.one('SELECT COUNT(*) AS n FROM ('+query+') page_count',tuple(values))['n']
+        rows=tx.all('SELECT * FROM ('+query+') page_rows'+condition+' ORDER BY '+','.join(keys)+' LIMIT %s',tuple(parameters+[size+1]))
+        more=len(rows)>size; rows=rows[:size]; next_token=None
+        if more:
+            if not self.secret: raise BusinessError('temporarily_unavailable','分页签名未配置')
+            last=[{'type':'datetime' if isinstance(rows[-1][k],datetime) else 'value','value':rows[-1][k]} for k in keys]
+            raw=base64.urlsafe_b64encode(dumps(dict(binding=binding,keys=list(keys),last=last,expires=int(time.time())+900)).encode()).decode()
+            next_token=raw+'.'+hmac.new(self.secret.encode(),raw.encode(),'sha256').hexdigest()
+        return ok({**(data or {}),'items':rows,'total':total,'has_more':more,
+            'applied_conditions':{k:v for k,v in args.items() if k!='cursor'}},next_cursor=next_token,
+            limitations=[*limitations,'实时分页：各页独立读取，数据变更后可从第一页重新查询'])
+
     def page(self,rows,tool,args, *, data=None,limitations=(),size=20):
         # A signed snapshot digest prevents skips/duplicates when the collection changes.
         if len(rows)>10000: raise BusinessError('insufficient_data','结果过多，请缩小查询范围')

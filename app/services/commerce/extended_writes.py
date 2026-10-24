@@ -78,7 +78,8 @@ class ExtendedWriteService:
             private={'invoice_title':args['title'],'tax_number':args.get('tax_number')}
         else:
             self.provider_required(kind)
-            policy,r=self.policy(tx,kind,order)
+            item,_=self.item_order(tx,args['order_item_id'])
+            policy,r=self.policy(tx,kind,order,items=[item])
             if kind=='price_protection':
                 assessment=self.price_protection(tx,args['order_item_id']); review.update(assessment,amount_kind='price_protection'); extra={'assessment':assessment,'policy':policy}
             else:
