@@ -1,4 +1,4 @@
-"""policy tool entry points. Business logic lives in app.services.commerce."""
+"""Typed tool adapters; business logic lives in commerce services."""
 from app.tools.dispatch import bind
 
 search_policies = bind('search_policies')

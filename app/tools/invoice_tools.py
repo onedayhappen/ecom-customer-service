@@ -1,6 +1,7 @@
-"""invoice tool entry points. Business logic lives in app.services.commerce."""
+"""Typed tool adapters; business logic lives in commerce services."""
 from app.tools.dispatch import bind
 
-list_invoice_requests = bind('list_invoice_requests')
-get_invoice_request = bind('get_invoice_request')
+get_invoices = bind('get_invoices')
 prepare_invoice = bind('prepare_invoice')
+prepare_invoice_reissue = bind('prepare_invoice_reissue')
+get_invoice_document = bind('get_invoice_document')

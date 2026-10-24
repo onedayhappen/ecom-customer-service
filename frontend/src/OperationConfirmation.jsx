@@ -11,10 +11,14 @@ export default function OperationConfirmation({ operation, enabled = false, busy
         ? `人工核实：${operation.status === 'succeeded' ? '操作成功' : '操作失败'}`
         : statuses[operation.status] || '状态待核实'}</strong>
       <p>订单 {review.order_id}{review.is_demo ? ' · 演示数据' : ''}</p>
-      <ul>{(review.items || []).map((item, index) => <li key={index}>{item.name} × {item.quantity}</li>)}</ul>
+      <ul>{(review.items || []).map((item, index) => <li key={index}>{item.name || item.sku_id} × {item.quantity}</li>)}</ul>
       {review.quantity != null && <p>共 {review.quantity} 件</p>}
       {review.reason && <p>原因：{review.reason}</p>}
-      {money !== null && <p>{review.amount_kind === 'refund_estimate' ? '申请退款金额（待审核）' : review.amount_kind === 'order_reference' ? '订单金额（参考，非承诺退款金额）' : '开票参考金额'}：{review.currency || 'CNY'} {money}</p>}
+      {money !== null && review.amount_kind !== 'service_request' && <p>{{refund_estimate:'申请退款金额（待审核）',order_reference:'订单金额（参考，非承诺退款金额）',purchase_total:'订单应付金额（含运费）',price_protection:'申请价保金额（待审核）'}[review.amount_kind] || '开票参考金额'}：{review.currency || 'CNY'} {money}</p>}
+      {review.shipping_amount != null && <p>其中运费：{review.currency} {review.shipping_amount}</p>}
+      {review.replacement_sku_id && <p>换货规格：{review.replacement_sku_id}；价差：{review.currency} {review.price_difference}</p>}
+      {review.tracking_number && <p>退货运单：{review.carrier_code} / {review.tracking_number}</p>}
+      {review.issued_invoice_id && <p>原正式发票编号：{review.issued_invoice_id}</p>}
       {review.invoice_title && <p>抬头：{review.invoice_title}；类型：{review.invoice_type === 'company' ? '企业' : '个人'}
         {review.tax_number ? `；税号：${review.tax_number}` : ''}</p>}
       {review.address && <p>目标收货地址：{review.address.region?.join(' / ')} {review.address.detail}；

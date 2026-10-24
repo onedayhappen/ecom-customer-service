@@ -48,6 +48,22 @@ def binding_for(tx, runs, record):
     if evidence.get('result', {}).get('success') is not True:
         raise ExternalEvidenceError('外部等待来源尚未核实')
     details = record.details
+    # New contracts bind follow-up to the actual confirmed receipt, including
+    # cases where the model did not copy the selected order into task details.
+    if waiting.get('operation_id'):
+        op=tx.one('''SELECT p.payload,o.tool,o.status,o.result FROM task_operation_proposals p
+            JOIN support_operations o ON o.operation_id=p.operation_id
+            WHERE p.user_id=? AND p.task_id=? AND p.operation_id=?''',(runs.user,record.task_id,waiting['operation_id']))
+        if op and op['tool'] in {'prepare_after_sale','prepare_invoice','prepare_exchange','prepare_repair','prepare_price_protection','prepare_invoice_reissue'}:
+            receipt=json.loads(op['result'] or '{}'); prepared=json.loads(op['payload'])['prepared']
+            if op['status']!='succeeded' or receipt.get('success') is not True or receipt.get('request_id')!=waiting['operation_id']:
+                raise ExternalEvidenceError('业务操作尚未确认登记')
+            if any(details.get(k) and details[k]!=prepared['arguments'][k] for k in ('order_id','platform_code')):
+                raise ExternalEvidenceError('事项对象已改变')
+            kind='commerce_invoice' if receipt.get('invoice_id') else 'commerce_sale'
+            return dict(kind=kind,order_id=prepared['arguments']['order_id'],platform_code=prepared['arguments']['platform_code'],
+                operation_id=waiting['operation_id'],after_sale_id=receipt.get('after_sale_id'),invoice_id=receipt.get('invoice_id'),
+                completion='submission' if only_submission_requested(tx,record) else 'commerce_result')
     if not details.get('order_id'):
         raise ExternalEvidenceError('外部等待没有明确订单')
     binding = {k: details[k] for k in ('order_id', 'platform_code', 'store_id', 'item_id', 'item_name', 'sku_id', 'product_id',
@@ -305,7 +321,10 @@ class ExternalProgress:
             control = self.store._control(tx, lease['session_id'], user)
             self.store._event(tx, control, 'message', 'bot', dict(role='assistant', content=content,
                 task_id=tid, task_version=after.version, external_event_id=value['event_id'], evidence_ids=[eid]), key=eid)
-            if binding['completion'] == 'manual' and value['phase'] in {'delivered', 'issued_local'}:
+            if value['phase']=='business_rejected':
+                tx.execute("UPDATE task_external_waits SET state='human' WHERE task_id=?", (tid,))
+                self.store._handoff(tx, control, 'business_request_rejected', 'system')
+            elif binding['completion'] == 'manual' and value['phase'] in {'delivered', 'issued_local'}:
                 tx.execute("UPDATE task_external_waits SET state='human' WHERE task_id=?", (tid,))
                 self.store._handoff(tx, control, 'external_scope_or_dispute', 'system')
             elif not completed and value.get('deadline') and timestamp(now()) >= value['deadline']:

@@ -133,6 +133,19 @@ services:
       backend:
         condition: service_healthy
 
+  commerce-worker:
+    image: ecom-customer-service-backend:latest
+    env_file: [.env]
+    environment:
+      ORDER_DB_DSN: mysql://ecom:ecom_dev_password@mysql:3306/ecom_agent_orders
+    command: ["python", "-m", "scripts.commerce_worker"]
+    volumes:
+      - ./.docker-data/app:/app/data
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+
   dispatcher:
     image: ecom-customer-service-backend:latest
     env_file: [.env]

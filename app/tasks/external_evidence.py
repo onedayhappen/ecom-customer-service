@@ -133,6 +133,7 @@ def finished(binding, value):
         return value['phase'] in {'submitted', 'approved', 'awaiting_return', 'return_shipped',
                                   'warehouse_received', 'refunding', 'funds_settled'}
     return (goal == 'refund_settled' and value['phase'] == 'funds_settled'
+            or goal == 'commerce_result' and value['phase'] in {'service_completed','invoice_issued'}
             or goal == 'warehouse_received' and value['phase'] == 'warehouse_received'
             or goal == 'tracking_delivered' and value['phase'] == 'delivered'
             or goal == 'local_invoice' and value['phase'] == 'issued_local')
@@ -140,4 +141,47 @@ def finished(binding, value):
 
 class BusinessProgress:
     def read(self, user, binding):
-        raise ExternalEvidenceError('业务工具已移除，暂时无法查询外部进度')
+        from app.services.commerce import service
+        from app.services.commerce.common import ref,decoded
+        svc=service(user)
+        if binding.get('kind') not in {'commerce_sale','commerce_invoice'}:
+            raise ExternalEvidenceError('历史业务接口不支持该进度查询')
+        with svc.store.transaction() as tx:
+            receipt=svc.receipt(tx,binding['operation_id'])
+            value=decoded(receipt['result']) if receipt else {}
+            key='after_sale_id' if binding['kind']=='commerce_sale' else 'invoice_id'
+            if not value.get(key) or any(value.get(k)!=binding.get(k) for k in (key,'order_id','platform_code')):
+                raise ExternalEvidenceError('业务回执与跟进对象不符')
+        phase,rank,content='submitted',10,'业务申请已登记，处理结果仍待核实。'
+        if binding['kind']=='commerce_invoice':
+            result=svc.read('get_invoices',dict(target_ref=ref('invoice',binding['invoice_id'])))
+            row=result['data']['items'][0]
+            if row['status']=='rejected': phase,rank,content='business_rejected',90,'开票申请被处理方拒绝，需要人工继续核实。'
+            elif row['status']=='issued' and any(i['status']=='issued' for i in row['issued_invoices']):
+                phase,rank,content='invoice_issued',60,'已记录正式发票，可查询发票文件。'
+            elif row['status']=='processing': phase,rank,content='approved',20,'开票申请正在处理，尚未取得正式发票。'
+        else:
+            result=svc.read('get_after_sale_status',dict(after_sale_id=binding['after_sale_id']))
+            data=result['data']; sale=data['after_sale']; work=data.get('work_order') or {}
+            if sale['status'] in {'rejected','cancelled','closed'}:
+                phase,rank,content='business_rejected',90,'售后申请已拒绝、撤回或关闭，需要核实后续处理。'
+            elif sale['kind']=='repair' and sale['status']=='completed' and work.get('provider_reference'):
+                phase,rank,content='service_completed',60,'维修处理方已报告工单完成，可查询工单详情。'
+            elif sale['kind']=='exchange' and sale['status']=='completed' and work.get('provider_reference'):
+                sid=work.get('details',{}).get('replacement_shipment_id')
+                if not sid: raise ExternalEvidenceError('缺少换货补发关联')
+                with svc.store.transaction() as tx:
+                    order=svc.owned_order(tx,ref('order',binding['platform_code'],binding['order_id']))
+                    shipment=next((s for s in svc.order_rows(tx,'shipments',order) if s['shipment_id']==sid),None)
+                if shipment and shipment['status']=='delivered' and shipment['delivered_at']:
+                    phase,rank,content='service_completed',60,'换货补发包裹已有签收记录。'
+                else: phase,rank,content='return_shipped',50,'换货处理方已报告补发，签收结果仍待核实。'
+            elif sale['status']=='completed':
+                phase,rank,content='refunding',50,'售后系统记录处理完成；渠道退款记录可查询，银行卡入账尚未核实。'
+            elif data.get('return_shipment'):
+                phase,rank,content='return_shipped',30,'已登记退货运单，可查询逆向物流记录。'
+            elif data.get('return_authorization'):
+                phase,rank,content='awaiting_return',25,'已取得退货授权，请查询退货地址、期限和材料要求。'
+            elif sale['status'] in {'approved','processing'}:
+                phase,rank,content='approved',20,'售后申请正在处理，最终结果仍待核实。'
+        return observation(binding,phase=phase,rank=rank,content=content,source='mysql',observed_at=result['observed_at'],reference=binding[key])

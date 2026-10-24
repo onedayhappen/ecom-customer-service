@@ -5,8 +5,12 @@ from app.services.commerce.common import BaseService
 from app.services.commerce.reads import ReadService
 from app.services.commerce.rules import RuleService
 from app.services.commerce.writes import WriteService
+from app.services.commerce.queries import QueryService
+from app.services.commerce.extensions import ExtendedService
+from app.services.commerce.extended_writes import ExtendedWriteService
+from app.services.commerce.fulfillment import FulfillmentService
 
-class CommerceService(BaseService, ReadService, RuleService, WriteService):
+class CommerceService(FulfillmentService, ExtendedWriteService, ExtendedService, QueryService, BaseService, ReadService, RuleService, WriteService):
     def read(self,name,args):
         with self.store.transaction() as tx:
             result=getattr(self,name)(tx,**args)
@@ -15,6 +19,18 @@ class CommerceService(BaseService, ReadService, RuleService, WriteService):
             result['data_as_of']=None
             result['limitations'].append('读取时刻不代表上游同步时刻；数据同步时间未记录')
             result['completeness']='partial'
+            data=result.get('data',{})
+            result['status']='no_match' if (data.get('total')==0 and not data.get('after_sale')) or ('membership' in data and data['membership'] is None and not data.get('vip',{}).get('records') and not data.get('store_memberships')) else 'ok'
+            missing=[]
+            def visit(value,path=''):
+                if len(missing)>=100: return
+                if value is None: missing.append(path)
+                elif isinstance(value,dict):
+                    for key,child in value.items(): visit(child,path+'.'+key if path else key)
+                elif isinstance(value,list):
+                    for i,child in enumerate(value): visit(child,f'{path}[{i}]')
+            visit(data)
+            result['missing_fields']=missing
             return result
 
 _factory=ContextVar('commerce_factory',default=None)

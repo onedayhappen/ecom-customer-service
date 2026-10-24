@@ -62,7 +62,7 @@ def failure(error):
     legacy={'temporarily_unavailable':'transient_failure','result_unknown':'transient_failure',
         'state_changed':'confirmation_invalid','not_eligible':'business_rejection',
         'insufficient_data':'evidence_unavailable','unsupported_capability':'evidence_unavailable'}
-    return {'ok':False,'success':False,'error':{'code':error.code,'message':error.message,**error.details},
+    return {'ok':False,'success':False,'status':'no_match' if error.code=='not_found' else 'unavailable','error':{'code':error.code,'message':error.message,**error.details},
         'error_code':legacy.get(error.code,'validation_error')}
 
 class Cipher:
@@ -120,6 +120,19 @@ class BaseService:
         if not row: raise BusinessError('not_found','售后申请不存在')
         order=self.owned_order(tx,ref('order',row['platform_code'],row['order_id']),lock=lock)
         return row,order
+    def order_base_status(self,order):
+        return order.get('status_before_after_sale') if order['status']=='after_sale' else order['status']
+    def sync_order_after_sale(self,tx,order):
+        # Lock the parent first, as all after-sale writers do. Multiple active
+        # requests must not restore the order when only one request terminates.
+        current=self.owned_order(tx,ref('order',order['platform_code'],order['order_id']),lock=True)
+        active=tx.one("SELECT after_sale_id FROM after_sale_requests WHERE platform_code=%s AND order_id=%s AND status IN ('pending_review','approved','processing') LIMIT 1",(current['platform_code'],current['order_id']))
+        if active and current['status']!='after_sale':
+            tx.execute("UPDATE orders SET status_before_after_sale=%s,status='after_sale',updated_at=%s WHERE platform_code=%s AND order_id=%s",(current['status'],utcnow(),current['platform_code'],current['order_id']))
+        elif not active and current['status']=='after_sale':
+            previous=current.get('status_before_after_sale')
+            if not previous: raise BusinessError('insufficient_data','售后前订单状态缺失')
+            tx.execute('UPDATE orders SET status=%s,status_before_after_sale=NULL,updated_at=%s WHERE platform_code=%s AND order_id=%s',(previous,utcnow(),current['platform_code'],current['order_id']))
     def order_rows(self,tx,table,order):
         allowed={'order_items','shipments','payment_transactions','after_sale_requests','invoice_requests','coupon_redemptions','inventory_reservations','order_events'}
         if table not in allowed: raise ValueError('invalid internal table')
@@ -132,10 +145,11 @@ class BaseService:
         row['specs']=decoded(row.get('specs'))
         return row
     def sku(self,tx,sid):
-        row=tx.one('SELECT * FROM product_skus WHERE sku_id=%s',(sid,))
+        lock=' FOR UPDATE' if tx.write else ''
+        row=tx.one('SELECT * FROM product_skus WHERE sku_id=%s'+lock,(sid,))
         if not row: raise BusinessError('not_found','规格不存在')
         product=self.public_product(tx,row['product_id'])
-        inv=tx.one('SELECT available_qty,updated_at FROM sku_inventory WHERE sku_id=%s',(sid,))
+        inv=tx.one('SELECT available_qty,updated_at FROM sku_inventory WHERE sku_id=%s'+lock,(sid,))
         row['spec_values']=decoded(row['spec_values'],{})
         row.update(merchant_id=product['merchant_id'],product_name=product['name'],inventory=inv,
             subject_ref=ref('sku',sid))
@@ -154,7 +168,7 @@ class BaseService:
             if not row: raise BusinessError('not_found','商家不存在')
             if getattr(self.scope,'store_id',None) and row['merchant_id']!=self.scope.store_id: raise BusinessError('not_found','商家不存在')
         return {**row,'platform_code':self.sales_platform(tx)}
-    def page(self,rows,tool,args, *, data=None,limitations=()):
+    def page(self,rows,tool,args, *, data=None,limitations=(),size=20):
         # A signed snapshot digest prevents skips/duplicates when the collection changes.
         if len(rows)>10000: raise BusinessError('insufficient_data','结果过多，请缩小查询范围')
         token=args.get('cursor'); offset=0
@@ -173,11 +187,12 @@ class BaseService:
             except BusinessError: raise
             except Exception: raise BusinessError('invalid_cursor','分页游标无效或已过期') from None
         next_token=None
-        if offset+20<len(rows):
+        if offset+size<len(rows):
             if not self.secret: raise BusinessError('temporarily_unavailable','分页签名未配置')
-            raw=base64.urlsafe_b64encode(dumps(dict(binding=binding,snapshot=snapshot,offset=offset+20,expires=int(time.time())+900)).encode()).decode()
+            raw=base64.urlsafe_b64encode(dumps(dict(binding=binding,snapshot=snapshot,offset=offset+size,expires=int(time.time())+900)).encode()).decode()
             next_token=raw+'.'+hmac.new(self.secret.encode(),raw.encode(),'sha256').hexdigest()
-        return ok({**(data or {}),'items':rows[offset:offset+20],'total':len(rows)},limitations=limitations,next_cursor=next_token)
+        return ok({**(data or {}),'items':rows[offset:offset+size],'total':len(rows),
+            'has_more':bool(next_token),'applied_conditions':{k:v for k,v in args.items() if k!='cursor'}},limitations=limitations,next_cursor=next_token)
     def snapshot(self,tx,order):
         tables=['order_items','shipments','payment_transactions','after_sale_requests','invoice_requests','coupon_redemptions','inventory_reservations','order_events']
         bundle={'order':order}

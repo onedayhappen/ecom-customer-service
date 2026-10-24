@@ -300,7 +300,10 @@ class TaskOperations:
                         and isinstance(entity, dict) and entity.get("order_id") == p["arguments"]["order_id"]
                         and entity.get("status") == ({"prepare_after_sale": "submitted", "prepare_invoice": "submitted",
                             "prepare_order_address_change": "updated", "prepare_order_cancel": "cancelled",
-                            "prepare_after_sale_cancel": "cancelled", "apply_refund": "submitted"}.get(row["tool"], "issued_local"))
+                            "prepare_after_sale_cancel": "cancelled", "apply_refund": "submitted",
+                            "prepare_purchase":"pending_payment", "prepare_return_shipment":"registered",
+                            "prepare_price_protection":"submitted", "prepare_exchange":"submitted",
+                            "prepare_repair":"submitted", "prepare_invoice_reissue":"submitted"}.get(row["tool"], "issued_local"))
                         and (not row["tool"].startswith("prepare_") or entity.get("platform_code") == p["arguments"]["platform_code"]))
             status = ("succeeded" if verified else "failed" if result.get("success") is False and
                       result.get("error_code") in {"business_rejection", "validation_error", "confirmation_invalid", "evidence_unavailable"}
@@ -336,7 +339,7 @@ class TaskOperations:
                     JOIN support_conversations c ON c.session_id=s.session_id
                     WHERE s.task_id=? AND c.mode<>'bot' LIMIT 1""", (tid,))):
             from app.tasks.external_progress import only_submission_requested
-            submission_complete = row["tool"] in {"prepare_order_cancel", "prepare_order_address_change", "prepare_after_sale_cancel"} or (settings.task_external_progress_enabled and only_submission_requested(tx, record))
+            submission_complete = row["tool"] in {"prepare_order_cancel", "prepare_order_address_change", "prepare_after_sale_cancel", "prepare_purchase", "prepare_return_shipment"} or (settings.task_external_progress_enabled and only_submission_requested(tx, record))
             after = self.runs.repo.update(tid, row["session_id"], expected_version=record.version, change_id="receipt:" + oid,
                 source=dict(kind="tool_result", session_id=row["session_id"], event_id=eid),
                 patch=dict(status="completed" if submission_complete else "waiting_external", waiting_for=None if submission_complete else dict(kind="external", operation_id=oid,
@@ -353,6 +356,12 @@ class TaskOperations:
                         "prepare_order_address_change": "：收货地址已更新。",
                         "prepare_order_cancel": "：订单已取消。",
                         "prepare_after_sale_cancel": "：售后申请已撤回。",
+                        "prepare_purchase":"：订单已创建，等待支付；库存和所选优惠券已占用。",
+                        "prepare_return_shipment":"：退货运单已登记，尚不代表承运商已收件。",
+                        "prepare_price_protection":"：价保申请已登记，审核及退款处理仍待核实。",
+                        "prepare_exchange":"：换货申请已登记，指定规格已预留，后续处理仍待核实。",
+                        "prepare_repair":"：维修申请已登记，检测及维修结果仍待核实。",
+                        "prepare_invoice_reissue":"：发票更正申请已登记，原票作废及新票开具仍待核实。",
                         "apply_refund": "：退款申请已登记，审核结果和实际到账仍待确认。"}
             content = subject + messages.get(row["tool"], "：业务操作已处理，请查看回执。")
             if prepared["review"].get("is_demo") and row["tool"] == "apply_refund":

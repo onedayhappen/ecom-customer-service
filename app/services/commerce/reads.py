@@ -3,7 +3,7 @@ from datetime import timedelta
 from decimal import Decimal
 from app.services.commerce.common import BusinessError,at,decoded,money,ok,ref,unref,utcnow
 
-ORDER_STATES={'pending_payment','paid','fulfilling','shipped','completed','cancelled','closed'}
+ORDER_STATES={'pending_payment','paid','pending_receipt','received','after_sale','cancelled','closed'}
 SALE_STATES={'pending_review','approved','rejected','processing','completed','cancelled','closed'}
 
 def state(row,valid):
@@ -15,11 +15,19 @@ def masked(row):
 
 class ReadService:
     def get_my_profile(self,tx,**args):
-        user=tx.one('SELECT user_id,username FROM users WHERE user_id=%s',(self.user,))
+        user=tx.one('SELECT user_id,username,membership_platform_code,growth_level_code,vip_plan_code,vip_starts_at,vip_expires_at,membership_updated_at FROM users WHERE user_id=%s',(self.user,))
         if not user: raise BusinessError('not_found','用户不存在')
         profile=tx.one('SELECT display_name,avatar_url,updated_at FROM user_profiles WHERE user_id=%s',(self.user,))
         contacts=tx.all('SELECT contact_type,verified_at FROM user_contacts WHERE user_id=%s ORDER BY contact_id',(self.user,))
-        return ok({'username':user['username'],'profile':profile,'contacts':[dict(r,value='***') for r in contacts[:20]],'contacts_total':len(contacts)},limitations=['联系方式仅展示验证状态']+(['联系方式超过摘要上限'] if len(contacts)>20 else []))
+        if user['membership_platform_code']:
+            from app.data.membership_store import membership_facts
+            platform=getattr(self.scope,'platform_code',None) or user['membership_platform_code']
+            facts=membership_facts(tx,self.user,platform,store_id=getattr(self.scope,'store_id',None))
+            sub=facts['vip']['subscription']; growth=facts['growth_membership']
+            user.update(membership_platform_code=platform,growth_level_code=growth['level_code'] if growth else None,
+                vip_plan_code=sub['plan_code'] if sub else None,vip_starts_at=sub['starts_at'] if sub else None,
+                vip_expires_at=sub['ends_at'] if sub else None,vip_status=facts['vip']['status'])
+        return ok({'username':user['username'],'membership_summary':{k:v for k,v in user.items() if k not in {'user_id','username'}},'membership_summary_authoritative':False,'profile':profile,'contacts':[dict(r,value='***') for r in contacts[:20]],'contacts_total':len(contacts)},limitations=['联系方式仅展示验证状态']+(['联系方式超过摘要上限'] if len(contacts)>20 else []))
     def list_addresses(self,tx,**args):
         rows=tx.all('SELECT address_id,province_code,city_code,district_code,is_default,updated_at FROM user_addresses WHERE user_id=%s AND deleted_at IS NULL ORDER BY is_default DESC,address_id',(self.user,))
         return self.page([dict(r,address_id=str(r['address_id']),recipient='***',phone='***',detail='***') for r in rows],'list_addresses',args)
@@ -57,7 +65,7 @@ class ReadService:
         return self.page(rows,'get_price_history',args,data={'recorded_minimum':minima,'window_start':start,'window_end':end},limitations=['仅本地已记录价格；不能证明窗口内无采集缺口'])
     def get_merchant(self,tx,**args):
         self.subject(tx,ref('merchant',args['merchant_id']))
-        return ok(tx.one('SELECT merchant_id,name,category,description,status FROM merchants WHERE merchant_id=%s',(args['merchant_id'],)))
+        return ok(tx.one('SELECT merchant_id,name,category,description,status,store_type FROM merchants WHERE merchant_id=%s',(args['merchant_id'],)))
     def find_orders(self,tx,**args):
         clauses=['o.user_id=%s']; values=[self.user]
         for k,f in [('platform_code','platform_code'),('store_id','merchant_id')]:
@@ -70,7 +78,7 @@ class ReadService:
         rows=tx.all('SELECT o.* FROM orders o WHERE '+' AND '.join(clauses)+' ORDER BY o.created_at DESC,o.platform_code,o.order_id',tuple(values))
         rows=[dict(state(masked(r),ORDER_STATES),order_ref=ref('order',r['platform_code'],r['order_id'])) for r in rows]
         if args.get('status','all')!='all': rows=[r for r in rows if r['status']==args['status']]
-        return self.page(rows,'find_orders',args)
+        return self.page(rows,'find_orders',args,size=10)
     def get_order(self,tx,**args):
         o=self.owned_order(tx,args['order_ref']); address=tx.one('SELECT province_code,city_code,district_code,captured_at FROM order_address_snapshots WHERE platform_code=%s AND order_id=%s',(o['platform_code'],o['order_id']))
         related={}

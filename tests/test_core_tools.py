@@ -70,7 +70,7 @@ def commit(svc,name,args,oid=None):
     return svc.submit(name,p['arguments'],oid or uuid4().hex,p['business_version'])
 
 def test_catalog_and_strict_validation():
-    assert len(TOOLS)==38
+    assert len(TOOLS)==48
     token=set_current_user_id('alice')
     try:
         for t in TOOLS:
@@ -149,7 +149,7 @@ def test_unknown_policy_is_not_eligible_and_does_not_prepare(svc):
 def test_prepared_version_changes_and_duplicate_submission(svc):
     args={'kind':'refund_only','items':[{'order_item_id':'i-paid','quantity':1}],'reason':'退款'}
     p=svc.preview('prepare_after_sale',args)
-    with svc.store.transaction(write=True) as tx: tx.execute("UPDATE orders SET status='shipped' WHERE order_id='paid'")
+    with svc.store.transaction(write=True) as tx: tx.execute("UPDATE orders SET status='pending_receipt' WHERE order_id='paid'")
     with pytest.raises(BusinessError): svc.submit('prepare_after_sale',p['arguments'],'op',p['business_version'])
     with svc.store.transaction(write=True) as tx: tx.execute("UPDATE orders SET status='paid' WHERE order_id='paid'")
     p=svc.preview('prepare_after_sale',args)

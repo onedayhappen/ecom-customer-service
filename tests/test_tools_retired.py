@@ -20,9 +20,9 @@ from tests.test_task_execution import Client, engine, request, response, local_b
 
 def test_local_and_mcp_catalogues_match_supported_boundaries():
     from app.mcp.server import list_business_tools
-    assert len(TOOL_DEFINITIONS) == len(_TOOL_MAP) == 38
-    assert len(CAPABILITIES) == len(IMPLEMENTED_CAPABILITIES) == 38
-    assert len(asyncio.run(list_business_tools())) == 29
+    assert len(TOOL_DEFINITIONS) == len(_TOOL_MAP) == 48
+    assert len(CAPABILITIES) == len(IMPLEMENTED_CAPABILITIES) == 48
+    assert len(asyncio.run(list_business_tools())) == 31
 
 
 @pytest.mark.parametrize('name', [
@@ -56,7 +56,7 @@ def test_old_remote_server_cannot_restore_deleted_tools(monkeypatch):
     monkeypatch.setattr('app.mcp.MCPClient', OldServer)
     manager = ToolManager(use_mcp=True, mcp_server_url='http://unused')
     try:
-        assert len(manager.tool_definitions) == 38 and 'query_order' not in manager.tool_names
+        assert len(manager.tool_definitions) == 48 and 'query_order' not in manager.tool_names
         assert json.loads(manager.execute_tool('query_order', {}))['success'] is False
     finally:
         manager.close()
@@ -94,5 +94,5 @@ def test_background_adapters_do_not_use_legacy_business_tables():
     assert business.write('alice', 'apply_refund', {}, 'old-operation', 'v1')['success'] is False
     # Missing implementation is not proof of a historical operation's failure.
     assert business.query('alice', 'old-operation')['status'] == 'unknown'
-    with pytest.raises(ExternalEvidenceError, match='已移除'):
+    with pytest.raises(ExternalEvidenceError, match='历史业务接口不支持该进度查询'):
         BusinessProgress().read('alice', {'kind': 'logistics'})

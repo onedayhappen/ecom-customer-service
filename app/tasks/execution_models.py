@@ -15,7 +15,7 @@ class ExecutionBudget(StrictModel):
     tool_calls: int = Field(default=8, ge=1, le=30)
     seconds: float = Field(default=60.0, ge=0.05, le=180)
     call_seconds: float = Field(default=15.0, ge=0.01, le=60)
-    input_tokens: int = Field(default=12000, ge=1000, le=30000)
+    input_tokens: int = Field(default=24000, ge=1000, le=30000)
     output_tokens: int = Field(default=1200, ge=64, le=2000)
 
 

@@ -25,7 +25,8 @@ def main():
     print(f'Test artifacts: {artifacts}', flush=True)
     with tempfile.TemporaryDirectory(prefix='ecom-checks-') as directory:
         os.environ.update({
-            'ORDER_DB_DSN': '', 'ORDER_CACHE_REDIS_URL': '', 'MEMORY_REDIS_URL': '',
+            'COMMERCE_PROVIDER_CONFIG': '{}', 'COMMERCE_INVOICE_ROOT': '',
+            'CONTEXT_REQUEST_INPUT_TOKENS': '24000', 'ORDER_DB_DSN': '', 'ORDER_CACHE_REDIS_URL': '', 'MEMORY_REDIS_URL': '',
             'API_CONCURRENCY_REDIS_URL': '',
             'API_SESSION_POSTGRES_DSN': '', 'MEMORY_POSTGRES_DSN': '',
             'SUPPORT_DATABASE_URL': 'sqlite:///' + str(Path(directory) / 'support.db'),

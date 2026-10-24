@@ -22,6 +22,8 @@ def invoke(name,arguments):
             if ctx.runs.user!=get_current_user_id(): raise BusinessError('not_found','事项不属于当前用户')
         if tool.domain=='flow': return flow(name,args,ctx)
         commerce=service()
+        if tool.effect=='quote':
+            return commerce.quote_checkout(args)
         if tool.effect=='prepare':
             from app.tasks.operations import TaskOperations
             result=TaskOperations(ctx.runs.store,ctx.runs.user,scope=ctx.runs.candidates.scope).prepare(
@@ -29,15 +31,16 @@ def invoke(name,arguments):
                 arguments=args,fence=(ctx.request,ctx.payload),timeout=ctx.call_timeout())
             ctx.operation_id=result['operation_id']
             return ok(dict(result,next_state='needs_confirmation'))
-        if tool.effect=='claim':
+        if tool.effect in {'claim','dispatch'}:
             from app.memory.task_context import task_history
             history=task_history(ctx.runs,ctx.record)
             source=next((s['text'] for s in history['sources'] if s['session_id']==ctx.request.source.session_id and s['sequence']==ctx.request.source.sequence),'')
             # This direct write requires an explicit source-message command, not a generated task goal.
-            if not re.search(r'(帮我|给我|我要|我想|请).{0,12}(领|领取).{0,20}券|^(领券|领取这张券)[。！!]*$',source) or re.search(r'不要|别领|不领|能否|能不能|是否|[?？]',source):
-                raise BusinessError('not_eligible','请用户明确要求领取指定券')
-            request_id='claim:'+digest([ctx.record.task_id,ctx.record.version,ctx.request.source.model_dump(),args])
-            return commerce.claim_coupon(args,request_id)
+            pattern=r'(帮我|给我|我要|我想|请).{0,12}(领|领取).{0,20}券|^(领券|领取这张券)[。！!]*$' if tool.effect=='claim' else r'(帮我|给我|我要|我想|请).{0,12}催|^(催单|催发货)[。！!]*$'
+            if not re.search(pattern,source) or re.search(r'不要|别领|不领|别催|不催|能否|能不能|是否|[?？]',source):
+                raise BusinessError('not_eligible','需要用户明确要求办理此操作')
+            request_id=tool.effect+':'+digest([ctx.record.task_id,ctx.record.version,ctx.request.source.model_dump(),args])
+            return commerce.claim_coupon(args,request_id) if tool.effect=='claim' else commerce.request_dispatch(args,request_id)
         return commerce.read(name,args)
     except ValidationError:
         return failure(BusinessError('invalid_arguments','参数类型、范围或必填字段不正确'))
@@ -58,7 +61,13 @@ def flow(name,args,ctx):
     if name=='ask_user':
         if re.search(r'密码|验证码|银行卡号|密钥|\btoken\b|api.?key',args['question'],re.I):
             raise BusinessError('invalid_arguments','不能索要登录或支付凭证')
-        options=[{'label':v,'value':v} for v in args.get('choices') or []]
+        def contains(value,needle):
+            if isinstance(value,dict): return any(contains(v,needle) for v in value.values())
+            if isinstance(value,list): return any(contains(v,needle) for v in value)
+            return value==needle
+        if any(v.get('ref') and not contains(ctx.receipts,v['ref']) for v in args.get('choices') or []):
+            raise BusinessError('invalid_arguments','选项引用必须来自已查询的结果')
+        options=[{'label':v['label'],'value':v.get('ref') or v['label']} for v in args.get('choices') or []]
         result=ctx.save_progress({'expected_version':ctx.record.version,'state':'waiting_user',
             'question':{'field':'details','prompt':args['question'],'options':options}})
         if not result.get('success'): raise BusinessError('invalid_arguments','澄清问题不符合事项约束')

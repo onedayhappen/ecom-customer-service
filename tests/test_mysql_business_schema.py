@@ -31,7 +31,7 @@ def test_business_schema_idempotence_and_order_ownership():
                     "coupon_templates", "user_coupons", "coupon_redemptions",
                     "after_sale_requests", "refund_transactions"} <= names
             assert "logistics" not in names
-            assert not any(name.startswith("commerce_") for name in names)
+            assert {name for name in names if name.startswith('commerce_')} == {'commerce_provider_requests'}
             cur.execute("""SELECT column_name FROM information_schema.columns
                 WHERE table_schema=DATABASE() AND table_name='orders'""")
             columns = {row[0] for row in cur.fetchall()}

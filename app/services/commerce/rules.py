@@ -21,6 +21,9 @@ class Rules(BaseModel):
     promotions_with_coupons: bool=False
     rag_policy_id: str | None=None
     rag_policy_version: str | None=None
+    quote_ttl_seconds: int=Field(600,ge=30,le=3600)
+    payment_timeout_minutes: int=Field(30,ge=1,le=1440)
+    allow_exchange_price_difference: bool=False
 
 class RuleService:
     def policy(self,tx,action,order=None,platform=None):
@@ -47,10 +50,10 @@ class RuleService:
         try: return ok(operation())
         except BusinessError as e:
             if e.code not in {'insufficient_data','not_eligible'}: raise
-            return ok({'eligibility':'ineligible' if e.code=='not_eligible' else 'unknown','reasons':[e.message],'amount':None},limitations=[e.message] if e.code=='insufficient_data' else [])
+            return ok({'eligibility':'ineligible' if e.code=='not_eligible' else 'unknown','reasons':[e.message],'amount':None,**e.details},limitations=[e.message] if e.code=='insufficient_data' else [])
     def assess_order(self,tx,order,action):
         p,r=self.policy(tx,action,order)
-        if order['status'] not in r.allowed_statuses: raise BusinessError('not_eligible','订单状态不满足规则')
+        if order['status'] not in r.allowed_statuses and self.order_base_status(order) not in r.allowed_statuses: raise BusinessError('not_eligible','订单状态不满足规则')
         ships=self.order_rows(tx,'shipments',order)
         if action in {'cancel_order','change_address'}:
             if not r.local_authority: raise BusinessError('insufficient_data','未接通该订单的履约控制接口')
@@ -75,7 +78,7 @@ class RuleService:
             if order and (owned['platform_code'],owned['order_id'])!=(order['platform_code'],order['order_id']): raise BusinessError('invalid_arguments','售后明细须属于同一订单')
             order=owned; rows.append((row,item['quantity']))
         p,r=self.policy(tx,kind,order)
-        if order['status'] not in r.allowed_statuses: raise BusinessError('not_eligible','订单状态不支持该售后方式')
+        if order['status'] not in r.allowed_statuses and self.order_base_status(order) not in r.allowed_statuses: raise BusinessError('not_eligible','订单状态不支持该售后方式')
         if r.requires_reason_review: raise BusinessError('insufficient_data','该规则需要原因或质检审核，需人工核实')
         if r.window_days is not None:
             ships=self.order_rows(tx,'shipments',order)
@@ -87,7 +90,7 @@ class RuleService:
         for row,qty in rows:
             used=0
             for sale in all_sales:
-                if sale['status'] in {'cancelled','rejected','closed'}: continue
+                if sale['status'] in {'cancelled','rejected','closed'} or sale['kind']=='price_protection': continue
                 consumed=tx.one('SELECT quantity FROM after_sale_items WHERE after_sale_id=%s AND order_item_id=%s',(sale['after_sale_id'],row['order_item_id']))
                 used += consumed['quantity'] if consumed else 0
             if qty>row['quantity']-used: raise BusinessError('not_eligible','申请数量超过可售后余量')
@@ -116,7 +119,7 @@ class RuleService:
     def coupon(self,tx,value):
         typ,cid=unref(value,{'coupon_template','coupon_instance'}); instance=None
         if typ=='coupon_instance':
-            instance=tx.one('SELECT * FROM user_coupons WHERE user_coupon_id=%s AND user_id=%s',(cid,self.user))
+            instance=tx.one('SELECT * FROM user_coupons WHERE user_coupon_id=%s AND user_id=%s'+(' FOR UPDATE' if tx.write else ''),(cid,self.user))
             if not instance: raise BusinessError('not_found','优惠券不存在')
             cid=instance['coupon_id']
         template=tx.one('SELECT * FROM coupon_templates WHERE coupon_id=%s',(cid,))
@@ -128,7 +131,10 @@ class RuleService:
         if not instance: return template,scopes
         saved=tx.one('SELECT rules_snapshot FROM coupon_claim_rules WHERE user_coupon_id=%s',(instance['user_coupon_id'],))
         if not saved: raise BusinessError('insufficient_data','持券缺少领取时规则快照')
-        value=decoded(saved['rules_snapshot']); return value['template'],value['scopes']
+        value=decoded(saved['rules_snapshot']); frozen=dict(value['template'])
+        if value.get('membership'):
+            frozen['membership_requirement']=value['membership']
+        return frozen,value['scopes']
     def eligible_lines(self,scopes,lines):
         if not scopes: raise BusinessError('insufficient_data','优惠适用范围缺失')
         if any(s['scope_type'] not in {'all','merchant','product','sku'} for s in scopes): raise BusinessError('insufficient_data','未知优惠适用范围')
@@ -147,7 +153,7 @@ class RuleService:
         if rule.get('cap_amount') is not None: amount=min(amount,money(rule['cap_amount']))
         return min(base,max(Decimal(0),amount))
     def list_promotions(self,tx,**args):
-        subject=self.subject(tx,args.get('subject_ref')); rows=tx.all("SELECT * FROM promotion_rules WHERE status='active' AND starts_at<=%s AND ends_at>%s ORDER BY priority DESC,promotion_id,version",(utcnow(),utcnow()))
+        subject=self.subject(tx,args.get('subject_ref'),allow_order=False); rows=tx.all("SELECT * FROM promotion_rules WHERE status='active' AND starts_at<=%s AND ends_at>%s ORDER BY priority DESC,promotion_id,version",(utcnow(),utcnow()))
         rows=[r for r in rows if (not subject.get('platform_code') or r['platform_code']==subject['platform_code']) and (r['merchant_id'] is None or not subject.get('merchant_id') or r['merchant_id']==subject['merchant_id'])]
         result=[]
         for r in rows:
@@ -156,6 +162,10 @@ class RuleService:
             result.append(dict(r,scopes=scopes[:20],scope_count=len(scopes),scope_complete=bool(scopes),scopes_truncated=len(scopes)>20))
         return self.page(result,'list_promotions',args,limitations=['活动展示不代表所有商品满足适用条件'])
     def claim_eligibility(self,tx,template):
+        if template.get('coupon_type')=='newcomer':
+            user=tx.one('SELECT newcomer_coupon_eligible,status FROM users WHERE user_id=%s'+(' FOR UPDATE' if tx.write else ''),(self.user,))
+            if not user or user['status']!='active' or not user['newcomer_coupon_eligible']:
+                raise BusinessError('not_eligible','仅首次注册且尚未领取新人权益的用户可领')
         if template['status']!='active' or not at(template['claim_starts_at'])<=utcnow()<at(template['claim_ends_at']): raise BusinessError('not_eligible','不在有效领券期间')
         if (template['valid_days'] is None)==(template['fixed_expires_at'] is None): raise BusinessError('insufficient_data','券有效期配置不完整')
         if template['fixed_expires_at'] and at(template['fixed_expires_at'])<=utcnow(): raise BusinessError('not_eligible','券已过期')
@@ -163,7 +173,12 @@ class RuleService:
         total=tx.one('SELECT COUNT(*) AS n FROM user_coupons WHERE coupon_id=%s',(template['coupon_id'],))['n']
         mine=tx.one('SELECT COUNT(*) AS n FROM user_coupons WHERE coupon_id=%s AND user_id=%s',(template['coupon_id'],self.user))['n']
         if template['total_limit'] is not None and total>=template['total_limit'] or mine>=template['per_user_limit']: raise BusinessError('not_eligible','领取数量已达到限制')
-        return {'remaining_total':None if template['total_limit'] is None else template['total_limit']-total,'remaining_user':template['per_user_limit']-mine}
+        from app.data.membership_store import coupon_membership_claim
+        membership=coupon_membership_claim(tx,self.user,template)
+        remaining=template['per_user_limit']-mine
+        if membership: remaining=min(remaining,membership['remaining_count'])
+        return {'remaining_total':None if template['total_limit'] is None else template['total_limit']-total,
+            'remaining_user':remaining,'membership':membership}
     def list_claimable_coupons(self,tx,**args):
         subject=self.subject(tx,args.get('subject_ref'),allow_order=False); platform=subject.get('platform_code')
         if not platform: raise BusinessError('insufficient_data','请先明确销售平台')
@@ -207,6 +222,8 @@ class RuleService:
         if not i: raise BusinessError('invalid_arguments','必须使用本人持券，不能使用模板')
         if self.coupon_state(i)['status']!='available': raise BusinessError('not_eligible','券不可用或已被占用')
         t,scopes=self.frozen_coupon(tx,t,i,scopes)
+        from app.data.membership_store import check_coupon_membership_use
+        check_coupon_membership_use(tx,self.user,t)
         if t['platform_code']!=platform or t['currency']!=currency: raise BusinessError('not_eligible','券平台或币种不匹配')
         matching=self.eligible_lines(scopes,lines)
         if t['merchant_id']: matching=[x for x in matching if x['merchant_id']==t['merchant_id']]
@@ -236,7 +253,7 @@ class RuleService:
             lines.append(dict(sku_id=sid,product_id=sku['product_id'],merchant_id=sku['merchant_id'],currency=sku['currency'],quantity=qty,amount=money(sku['list_price'])*qty))
         if len({(x['merchant_id'],x['currency']) for x in lines})!=1: raise BusinessError('invalid_arguments','请按商家和币种分别试算')
         currency=lines[0]['currency']; original=sum((x['amount'] for x in lines),Decimal(0)); applied=[]; groups=set()
-        promos=tx.all("SELECT * FROM promotion_rules WHERE platform_code=%s AND status='active' AND starts_at<=%s AND ends_at>%s ORDER BY priority DESC,promotion_id,version DESC",(platform,utcnow(),utcnow()))
+        promos=tx.all("SELECT * FROM promotion_rules WHERE platform_code=%s AND status='active' AND starts_at<=%s AND ends_at>%s ORDER BY priority DESC,promotion_id,version DESC"+(' FOR UPDATE' if tx.write else ''),(platform,utcnow(),utcnow()))
         seen=set()
         for promo in promos:
             if promo['merchant_id'] and promo['merchant_id']!=lines[0]['merchant_id']: continue
@@ -249,6 +266,8 @@ class RuleService:
             if promo['exclusive_group'] and promo['exclusive_group'] in groups: continue
             amount=self.discount(promo,base)
             if not amount: continue
+            if args.get('coupon_refs') and not promo.get('allows_coupon',False):
+                raise BusinessError('not_eligible','该活动不允许与优惠券叠加')
             self.allocate_discount(eligible,amount)
             applied.append({'promotion_id':promo['promotion_id'],'version':promo['version'],'discount_amount':amount})
             if promo['exclusive_group']: groups.add(promo['exclusive_group'])

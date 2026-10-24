@@ -24,7 +24,7 @@ def business(svc,monkeypatch):
 def test_mcp_only_exposes_read_tools():
     from app.mcp.server import list_business_tools,call_business_tool
     tools=asyncio.run(list_business_tools())
-    assert len(tools)==29
+    assert len(tools)==31
     assert all(t.annotations.readOnlyHint for t in tools)
     assert 'prepare_invoice' not in {t.name for t in tools}
     assert not asyncio.run(call_business_tool('claim_coupon',{}))['ok']

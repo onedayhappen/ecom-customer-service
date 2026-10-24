@@ -1,4 +1,4 @@
-"""flow tool entry points. Business logic lives in app.services.commerce."""
+"""Typed tool adapters; business logic lives in commerce services."""
 from app.tools.dispatch import bind
 
 read_task_context = bind('read_task_context')

@@ -5,7 +5,8 @@ from decimal import Decimal
 from uuid import uuid4
 from app.services.commerce.common import BusinessError,at,decoded,digest,dumps,money,ok,ref,unref,utcnow
 
-PREPARES={'prepare_after_sale','prepare_invoice','prepare_order_address_change','prepare_order_cancel','prepare_after_sale_cancel'}
+PREPARES={'prepare_after_sale','prepare_invoice','prepare_order_address_change','prepare_order_cancel','prepare_after_sale_cancel',
+    'prepare_price_protection','prepare_exchange','prepare_return_shipment','prepare_repair','prepare_invoice_reissue','prepare_purchase'}
 
 def json_binary(row):
     return {k:base64.b64encode(bytes(v)).decode() if isinstance(v,(bytes,bytearray,memoryview)) else v for k,v in row.items()}
@@ -42,13 +43,20 @@ class WriteService:
             if prior:
                 if prior['action']!='claim_coupon' or prior['arguments_digest']!=digest(args): raise BusinessError('invalid_arguments','请求编号与原操作不一致')
                 return decoded(prior['result'])
-            self.claim_eligibility(tx,t)
+            eligibility=self.claim_eligibility(tx,t)
             scopes=tx.all('SELECT scope_type,scope_id FROM coupon_scopes WHERE coupon_id=%s ORDER BY scope_type,scope_id',(cid,))
             if not scopes or any(s['scope_type'] not in {'all','merchant','product','sku'} for s in scopes): raise BusinessError('insufficient_data','券适用范围不完整')
             self.discount(t,max(money(t['threshold_amount']),Decimal(1)))
             uid=uuid4().hex; now=utcnow(); expires=at(t['fixed_expires_at']) if t['fixed_expires_at'] else now+timedelta(days=t['valid_days'])
+            membership=eligibility.get('membership')
+            if membership: expires=min(expires,membership['expires_at'])
             tx.execute('INSERT INTO user_coupons(user_coupon_id,coupon_id,user_id,status,claimed_at,expires_at,used_at,version) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',(uid,cid,self.user,'available',now,expires,None,0))
-            tx.execute('INSERT INTO coupon_claim_rules(user_coupon_id,rules_snapshot,captured_at) VALUES (%s,%s,%s)',(uid,dumps({'template':t,'scopes':scopes}),now))
+            if membership:
+                from app.data.membership_store import consume_coupon_entitlement
+                membership['entitlement_id']=consume_coupon_entitlement(tx,self.user,membership,uid,now)
+            tx.execute('INSERT INTO coupon_claim_rules(user_coupon_id,rules_snapshot,captured_at) VALUES (%s,%s,%s)',(uid,dumps({'template':t,'scopes':scopes,'membership':membership}),now))
+            if t.get('coupon_type')=='newcomer':
+                tx.execute('UPDATE users SET newcomer_coupon_eligible=FALSE WHERE user_id=%s',(self.user,))
             result=decoded(dumps(ok({'coupon_ref':ref('coupon_instance',uid),'status':'available','expires_at':expires})))
             self.record_receipt(tx,request_id,'claim_coupon',args,result)
             return result
@@ -80,7 +88,11 @@ class WriteService:
             if not events or any(e['source']!='local' or e['kind']!='submitted' for e in events): raise BusinessError('insufficient_data','缺少可核实的本地售后过程')
             refunds=tx.all('SELECT * FROM refund_transactions WHERE after_sale_id=%s',(sale['after_sale_id'],))
             if any(r['status'] not in {'failed','cancelled'} for r in refunds): raise BusinessError('not_eligible','已有退款处理，不可撤回')
-            extra={'sale':sale,'events':events,'refunds':refunds}; review.update(title='撤销售后申请',after_sale_id=sale['after_sale_id'],reason=args['reason'])
+            work=tx.one('SELECT work_order_id FROM service_work_orders WHERE after_sale_id=%s',(sale['after_sale_id'],))
+            if work:
+                jobs=tx.all('SELECT status FROM commerce_provider_requests WHERE target_id=%s',(work['work_order_id'],))
+                if any(j['status']!='queued' for j in jobs): raise BusinessError('not_eligible','业务已提交处理方，不能本地撤回')
+            extra={'sale':sale,'events':events,'refunds':refunds,'work':work}; review.update(title='撤销售后申请',after_sale_id=sale['after_sale_id'],reason=args.get('reason'))
         else:
             assessment=action.removeprefix('prepare_order_') if action.startswith('prepare_order_') else 'invoice'
             assessment={'cancel':'cancel_order','address_change':'change_address'}.get(assessment,assessment)
@@ -94,7 +106,7 @@ class WriteService:
                 review.update(title='修改订单收货地址',address_id=args['address_id'],region=[address[k] for k in ['province_code','city_code','district_code']],impact='仅更新此订单地址，保留变更历史')
             if action=='prepare_order_cancel':
                 self.validate_reservations(tx,order)
-                review.update(title='取消未支付订单',reason=args['reason'],impact='取消订单并释放该订单库存与券占用')
+                review.update(title='取消未支付订单',reason=args.get('reason'),impact='取消订单并释放该订单库存与券占用')
         version=digest({'order':self.snapshot(tx,order),'policy':policy,'extra':extra,'args':args})
         return review,version
     def preview(self,action,args):
@@ -123,6 +135,7 @@ class WriteService:
                 tx.execute('INSERT INTO after_sale_requests(after_sale_id,platform_code,order_id,user_id,kind,status,reason,requested_amount,created_at,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',(aid,order['platform_code'],order['order_id'],self.user,args['kind'],'pending_review',args['reason'],review['amount'],now,now))
                 for item in review['items']:
                     tx.execute('INSERT INTO after_sale_items(after_sale_id,order_item_id,quantity,requested_amount) VALUES (%s,%s,%s,%s)',(aid,item['order_item_id'],item['quantity'],item['amount']))
+                tx.execute("UPDATE after_sale_requests SET stage='awaiting_review' WHERE after_sale_id=%s",(aid,))
                 self.sale_event(tx,aid,oid,'submitted',{}); result['after_sale_id']=aid
             elif action=='prepare_invoice':
                 iid=uuid4().hex
@@ -151,8 +164,15 @@ class WriteService:
                     tx.execute("UPDATE coupon_redemptions SET status='released',released_at=%s WHERE redemption_id=%s",(now,red['redemption_id']))
                 tx.execute("UPDATE orders SET status='cancelled',updated_at=%s WHERE platform_code=%s AND order_id=%s",(now,order['platform_code'],order['order_id']));result['status']='cancelled'
             else:
-                tx.execute("UPDATE after_sale_requests SET status='cancelled',closed_at=%s,updated_at=%s WHERE after_sale_id=%s AND user_id=%s",(now,now,args['after_sale_id'],self.user))
-                self.sale_event(tx,args['after_sale_id'],oid,'cancelled',{'reason':args['reason']});result.update(after_sale_id=args['after_sale_id'],status='cancelled')
+                tx.execute("UPDATE after_sale_requests SET status='cancelled',stage='cancelled',closed_at=%s,updated_at=%s WHERE after_sale_id=%s AND user_id=%s",(now,now,args['after_sale_id'],self.user))
+                work=tx.one('SELECT work_order_id FROM service_work_orders WHERE after_sale_id=%s',(args['after_sale_id'],))
+                if work:
+                    self.release_service_inventory(tx,work['work_order_id'])
+                    tx.execute("UPDATE service_work_orders SET status='cancelled',updated_at=%s WHERE work_order_id=%s",(now,work['work_order_id']))
+                    tx.execute("UPDATE commerce_provider_requests SET status='cancelled',updated_at=%s WHERE target_id=%s AND status='queued'",(now,work['work_order_id']))
+                self.sale_event(tx,args['after_sale_id'],oid,'cancelled',{'reason':args.get('reason')});result.update(after_sale_id=args['after_sale_id'],status='cancelled')
+            if action in {'prepare_after_sale','prepare_after_sale_cancel'}:
+                self.sync_order_after_sale(tx,order)
             tx.execute('INSERT INTO order_events(event_id,platform_code,order_id,operation_id,kind,payload,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s)',(uuid4().hex,order['platform_code'],order['order_id'],oid,action.removeprefix('prepare_'),dumps({'status':result['status']}),now))
             self.record_receipt(tx,oid,action,args,result)
             return result

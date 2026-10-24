@@ -4,7 +4,7 @@
 
 后端采用 Python / FastAPI，前端采用 React / Vite，模型支持 DeepSeek 或其他 OpenAI 兼容接口。
 
-> 当前代码提供 38 个核心工具，运行配置见 [实现说明](docs/TOOL_IMPLEMENTATION.md)。[工具设计](docs/TOOL_DESIGN.md)现已调整为 33 个基础工具与 15 个扩展工具的目标方案，代码尚未按新契约改造。调用链与改造依据见 [ReAct 评审](docs/TOOL_REACT_REVIEW.md)。独立 MCP 当前提供 29 个读取／判断／试算工具，其余工具需要可信事项上下文。
+> 当前代码提供 48 个工具（33 个基础、15 个扩展），参数契约见 [工具设计](docs/工具设计.md)，数据库迁移、后台进程及外部处理方配置见 [实现说明](docs/工具实现与运行配置.md)。独立 MCP 提供 31 个读取／判断／试算工具，其余工具需要可信事项上下文。外部办理必须配置真实处理渠道，未配置时返回不可用。
 
 ## 能做什么
 
@@ -139,7 +139,7 @@ Compose 会启动 API、Worker、回复通知进程、维护进程、前端和�
 docker compose exec backend python -m scripts.pipeline_rollout set all --operator local-dev --reason "本地演示环境已核对"
 ```
 
-生产迁移、按用户开放及恢复步骤见[运行手册](docs/CONCURRENCY_RUNBOOK.md)。
+生产迁移、按用户开放及恢复步骤见[运行手册](docs/并发平台运行手册.md)。
 
 ### 3. 验证一次对话
 
@@ -201,7 +201,7 @@ npm run dev
 
 ### MySQL 业务表
 
-`scripts/migrate_mysql_business_schema.py` 建立[新版业务表](docs/DATABASE_DESIGN.md)，并清理旧订单列、`logistics` 与 `commerce_*` 表。迁移不写入演示数据。`scripts/init_order_db.py` 现仅作为迁移命令的兼容入口；`scripts/init_commerce_db.py` 已停用。迁移 003_core_tools 建立回执、券规则快照、活动范围、库存预留及业务历史等 7 张表，不写入默认资格规则。
+`scripts/migrate_mysql_business_schema.py` 建立[新版业务表](docs/数据库表设计.md)，并清理旧订单列、`logistics` 与 `commerce_*` 表。迁移不写入演示数据。`scripts/init_order_db.py` 现仅作为迁移命令的兼容入口；`scripts/init_commerce_db.py` 已停用。迁移 003_core_tools 建立回执、券规则快照、活动范围、库存预留及业务历史等 7 张表，不写入默认资格规则。迁移 004_extended_tools 增加配送、会员积分、价保、逆向物流、正式发票、结算及处理方任务等 19 张表。Compose 的 commerce-worker 负责外部回执查询与待支付订单超时释放。
 
 ### Markdown 规则与 RAG
 
@@ -214,7 +214,7 @@ npm run dev
 3. 发布索引，使当前规则版本正式可检索。
 4. 用匹配的业务条件验证命中条款、来源和适用时间。涉及订单时，业务数据还必须提供可靠的店铺、渠道、品类及时间信息。
 
-元数据格式和发布约束见[规则检索方案](docs/refactoring/11-policy-retrieval.md)。准备完成后，在运行应用的环境中执行：
+元数据格式和发布约束见[规则检索方案](docs/refactoring/11-规则检索.md)。准备完成后，在运行应用的环境中执行：
 
 ```powershell
 python -m app.rag.commands.policy_index publish
@@ -269,13 +269,13 @@ npm run build
 
 ## 代码与文档入口
 
-[数据库表设计](docs/DATABASE_DESIGN.md)定义业务数据模型；[工具设计稿](docs/TOOL_DESIGN.md)定义核心工具与后续扩展的能力范围、参数及运行配置。
+[数据库表设计](docs/数据库表设计.md)定义业务数据模型；[工具设计稿](docs/工具设计.md)定义核心工具与后续扩展的能力范围、参数及运行配置。
 
 | 目录 | 主要职责 |
 | --- | --- |
 | `app/tasks` | 消息归属、事项执行、回复协调与操作确认 |
 | `app/agents`、`app/execution` | Agent 工具循环与执行控制 |
-| `app/tools` | 38 个工具适配入口、参数模型、注册目录和事项工具选择 |
+| `app/tools` | 48 个工具适配入口、参数模型、注册目录和事项工具选择 |
 | `app/services/commerce` | 业务查询、规则评估、优惠试算和受控变更 |
 | `app/data/business_store.py` | MySQL 只读／写事务与参数化查询 |
 | `app/memory` | 用户记忆与相关存储 |

@@ -309,7 +309,8 @@ class ReactExecutor:
                     "role": "tool", "tool_call_id": tc.id, "content": result_str,
                 })
 
-                if result.get("success") and name in {"ask_user", "handoff_to_human", "prepare_after_sale", "prepare_invoice", "prepare_order_address_change", "prepare_order_cancel", "prepare_after_sale_cancel"}:
+                from app.services.commerce.writes import PREPARES
+                if result.get("success") and name in PREPARES | {"ask_user", "handoff_to_human"}:
                     data = result.get("data", {})
                     state = data.get("next_state")
                     if state == "waiting_user":

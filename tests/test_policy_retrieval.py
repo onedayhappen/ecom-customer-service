@@ -252,15 +252,15 @@ def test_forged_tool_fields_cannot_pass_evidence_validation(corpus):
 
 def test_actual_repository_clause_keeps_exclusions_and_source(corpus):
     root, index, embedder, publish = corpus
-    source = Path('app/rag/knowledge/退换货政策.md').read_text(encoding='utf-8')
+    source = Path('app/rag/knowledge/seven_day_return.md').read_text(encoding='utf-8')
     # Test-only applicability is explicit; these dates/shops are not asserted
     # to be production policy metadata for the repository's original document.
-    body = source.split('## 一、七天无理由退货', 1)[1].split('## 二、', 1)[0]
+    body = source.split('## 不适用商品', 1)[1].split('## 申请方式', 1)[0]
     document(root, 'repository-sample', '## 七天无理由退货\n' + body)
     publish()
     result = PolicyRetriever(embedder, index).search('定制商品七天无理由退货', context())
     hit = result['results'][0]
-    assert '个人定制类商品' in hit['text'] and '不支持七天无理由退货' in hit['text']
+    assert '定制商品' in hit['text'] and '不支持七天无理由退货' in hit['text']
     assert hit['source_uri'].startswith('https://policies.example.test/') and hit['source_digest']
 
 

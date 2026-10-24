@@ -16,6 +16,13 @@ SCHEMA = (
         username VARCHAR(64) NOT NULL,
         username_key VARCHAR(64) NOT NULL UNIQUE,
         status VARCHAR(16) NOT NULL DEFAULT 'active',
+        newcomer_coupon_eligible BOOLEAN NOT NULL DEFAULT FALSE,
+        membership_platform_code VARCHAR(16) NULL,
+        growth_level_code VARCHAR(32) NULL,
+        vip_plan_code VARCHAR(32) NULL,
+        vip_starts_at DATETIME(6) NULL,
+        vip_expires_at DATETIME(6) NULL,
+        membership_updated_at DATETIME(6) NULL,
         created_at DATETIME(6) NOT NULL,
         updated_at DATETIME(6) NOT NULL,
         CONSTRAINT users_status_check CHECK (status IN ('active','disabled'))
@@ -110,11 +117,14 @@ class MySqlAuthStore(MySqlOrderDAO):
         try:
             with self._connection() as conn, conn.cursor() as cur:
                 cur.execute("""INSERT INTO users
-                    (user_id,username,username_key,status,created_at,updated_at)
-                    VALUES (%s,%s,%s,'active',%s,%s)""",
+                    (user_id,username,username_key,status,created_at,updated_at,newcomer_coupon_eligible)
+                    VALUES (%s,%s,%s,'active',%s,%s,TRUE)""",
                     (user_id, username, username_key(username), at, at))
                 cur.execute("""INSERT INTO user_credentials(user_id,password_hash,changed_at)
                     VALUES (%s,%s,%s)""", (user_id, password_hash, at))
+                from app.data.business_store import Transaction
+                from app.data.membership_store import enroll_registered_user
+                enroll_registered_user(Transaction(conn,write=True),user_id,at)
         except Exception as exc:
             # PyMySQL is optional in mock-only environments.
             if getattr(exc, "args", [None])[0] == 1062:

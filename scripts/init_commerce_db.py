@@ -81,7 +81,7 @@ def demo_records(products, orders, at=None):
 
 
 def main():
-    raise SystemExit('旧 commerce_* 演示表已移除；请按 docs/DATABASE_DESIGN.md 为新表准备数据。')
+    raise SystemExit('旧 commerce_* 演示表已移除；请按 docs/数据库表设计.md 为新表准备数据。')
 
 
 if __name__ == '__main__':

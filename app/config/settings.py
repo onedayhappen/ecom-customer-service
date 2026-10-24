@@ -216,9 +216,12 @@ class Settings(BaseSettings):
     short_term_compaction_batch_messages: int = Field(default=64, ge=8, le=256)
     # 最终提供商请求预算包含 system、工具定义、调用参数和结果。
     context_request_budget_enabled: bool = True
-    context_request_input_tokens: int = Field(default=12000, ge=512)
+    context_request_input_tokens: int = Field(default=24000, ge=512)
     context_model_window_tokens: int = Field(default=0, ge=0)
     context_window_margin_tokens: int = Field(default=1024, ge=0)
+
+    commerce_provider_config: str = "{}"
+    commerce_invoice_root: str = ""
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

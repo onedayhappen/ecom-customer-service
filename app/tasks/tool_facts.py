@@ -2,6 +2,25 @@
 from app.tasks.reply_facts import label
 
 LABELS = {
+    'membership':'会员记录','ledger_balance':'已入账积分余额','level_code':'等级编码',
+    'benefits':'权益','delta':'积分变动','reverses_entry_id':'撤销的原流水','entry_id':'积分流水编号',
+    'label':'标签','province_name':'省','city_name':'市','district_name':'区','expected_received_at':'计划入库时间',
+    'expected_available_at':'计划可售时间','warehouse_id':'仓库编号','weight_grams':'重量（克）',
+    'packages':'配送分组','delivery_days':'规则配送天数','min':'最短','max':'最长','region':'地区',
+    'work_order':'服务工单','work_order_id':'工单编号','return_shipment':'退货包裹','return_shipment_id':'退货包裹编号',
+    'authorization_id':'退货授权编号','deadline':'截止时间','carriers':'支持承运商','code':'代码','requirements':'要求',
+    'details':'详情','replacement_sku_id':'换货规格','price_difference':'价差','price_source':'可比价格记录',
+    'benefit':'成交权益','prior_amount':'已申请补差','price_protection_until':'价保截止时间',
+    'issued_invoice_id':'正式票编号','invoice_number':'发票号码','issued_invoices':'正式发票','document_available':'文件可用',
+    'download_url':'登录后下载地址','mime_type':'文件类型','correction_id':'更正申请编号',
+    'quote_ref':'报价引用','provider_reference':'处理方受理编号','request_id':'请求编号','receipt':'处理方回执',
+    'checks':'规则检查','rule':'检查项目','actual':'实际值','expected':'要求值','combination_checked':'已核验整组叠加',
+    'purchase_summary':'购买摘要','item_count':'购买行数','after_sale_occupied':'售后占用数量',
+    'recorded_difference':'成功支付与订单已付差额','amounts_by_currency_and_status':'各币种渠道退款汇总',
+    'events':'过程记录','events_total':'过程记录数','processes_connected':'子流程是否接通',
+    'purchase_items':'购买明细','refund_summary':'退款汇总','return_events':'退件轨迹','return_events_total':'退件轨迹数',
+    'recorded_replacement_shipped':'已记录换货补发数量','replacement':'换货补发关联',
+    'return_authorization':'退货授权',
     'username':'用户名','profile':'个人资料','display_name':'昵称','contacts':'联系方式',
     'contact_type':'联系方式类型','value':'内容','verified_at':'验证时间','is_default':'默认地址',
     'recipient':'收件人','phone':'电话','detail':'详细地址','province_code':'省编码','city_code':'市编码','district_code':'区编码',
@@ -42,12 +61,15 @@ LABELS = {
     'handoffs':'人工交接','ticket_id':'工单编号','assignee':'客服','resolved_at':'结束时间',
 }
 STATES={'pending_payment':'待支付','paid':'已支付','fulfilling':'履约中','shipped':'已发货',
+    'received':'已收货','after_sale':'售后中','pending_receipt':'待收货',
     'in_transit':'运输中','delivered':'已签收','completed':'已完成','cancelled':'已取消','closed':'已关闭',
     'pending_review':'待审核','approved':'已批准','rejected':'已拒绝','processing':'处理中','pending':'待处理',
     'succeeded':'记录成功','failed':'记录失败','available':'可用','reserved':'已占用','used':'已使用',
     'expired':'已过期','invalid':'已失效','unknown':'未知','eligible':'符合已核实规则',
     'ineligible':'不符合规则','active':'有效','inactive':'停用','queued':'排队中','in_progress':'处理中',
-    'waiting_customer':'等待用户','personal':'个人','company':'企业','refund_only':'仅退款','return_refund':'退货退款'}
+    'waiting_customer':'等待用户','personal':'个人','company':'企业','refund_only':'仅退款','return_refund':'退货退款',
+    'exchange':'换货','repair':'维修','price_protection':'价格保护','registered':'已登记','accepted':'处理方已受理',
+    'issued':'已开票','voided':'已作废','pass':'通过','fail':'不通过'}
 
 def render(name,result):
     if not result.get('success'): return []
@@ -64,7 +86,7 @@ def render(name,result):
             for key,item in value.items():
                 if key not in LABELS and not arbitrary: continue
                 title=LABELS.get(key,label(key,50))
-                walk(item,(path+' / ' if path else '')+title,depth+1,key in {'specs','spec_values','spec_snapshot','recorded_minimum','recorded_success_amounts'},key)
+                walk(item,(path+' / ' if path else '')+title,depth+1,arbitrary or key in {'specs','spec_values','spec_snapshot','recorded_minimum','recorded_success_amounts','amounts_by_currency_and_status','benefits'},key)
         elif isinstance(value,list):
             if not value: lines.append(path+'：暂无记录')
             for i,item in enumerate(value): walk(item,path+f' {i+1}',depth+1,arbitrary)

@@ -1,9 +1,8 @@
-"""product tool entry points. Business logic lives in app.services.commerce."""
+"""Typed tool adapters; business logic lives in commerce services."""
 from app.tools.dispatch import bind
 
 search_products = bind('search_products')
-get_product = bind('get_product')
-get_sku = bind('get_sku')
-compare_skus = bind('compare_skus')
+get_product_details = bind('get_product_details')
 get_price_history = bind('get_price_history')
 get_merchant = bind('get_merchant')
+get_restock_plan = bind('get_restock_plan')
