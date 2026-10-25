@@ -218,9 +218,16 @@ class RuleService:
     def list_my_coupons(self,tx,**args):
         rows=tx.all('SELECT * FROM user_coupons WHERE user_id=%s ORDER BY expires_at,user_coupon_id',(self.user,)); result=[]
         for row in rows:
-            try: self.coupon(tx,ref('coupon_instance',row['user_coupon_id']))
+            if args.get('exclude_expired') and (row['status']=='expired' or at(row['expires_at'])<=utcnow()): continue
+            try: template,instance,scopes=self.coupon(tx,ref('coupon_instance',row['user_coupon_id']))
             except BusinessError: continue
             row=self.coupon_state(row); row.pop('user_id',None)
+            if args.get('coupon_type') is not None:
+                current_type=template.get('coupon_type') or 'general'
+                try: template,_=self.frozen_coupon(tx,template,instance,scopes)
+                except BusinessError: pass
+                row['coupon_type']=template.get('coupon_type') or current_type
+                if args['coupon_type']!='all' and row['coupon_type']!=args['coupon_type']: continue
             if args.get('status','all')=='all' or row['status']==args['status']: result.append(row)
         return self.page(result,'list_my_coupons',args)
     def get_coupon(self,tx,**args):

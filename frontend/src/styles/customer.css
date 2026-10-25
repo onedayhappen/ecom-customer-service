@@ -1,0 +1,804 @@
+.customer-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  gap: 6px;
+  overflow-y: auto;
+}
+.customer-sidebar::before {
+  pointer-events: none;
+}
+.customer-sidebar .sidebar-brand {
+  font-size: 21px;
+  margin-bottom: 18px;
+  flex-shrink: 0;
+}
+.customer-nav {
+  display: grid;
+  gap: 8px;
+}
+.customer-nav .nav-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 14px 12px;
+  font-size: 15px;
+  color: #a9becf;
+}
+.customer-nav .nav-item.active {
+  color: #e6fff6;
+  background: #ffffff0e;
+  font-weight: 600;
+}
+.customer-nav .nav-item:hover {
+  color: #e5fff6;
+  background: #ffffff16;
+}
+.customer-nav button:focus-visible,
+.customer-sidebar button:focus-visible {
+  outline: 2px solid #7de0ca;
+  outline-offset: 3px;
+}
+.customer-sidebar .profile {
+  min-width: 0;
+}
+.customer-sidebar .sidebar-bottom {
+  padding-top: 24px;
+}
+.customer-sidebar .profile strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.customer-sidebar .side-action {
+  font-size: 14px;
+}
+.customer-content {
+  min-width: 0;
+  background: radial-gradient(circle at 90% 0, #e3f5ef, transparent 35%), #f6f9fc;
+}
+.customer-content .customer-shell {
+  max-width: 1120px;
+  padding: 36px 40px;
+}
+.customer-workspace.chat-active {
+  height: 100dvh;
+  min-height: 0;
+}
+.chat-active .customer-content {
+  min-height: 0;
+}
+.customer-chat {
+  height: 100%;
+}
+.customer-chat .customer-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.customer-shell > .support-top {
+  flex-shrink: 0;
+}
+.customer-shell > .support-top h1 {
+  font-size: 24px;
+  line-height: 1.5;
+}
+.customer-shell > .support-top button {
+  padding: 9px 14px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.customer-shell > .support-detail {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.customer-shell > .support-detail > * {
+  flex-shrink: 0;
+}
+.customer-shell .support-transcript {
+  flex: 1 0 120px;
+  min-height: 120px;
+  max-height: none;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  gap: 18px;
+}
+.customer-shell .support-message {
+  flex-shrink: 0;
+}
+.commerce-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px;
+}
+.order-tabs {
+  display: flex;
+  gap: 26px;
+  margin-top: 0;
+  border-bottom: 1px solid #dce6ec;
+  overflow-x: auto;
+}
+.order-tabs button {
+  flex-shrink: 0;
+  padding: 14px 2px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: #000;
+  font-size: 17px;
+}
+.order-tabs button.active {
+  border-bottom-color: #26aa92;
+  font-weight: 700;
+}
+.list-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 24px 0 16px;
+  font-size: 16px;
+  color: #637b88;
+  gap: 12px;
+}
+.refresh-button,
+.load-more,
+.commerce-error button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #d2e3df;
+  border-radius: 8px;
+  padding: 8px 13px;
+  background: white;
+  color: #28796c;
+  font-size: 13px;
+}
+.commerce-results button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.order-list,
+.coupon-list {
+  display: grid;
+  gap: 18px;
+}
+.order-card {
+  padding: 20px 22px;
+  background: white;
+  border: 1px solid #e0e9ee;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 5px 20px #294a6005;
+}
+.order-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.order-card header time {
+  color: #647b89;
+  font-size: 12px;
+}
+.coupon-details small {
+  color: #8a9ba6;
+  font-size: 12px;
+}
+.commerce-badge {
+  flex-shrink: 0;
+  align-self: start;
+  padding: 5px 9px;
+  border-radius: 6px;
+  color: #6f8290;
+  background: #edf2f5;
+  font-size: 12px;
+}
+.status-paid,
+.status-pending_receipt,
+.status-available {
+  color: #188970;
+  background: #e7f7f0;
+}
+.status-pending_payment,
+.status-after_sale,
+.status-reserved {
+  color: #a26d2d;
+  background: #fff3df;
+}
+.order-products {
+  display: grid;
+  gap: 18px;
+  padding-bottom: 18px;
+}
+.order-product {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.product-symbol {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #eff5f7;
+  color: #709b9c;
+}
+.order-product > div {
+  flex: 1;
+  min-width: 0;
+}
+.order-product h3,
+.coupon-title h3 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.order-product h3 {
+  font-size: 16px;
+}
+.order-product p {
+  margin: 5px 0 0;
+  color: #647b89;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.order-product > span:last-child {
+  color: #647b89;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.order-card footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px dashed #e3ece9;
+  color: #647b89;
+  font-size: 12px;
+}
+.order-card footer strong {
+  color: #254b54;
+  font-size: 20px;
+}
+.coupon-list {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+}
+.coupon-card {
+  display: flex;
+  min-width: 0;
+  border: 1px solid #d7e9e4;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+.coupon-value {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 145px;
+  padding: 24px 12px;
+  background: #eaf8f2;
+  border-right: 1px dashed #b6dace;
+  color: #23957a;
+}
+.coupon-value strong {
+  font-size: 26px;
+  letter-spacing: -0.03em;
+}
+.coupon-value span {
+  text-align: center;
+  font-size: 11px;
+}
+.coupon-details {
+  min-width: 0;
+  flex: 1;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.coupon-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 10px;
+  justify-content: space-between;
+}
+.coupon-details p {
+  margin: 0;
+  color: #80938f;
+  font-size: 12px;
+}
+.coupon-used .coupon-value,
+.coupon-expired .coupon-value,
+.coupon-invalid .coupon-value {
+  background: #f0f3f5;
+  color: #8c9da5;
+  border-color: #d8e0e5;
+}
+.commerce-empty {
+  min-height: 330px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 25px;
+  border: 1px dashed #d4e3e7;
+  border-radius: 14px;
+  background: #ffffffa8;
+  color: #97b9b1;
+}
+.commerce-empty h2 {
+  margin: 18px 0 0;
+  color: #58786f;
+  font-size: 18px;
+}
+.commerce-empty p {
+  color: #8a9d99;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.commerce-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: #fff3e4;
+  border-radius: 10px;
+  color: #8a4c20;
+  font-size: 13px;
+}
+.load-more {
+  display: flex;
+  margin: 22px auto 0;
+}
+@media (max-width: 1000px) {
+  .customer-workspace {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+  .commerce-page,
+  .customer-content .customer-shell {
+    padding: 28px 24px;
+  }
+}
+@media (max-width: 720px) {
+  .customer-workspace {
+    display: block;
+  }
+  .customer-workspace.chat-active {
+    display: flex;
+    flex-direction: column;
+  }
+  .chat-active .customer-sidebar {
+    flex-shrink: 0;
+  }
+  .chat-active .customer-content {
+    flex: 1;
+  }
+  .customer-sidebar {
+    display: flex;
+    position: relative;
+    height: auto;
+    min-height: 0;
+    padding: 16px 12px;
+  }
+  .customer-sidebar .sidebar-brand {
+    padding: 0 4px;
+    font-size: 19px;
+    margin-bottom: 0;
+  }
+  .customer-sidebar .profile {
+    display: none;
+  }
+  .customer-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-top: 14px;
+    gap: 4px;
+  }
+  .customer-nav .nav-item {
+    justify-content: center;
+    padding: 12px 0;
+    font-size: 14px;
+  }
+  .customer-nav .nav-item > span {
+    gap: 6px;
+  }
+  .customer-nav .nav-item > svg {
+    display: none;
+  }
+  .customer-sidebar .sidebar-bottom {
+    position: absolute;
+    top: 17px;
+    right: 12px;
+    display: flex;
+    padding-top: 0;
+  }
+  .customer-sidebar .side-action {
+    width: auto;
+    gap: 5px;
+  }
+  .commerce-page,
+  .customer-content .customer-shell {
+    padding: 24px 15px;
+  }
+  .order-tabs {
+    gap: 19px;
+  }
+  .order-card {
+    padding: 16px;
+  }
+  .coupon-value {
+    flex-basis: 112px;
+    padding: 18px 8px;
+  }
+  .coupon-value strong {
+    font-size: 22px;
+  }
+  .coupon-details {
+    padding: 18px 14px;
+  }
+}
+.account-overview {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 26px;
+  border: 1px solid #d7e9e3;
+  border-radius: 14px;
+  background: #fff;
+}
+.account-avatar {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
+  color: #208970;
+  background: #e7f6ef;
+  border-radius: 18px;
+}
+.account-overview > div {
+  min-width: 0;
+}
+.account-overview span:not(.account-avatar) {
+  color: #82958f;
+  font-size: 12px;
+}
+.account-overview h2 {
+  margin: 0;
+  font-size: 24px;
+  overflow-wrap: anywhere;
+}
+.account-joined {
+  display: grid;
+  gap: 8px;
+  margin-left: auto;
+}
+.account-joined strong {
+  color: #405b53;
+  font-size: 14px;
+}
+.membership-group {
+  margin-top: 28px;
+}
+.membership-group h2 {
+  margin: 0 0 15px;
+  font-size: 17px;
+}
+.membership-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.membership-card {
+  min-width: 0;
+  padding: 23px;
+  border: 1px solid #dfe9e7;
+  border-radius: 14px;
+  background: #fff;
+}
+.membership-card > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.membership-card > header > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #4e7366;
+  font-size: 13px;
+}
+.membership-card h3 {
+  margin: 22px 0 17px;
+  font-size: 23px;
+}
+.vip-card {
+  background: linear-gradient(135deg, #fffcf3, #fff);
+  border-color: #ebe2c9;
+}
+.vip-card > header > span:first-child {
+  color: #987430;
+}
+.membership-facts {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+.membership-facts > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 7px 18px;
+  font-size: 12px;
+}
+.membership-facts dt {
+  color: #8a9b95;
+}
+.membership-facts dd {
+  margin: 0;
+  color: #4d655d;
+}
+.membership-muted {
+  color: #8a9c94;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.membership-benefits {
+  display: grid;
+  gap: 13px;
+  margin: 20px 0 0;
+  padding: 18px 0 0;
+  border-top: 1px solid #e9efeb;
+  list-style: none;
+}
+.membership-benefits li {
+  display: grid;
+  gap: 5px;
+}
+.membership-benefits strong {
+  color: #416255;
+  font-size: 13px;
+}
+.membership-benefits span,
+.membership-benefits small {
+  color: #899b93;
+  font-size: 12px;
+}
+.status-active {
+  color: #188970;
+  background: #e7f7f0;
+}
+.profile-page > .commerce-empty {
+  margin-top: 20px;
+}
+.customer-workspace [hidden] {
+  display: none !important;
+}
+.customer-workspace button {
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+  touch-action: manipulation;
+}
+.customer-content button:focus-visible {
+  outline: 2px solid #208c77;
+  outline-offset: 3px;
+}
+.customer-content button:disabled {
+  cursor: not-allowed;
+}
+.customer-content .refresh-button:hover:not(:disabled),
+.customer-content .load-more:hover:not(:disabled),
+.customer-content .commerce-error button:hover:not(:disabled) {
+  border-color: #80c6b7;
+  background: #f0faf6;
+}
+.customer-content .order-tabs button:hover:not(.active) {
+  background: #e5f2ee;
+}
+.customer-sidebar,
+.customer-shell .support-detail,
+.customer-shell .support-transcript,
+.order-tabs {
+  scrollbar-width: thin;
+  scrollbar-color: #c3d4d0 transparent;
+}
+.customer-sidebar {
+  scrollbar-color: #385467 transparent;
+}
+.customer-shell .message-bubble {
+  box-shadow: none;
+  border-color: #e6eeed;
+}
+.customer-shell .from-user .message-bubble {
+  border-color: #dcefe7;
+}
+.customer-shell .reply-typing {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #637d87;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.reply-typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.reply-typing-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #389d88;
+  animation: bounce 1.2s ease-in-out infinite;
+}
+.reply-typing-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.reply-typing-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.customer-shell .message-time {
+  display: block;
+  align-self: center;
+  flex-shrink: 0;
+  margin: 2px 0;
+  color: #7c8d96;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.customer-shell .support-compose textarea:focus {
+  outline: none;
+  border-color: #288e7c;
+  box-shadow: 0 0 0 3px #288e7c19;
+}
+.customer-shell .support-compose textarea::placeholder {
+  color: #768b94;
+}
+.customer-shell .support-compose > button:hover:not(:disabled) {
+  background: #17594f;
+  border-color: #17594f;
+  color: white;
+}
+.customer-shell .support-compose > button:disabled {
+  background: #e6efec;
+  border-color: #e0eae6;
+  color: #7a8e86;
+  opacity: 1;
+}
+.order-card,
+.account-overview,
+.membership-card {
+  box-shadow: 0 3px 14px #203e5005;
+}
+.order-card footer strong,
+.account-joined strong,
+.membership-facts dd {
+  font-variant-numeric: tabular-nums;
+}
+.list-summary .refresh-button {
+  flex-shrink: 0;
+  min-height: 38px;
+}
+.commerce-error {
+  flex-wrap: wrap;
+}
+.commerce-error > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.commerce-error > button {
+  flex-shrink: 0;
+}
+.list-skeleton {
+  display: grid;
+  gap: 18px;
+}
+.list-skeleton-card {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 16px;
+  align-content: center;
+  min-height: 174px;
+  padding: 22px;
+  border: 1px solid #e0e9ee;
+  border-radius: 14px;
+  background: #fff;
+}
+.list-skeleton-card i,
+.list-skeleton-card span {
+  display: block;
+  background: #edf3f2;
+  border-radius: 6px;
+}
+.list-skeleton-card i {
+  grid-row: span 2;
+  height: 56px;
+  border-radius: 12px;
+}
+.list-skeleton-card span {
+  height: 16px;
+  width: 75%;
+}
+.list-skeleton-card span:last-child {
+  width: 45%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .customer-workspace button,
+  .customer-shell .support-compose textarea {
+    transition: none;
+  }
+  .reply-typing-dots i {
+    animation: none;
+  }
+}
+@media (max-width: 720px) {
+  .customer-nav .nav-item > span {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .account-overview {
+    padding: 20px;
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+  .account-joined {
+    width: 100%;
+    margin-left: 0;
+  }
+  .membership-grid {
+    grid-template-columns: 1fr;
+  }
+  .membership-card {
+    padding: 20px;
+  }
+  .customer-shell > .support-detail {
+    padding: 12px;
+    gap: 10px;
+  }
+  .customer-shell .support-transcript {
+    padding: 4px;
+  }
+  .customer-shell .support-message.customer-message,
+  .customer-shell .reply-typing-message {
+    max-width: 100%;
+    gap: 8px;
+  }
+  .customer-shell .message-avatar {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+  .customer-shell .message-bubble {
+    padding: 10px 12px;
+  }
+  .customer-content .customer-shell {
+    padding-bottom: max(15px, env(safe-area-inset-bottom));
+  }
+}

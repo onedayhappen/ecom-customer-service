@@ -1,142 +1,96 @@
-import { useEffect, useRef, useState } from 'react'
-import { post, request, Transcript, useConversation } from './supportClient'
-import { acknowledge, restorePending } from './conversationState'
+import { useTaskConversation } from './chat/useTaskConversation'
+import Transcript from './chat/Transcript'
 import OperationConfirmation from './OperationConfirmation'
 
-export default function TaskConversation({ identity, onLogout, onStaff }) {
-  const sessionKey = `ecom-task-session:${identity.user_id}`
-  const [sessionId, setSessionId] = useState(() => localStorage.getItem(sessionKey) || crypto.randomUUID())
-  const [input, setInput] = useState(''), [error, setError] = useState(''), [progress, setProgress] = useState(null)
-  const [accepted, setAccepted] = useState(false)
-  const [operations, setOperations] = useState([]), [busyOperations, setBusyOperations] = useState({})
-  const operationRevision = useRef(0)
-  const outboxKey = `ecom-task-outbox:${identity.user_id}:${sessionId}`
-  const [pending, setPending] = useState(() => restorePending(sessionStorage, outboxKey, sessionId))
-  const items = useRef(pending), active = useRef(sessionId)
-  const conversation = useConversation(sessionId)
-  useEffect(() => { localStorage.setItem(sessionKey, sessionId) }, [sessionKey, sessionId])
-  useEffect(() => { active.current = sessionId; return () => { active.current = null } }, [sessionId])
-  function save(next) {
-    items.current = next; setPending(next)
-    try { sessionStorage.setItem(outboxKey, JSON.stringify(next)) }
-    catch { setError('浏览器无法保存待发送消息，请保持页面打开并核对发送结果。') }
-  }
-  useEffect(() => {
-    const next = acknowledge(items.current, conversation.messages)
-    if (next.length !== items.current.length) { save(next); setAccepted(true) }
-  }, [conversation.messages])
-  useEffect(() => {
-    let cancelled = false, timer
-    async function refresh() {
-      try {
-        const data = await request(`/api/v1/task-messages/${sessionId}`)
-        if (!cancelled) {
-          setProgress(data)
-          const next = acknowledge(items.current, data.messages)
-          if (next.length !== items.current.length) { save(next); setAccepted(true) }
-        }
-      } catch { /* SSE reports connectivity; an unused conversation has no intake yet. */ }
-      try {
-        const revision = operationRevision.current
-        const cards = await request(`/api/v1/task-operations/${sessionId}`)
-        if (!cancelled && revision === operationRevision.current && Array.isArray(cards)) setOperations(cards)
-      } catch { /* Preserve the last cards during a temporary read failure. */ }
-      if (!cancelled) timer = setTimeout(refresh, 2000)
-    }
-    refresh()
-    return () => { cancelled = true; clearTimeout(timer) }
-  }, [sessionId])
-  async function deliver(payload) {
-    if (items.current.find(x => x.payload.request_id === payload.request_id)?.status === 'sending') return
-    save(items.current.map(x => x.payload.request_id === payload.request_id ? { ...x, status: 'sending' } : x))
-    try {
-      await post('/api/v1/task-messages', payload)
-      if (active.current !== payload.session_id) return
-      save(items.current.filter(x => x.payload.request_id !== payload.request_id))
-      setAccepted(true); setProgress(previous => ({ ...previous, processing: 'processing' })); setError('')
-    } catch (e) {
-      if (active.current !== payload.session_id) return
-      save(items.current.map(x => x.payload.request_id === payload.request_id ? { ...x, status: 'failed' } : x))
-      setError('尚未确认是否收到，请用下方重试按钮核实：' + e.message)
-    }
-  }
-  function send(event) {
-    event.preventDefault()
-    const message = input.trim()
-    if (!message || items.current.length >= 20) return
-    const payload = { session_id: sessionId, request_id: crypto.randomUUID(), message }
-    save([...items.current, { payload, status: 'queued' }])
-    setInput(''); setError('')
-    deliver(payload)
-  }
-  function startNew() {
-    const sid = crypto.randomUUID()
-    active.current = sid; setSessionId(sid); setInput(''); setError(''); setAccepted(false); setProgress(null)
-    // Pending requests remain recoverable in the previous conversation's outbox.
-    items.current = []; setPending([])
-    setOperations([]); setBusyOperations({})
-  }
-  async function operate(operation, action) {
-    const oid = operation.operation_id, sid = sessionId
-    if (busyOperations[oid]) return
-    operationRevision.current += 1
-    setBusyOperations(previous => ({ ...previous, [oid]: true }))
-    try {
-      const updated = await post(`/api/v1/task-operations/${oid}/${action}`, {
-        session_id: sid, ...(action === 'confirm' ? { confirmation_token: operation.confirmation_token } : {})
-      })
-      if (active.current === sid) {
-        setOperations(previous => previous.map(item => item.operation_id === oid ? updated : item))
-        setError('')
-      }
-    } catch (e) {
-      if (active.current === sid) {
-        setError(e.message + '。请刷新操作状态后再决定下一步。')
-        setOperations(previous => previous.map(item => item.operation_id === oid ? { ...item, can_confirm: false } : item))
-      }
-    } finally {
-      operationRevision.current += 1
-      if (active.current === sid) setBusyOperations(previous => ({ ...previous, [oid]: false }))
-    }
-  }
-  async function changeControl(action) {
-    try {
-      const state = await post(`/api/v1/sessions/${sessionId}/${action}`)
-      if (active.current === sessionId) conversation.setState(state)
-    } catch (e) { setError(e.message) }
-  }
-  const state = conversation.state
-  const status = progress?.automatic_processing === false ? '自动办理暂时暂停，消息会保留，你也可以转人工继续处理。'
-    : progress?.processing === 'processing' ? '正在处理，你可以继续补充。'
-    : progress?.processing === 'waiting_human' ? '关联事项正在由人工处理，机器人不会重复办理。'
-    : progress?.processing === 'waiting_user' ? '等待你的补充。' : ''
-  return <main className="support-shell customer-shell">
-    <header className="support-top"><div><small>小夕客服</small>
-      <h1>{state?.mode === 'human' ? '人工客服' : state?.mode === 'handoff_pending' ? '等待人工接入' : '智能咨询'}</h1></div>
-      <div className="support-toolbar">{identity.role !== 'customer' && <button onClick={onStaff}>客服工作台</button>}
-        <button onClick={startNew} disabled={pending.length > 0}>新建会话</button><button onClick={onLogout}>退出</button></div>
-    </header>
-    <section className="support-detail"><header><span>会话 #{sessionId.slice(0, 8)}</span><span>{identity.user_id}</span></header>
-      {(error || conversation.error) && <div className="support-alert" role="alert">{error || conversation.error}</div>}
-      <Transcript {...conversation} />
-      <div className="support-toolbar">
-        <span role="status">{accepted || progress?.received_sequence ? '消息已接收。' : ''}{state?.mode === 'bot' ? status : state ? '人工客服将继续处理，你可以补充信息。' : ''}</span>
-        {(!state || state.mode === 'bot') ? <button onClick={() => changeControl('handoff')}>转人工客服</button>
-          : <button onClick={() => changeControl('resume-bot')}>返回机器人</button>}
-      </div>
-      {pending.map(item => <div className="support-banner" key={item.payload.request_id}>
-        <span>{item.payload.message} · {item.status === 'sending' ? '正在发送' : '等待核实接收结果'}</span>
-        {item.status !== 'sending' && <button onClick={() => deliver(item.payload)}>重试这条消息</button>}
-      </div>)}
-      {operations.map(operation => <OperationConfirmation key={operation.operation_id} operation={operation}
-        enabled={state?.mode === 'bot' && pending.length === 0} busy={!!busyOperations[operation.operation_id]}
-        onConfirm={value => operate(value, 'confirm')} onCancel={value => operate(value, 'cancel')}
-        onRefresh={value => operate(value, 'refresh')} />)}
-      <form className="support-compose" onSubmit={send}>
-        <textarea aria-label="咨询内容" maxLength={4000} value={input} onChange={e => setInput(e.target.value)}
-          placeholder="可以连续补充订单、原因和其他问题" />
-        <button disabled={!input.trim() || pending.length >= 20}>发送消息</button>
-      </form>
-    </section>
-  </main>
+export default function TaskConversation({ identity }) {
+  const {
+    conversation,
+    state,
+    typing,
+    replyTimedOut,
+    error,
+    input,
+    setInput,
+    pending,
+    operations,
+    busyOperations,
+    startNew,
+    send,
+    handleComposerKeyDown,
+    deliver,
+    operate,
+    changeControl,
+  } = useTaskConversation(identity)
+  return (
+    <main className="support-shell customer-shell">
+      <header className="support-top">
+        <div>
+          <h1>
+            {state?.mode === 'human'
+              ? '人工客服'
+              : state?.mode === 'handoff_pending'
+                ? '等待人工接入'
+                : '智能咨询'}
+          </h1>
+        </div>
+        <div className="support-toolbar">
+          <button onClick={startNew} disabled={pending.length > 0}>
+            新建会话
+          </button>
+        </div>
+      </header>
+      <section className="support-detail">
+        {(error || conversation.error) && (
+          <div className="support-alert" role="alert">
+            {error || conversation.error}
+          </div>
+        )}
+        <Transcript
+          {...conversation}
+          showEmptyState={false}
+          customerView
+          typing={typing}
+          replyTimedOut={replyTimedOut}
+        />
+        {state && state.mode !== 'bot' && (
+          <div className="support-toolbar">
+            <button onClick={() => changeControl('resume-bot')}>返回机器人</button>
+          </div>
+        )}
+        {pending
+          .filter((item) => item.status === 'failed')
+          .map((item) => (
+            <div className="support-banner" key={item.payload.request_id}>
+              <span>{item.payload.message} · 等待核实接收结果</span>
+              <button onClick={() => deliver(item.payload)}>重试这条消息</button>
+            </div>
+          ))}
+        {operations.map((operation) => (
+          <OperationConfirmation
+            key={operation.operation_id}
+            operation={operation}
+            enabled={state?.mode === 'bot' && pending.length === 0}
+            busy={!!busyOperations[operation.operation_id]}
+            onConfirm={(value) => operate(value, 'confirm')}
+            onCancel={(value) => operate(value, 'cancel')}
+            onRefresh={(value) => operate(value, 'refresh')}
+          />
+        ))}
+        <form className="support-compose" onSubmit={send}>
+          <textarea
+            aria-label="咨询内容"
+            rows={1}
+            wrap="off"
+            maxLength={4000}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleComposerKeyDown}
+            title="Enter 发送，Shift+Enter 换行"
+            placeholder="可以连续补充订单、原因和其他问题"
+          />
+          <button disabled={!input.trim() || pending.length >= 20}>发送消息</button>
+        </form>
+      </section>
+    </main>
+  )
 }
