@@ -1,10 +1,11 @@
 """Publish ready pieces once, in the transaction that checks their freshness.
 
 Policy checks run before the transaction; no model or network call holds its
-locks. Bounded selection and typed rendering avoid repeated prose generation.
+locks. Composition uses a frozen snapshot; publication rechecks its dependencies.
 """
 import json
 import time
+from copy import deepcopy
 from types import SimpleNamespace
 
 from app.runtime.outbox import clock
@@ -16,9 +17,10 @@ from app.tasks.reply_facts import facts, label, question_text
 
 
 class ReplyCoordinator:
-    def __init__(self, store, user, *, scope=None):
+    def __init__(self, store, user, *, scope=None, composer=None):
         self.store, self.user = store, user
         self.runs = TaskRuns(store, user, scope=scope)
+        self.composer = composer
 
     def _covered(self, tx, key):
         return tx.one("""SELECT item_key FROM task_reply_items
@@ -163,10 +165,39 @@ class ReplyCoordinator:
         return "task" if has_task_question else None
 
     def publish(self, sid):
-        policy_checks = self._check_policy_results(sid)
+        from app.agents.reply_composition import validate_reply
+        from app.config.settings import settings
+        from app.harness.bounded_call import bounded_calls
+        from app.observability.interactions import bind, record, span
+        from app.tasks.reply_composition import ReplyDraft
+        with bind(self.store, sid):
+            draft = self._prepare(sid, self._check_policy_results(sid))
+            if not isinstance(draft, ReplyDraft):
+                return draft
+            # Fixed questions/options and confirmation notices remain code-owned.
+            if not any(m["verified_facts"] for m in draft.context["matters"]):
+                text = draft.fallback
+            else:
+                try:
+                    with span("reply.composition", context=draft.context) as observation:
+                        text = validate_reply(bounded_calls.run(
+                            lambda: self.composer(deepcopy(draft.context)), settings.reply_composition_timeout_seconds))
+                        text = "\n\n".join([text, *draft.context["required_notices"]])
+                        observation["output"] = text
+                except Exception as exc:
+                    record("reply.composition.fallback", status="fallback", reason=type(exc).__name__)
+                    text = draft.fallback
+            return self._prepare(sid, self._check_policy_results(sid), draft=draft, composed=text)
+
+    def _prepare(self, sid, policy_checks, *, draft=None, composed=None):
+        from app.tasks.reply_composition import snapshot
+        from app.observability.interactions import record as observe
         with self.store.transaction() as tx:
             from app.tasks.rollout import running
             if not running(tx, self.user):
+                if draft is not None:
+                    observe("reply.composition.discarded", status="stale", tx=tx,
+                            reason="pipeline_stopped", session_id=sid)
                 return None
             # Also fences an unassociated correction arriving in another session.
             lock_input_user(tx, self.user)
@@ -175,6 +206,9 @@ class ReplyCoordinator:
             tx.execute("INSERT INTO task_reply_sessions(session_id) VALUES (?) ON CONFLICT DO NOTHING", (sid,))
             tx.execute("UPDATE task_reply_sessions SET checked_at=? WHERE session_id=?", (clock(tx), sid))
             if control["mode"] != "bot":
+                if draft is not None:
+                    observe("reply.composition.discarded", status="stale", tx=tx,
+                            reason="control_changed", session_id=sid)
                 return None
             position = tx.one("SELECT received_sequence FROM message_intake_sessions WHERE session_id=?", (sid,))
             received = position["received_sequence"] if position else 0
@@ -182,6 +216,10 @@ class ReplyCoordinator:
                 JOIN support_conversations c ON c.session_id=i.session_id
                 WHERE i.user_id=? AND i.association_status='pending' AND c.mode='bot' LIMIT 1""", (self.user,))
             if pending:
+                if draft is not None:
+                    observe("reply.composition.discarded", status="stale", tx=tx,
+                            reason="new_input", session_id=sid)
+                    return None
                 # One receipt per uninterrupted pending episode, never one per message.
                 noticed = tx.one("SELECT pending_notice FROM task_reply_sessions WHERE session_id=?", (sid,))
                 if noticed["pending_notice"] or not received:
@@ -255,7 +293,8 @@ class ReplyCoordinator:
                     self._mark(tx, sid, key, disposition='covered')
                     continue
                 metadata = dict(key=key, task_versions={tid: record.version},
-                                decision_ids=stamp["decisions"], evidence_ids=[])
+                                decision_ids=stamp["decisions"], evidence_ids=[],
+                                execution_state=result.get("state"))
                 if record.status == "waiting_user":
                     if question:
                         self._mark(tx, sid, key, disposition="deferred")
@@ -298,14 +337,29 @@ class ReplyCoordinator:
                     if not text:
                         subject = "订单 " + label(record.details["order_id"]) if record.details.get("order_id") else label(record.goal)
                         text = subject + "：暂时没有可核实的查询结果，可补充信息后重试，或转人工客服核实。"
+                    subject = "订单 " + label(record.details["order_id"]) if record.details.get("order_id") else label(record.goal)
+                    metadata["fallback"] = (subject + "：暂时无法整理查询结果，请稍后重试。"
+                                            if receipts else text)
                     if record.status == "waiting_external":
                         text += "\n后续结果仍需核实，有新进展可以继续咨询。"
                 metadata["content"] = text
                 pieces.append(metadata)
             if not pieces:
+                if draft is not None:
+                    observe("reply.composition.discarded", status="stale", tx=tx,
+                            reason="results_unavailable_or_already_published", session_id=sid)
                 return None
             event_id = _id(sid, json.dumps(sorted(p["key"] for p in pieces)))
             content = "\n\n".join(p["content"] for p in pieces)
+            if self.composer is not None:
+                current = snapshot(self, tx, control, pieces, received)
+                if draft is None:
+                    return current
+                if current.fingerprint != draft.fingerprint:
+                    observe("reply.composition.discarded", status="stale", tx=tx,
+                            reason="snapshot_changed", session_id=sid)
+                    return None
+                content = composed
             return self._publish(tx, control, pieces, content, received, event_id)
 
     def _publish(self, tx, control, pieces, content, received, event_id):

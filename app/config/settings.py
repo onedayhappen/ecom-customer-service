@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     task_worker_enabled: bool = True
     # Optional bounded look-ahead; association remains ordered per session.
     query_rewrite_prefetch: bool = True
+    reply_composition_enabled: bool = True
+    reply_composition_timeout_seconds: float = Field(default=15, ge=0.05, le=30)
     task_operations_enabled: bool = True
     task_external_progress_enabled: bool = True
     task_external_interval_seconds: float = Field(default=300, ge=1, le=86400)

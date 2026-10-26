@@ -35,6 +35,12 @@ class AgentEngine:
             raise ValueError("Query rewriting requires the conversation client")
         return rewrite(self.client, self.model, context)
 
+    def compose_reply(self, context):
+        from app.agents.reply_composition import compose
+        if self.client is None:
+            raise ValueError("Reply composition requires the configured conversation client")
+        return compose(self.client, self.model, context)
+
     def execute_task(self, store, authenticated_user_id, request, *, tools=None, scope=None):
         """Advance one durable matter through this Agent's existing tool loop."""
         from app.tasks.execution import TaskExecutor

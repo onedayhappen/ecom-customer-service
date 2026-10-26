@@ -253,7 +253,9 @@ def test_reconcile_recovers_association_commit_gap_and_reuses_progress_version(s
     batch = batch_for(store, "ORD-A 查物流")
     svc = service(store)
     svc.commit(batch, svc.snapshot(batch), proposal(new(batch, goal="查物流", details={"order_id": "ORD-A"})))
-    worker = ConversationWorker(store, engine(QueryClient()), tools=query_result)
+    agent = engine(QueryClient())
+    agent.compose_reply = lambda context: '\n'.join(m['verified_facts'] for m in context['matters'])
+    worker = ConversationWorker(store, agent, tools=query_result)
     try:
         worker.reconcile()
         worker.reconcile()
@@ -261,7 +263,10 @@ def test_reconcile_recovers_association_commit_gap_and_reuses_progress_version(s
             jobs = tx.all("SELECT job_id FROM runtime_jobs WHERE kind='task_execution'")
         assert len(jobs) == 1
         drain(worker.executions, [jobs[0]["job_id"]])
-        published = worker.tick()
+        published, deadline = [], time.monotonic() + 5
+        while not published and time.monotonic() < deadline:
+            published.extend(worker.tick())
+            time.sleep(.02)
         assert any("ORD-A" in p["content"] for p in published)
         assert worker.tick() == []
     finally:
@@ -335,6 +340,7 @@ def test_clarification_takes_priority_over_previously_sent_task_question(store):
 
 def test_complete_worker_from_multiple_intake_messages_to_replies(store):
     agent = engine(QueryClient())
+    agent.compose_reply = lambda context: '\n'.join(m['verified_facts'] for m in context['matters'])
     def associate(context):
         batch = SimpleNamespace(session_id=context.session_id, messages=context.current_messages)
         return proposal(*(new(batch, index=i, goal="查询订单", details={"order_id": m["content"].split()[0]})
@@ -359,7 +365,12 @@ def test_complete_worker_from_multiple_intake_messages_to_replies(store):
         with store.transaction(read_only=True) as tx:
             jobs = tx.all("SELECT kind,status,error,response FROM runtime_jobs")
         assert content.count("ORD-A") == content.count("ORD-B") == 1, jobs
-        assert worker.tick() == []
+        before = replies(store)
+        worker.tick()  # May collect a future whose reply is already visible in the DB.
+        for future in list(worker.reply_futures.values()):
+            future.result(5)
+        worker.tick()
+        assert replies(store) == before
     finally:
         worker.close()
 

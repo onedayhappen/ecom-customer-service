@@ -25,6 +25,11 @@ class ConversationWorker:
         self.capacity, self.associations = min(concurrency, 4), {}
         self.receipt_pool = ThreadPoolExecutor(1, thread_name_prefix="business-receipt")
         self.receipt_future = None
+        self.reply_composer = (getattr(engine, "compose_reply", None)
+                               if settings.reply_composition_enabled else None)
+        self.reply_capacity = min(concurrency, 2)
+        self.reply_pool = ThreadPoolExecutor(self.reply_capacity, thread_name_prefix="reply-composition")
+        self.reply_futures = {}
         self.trace_flush_at = 0
         self.rewrite_ahead = None
         if settings.query_rewrite_prefetch and callable(getattr(engine, "rewrite", None)):
@@ -150,7 +155,23 @@ class ConversationWorker:
                 JOIN support_conversations c ON c.session_id=r.session_id
                 ORDER BY r.checked_at,c.session_id LIMIT 64""")
         published = []
+        for sid, future in list(self.reply_futures.items()):
+            if not future.done():
+                continue
+            del self.reply_futures[sid]
+            try:
+                reply = future.result()
+                if reply:
+                    published.append(reply)
+            except Exception:
+                log.exception("Reply composition/publication failed")
         for row in sessions:
+            if self.reply_composer is not None:
+                if row["session_id"] not in self.reply_futures and len(self.reply_futures) < self.reply_capacity:
+                    coordinator = ReplyCoordinator(self.store, row["user_id"], composer=self.reply_composer)
+                    self.reply_futures[row["session_id"]] = self.reply_pool.submit(
+                        coordinator.publish, row["session_id"])
+                continue
             try:
                 reply = ReplyCoordinator(self.store, row["user_id"]).publish(row["session_id"])
             except SupportError as exc:
@@ -164,6 +185,7 @@ class ConversationWorker:
         return published
 
     def close(self):
+        self.reply_pool.shutdown(wait=True)
         self.receipt_pool.shutdown(wait=True)
         self.pool.shutdown(wait=True)
         if self.rewrite_ahead:
