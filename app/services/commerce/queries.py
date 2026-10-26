@@ -123,6 +123,12 @@ class QueryService:
         items=self.order_rows(tx,'order_items',order)
         progress=self.get_order_items(tx,order_ref=args['order_ref'])['data']['items']
         result['data'].update(items=progress[:5],item_count=len(items),items_truncated=len(items)>5)
+        saved=tx.one('SELECT * FROM order_edit_details WHERE platform_code=%s AND order_id=%s',(order['platform_code'],order['order_id']))
+        if saved:
+            purpose='order-edit:'+self.user+':'+order['platform_code']+':'+order['order_id']
+            details=decoded(self.cipher.open(saved['details_ciphertext'],purpose,saved['key_version']))
+            result['data']['note']=details.get('note')
+            result['data']['invoice_info']={'invoice_type':details['invoice']['invoice_type'],'title':'***','tax_number':'***' if details['invoice'].get('tax_number') else None} if details.get('invoice') else None
         for table,key,kind in [('payment_transactions','payment_id','payment'),('shipments','shipment_id','shipment'),('after_sale_requests','after_sale_id','after_sale'),('invoice_requests','invoice_id','invoice')]:
             rows=self.order_rows(tx,table,order)
             result['data']['related'][table]={'count':len(rows),'truncated':len(rows)>5,'items':[{'id':r[key],'target_ref':ref(kind,r[key]),'status':r['status']} for r in rows[:5]]}

@@ -72,7 +72,7 @@ SCHEMA = (
     """CREATE TABLE IF NOT EXISTS support_bot_runs (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
 ) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA + MEMORY_RUNTIME_SCHEMA
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
 
 
 class Tx:
@@ -179,6 +179,9 @@ class SupportStore:
                         if (applied or 0) < 20:
                             from app.tasks.migrations import migrate_pipeline_rollout
                             migrate_pipeline_rollout(tx)
+                        from app.observability.interactions import SCHEMA as TRACE_SCHEMA
+                        for sql in TRACE_SCHEMA:
+                            tx.execute(sql)
                         tx.execute('CREATE TABLE IF NOT EXISTS support_schema_versions (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
                         # Legacy Case data is deliberately discarded; task events remain authoritative.
                         tx.execute('DROP TABLE IF EXISTS case_archives')
@@ -203,6 +206,11 @@ class SupportStore:
                 tx.execute('SELECT pg_advisory_xact_lock_shared(?)', (DEPLOYMENT_LOCK,))
             yield tx
 
+        # Export only committed observations; rollback must never create a reply log.
+        for sid in getattr(tx, "trace_sessions", ()):
+            from app.observability.interactions import export_session
+            export_session(self, sid)
+
     def _control(self, tx, sid, user=None):
         row = tx.one("SELECT * FROM support_conversations WHERE session_id=?" +
                      (" FOR UPDATE" if self.postgres and not tx.read_only else ""), (sid,))
@@ -226,6 +234,8 @@ class SupportStore:
                    (control["session_id"], control["sequence"], key, kind, actor,
                     "internal" if private else "public", encoded, now()))
         enqueue_notification(tx, control['session_id'], control['sequence'])
+        from app.observability.interactions import support_event
+        support_event(tx, control, kind, payload, private)
         if kind == 'message' and payload.get('task_id'):
             tx.execute('INSERT INTO support_task_messages VALUES (?,?,?) ON CONFLICT DO NOTHING',
                        (payload['task_id'], control['session_id'], control['sequence']))

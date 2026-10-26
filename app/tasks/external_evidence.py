@@ -165,6 +165,8 @@ class BusinessProgress:
             data=result['data']; sale=data['after_sale']; work=data.get('work_order') or {}
             if sale['status'] in {'rejected','cancelled','closed'}:
                 phase,rank,content='business_rejected',90,'售后申请已拒绝、撤回或关闭，需要核实后续处理。'
+            elif sale['kind']=='order_cancel' and sale['status']=='completed' and work.get('provider_reference'):
+                phase,rank,content='service_completed',60,'订单已取消，已记录原支付渠道退款成功回执；银行卡入账时间以支付渠道为准。'
             elif sale['kind']=='repair' and sale['status']=='completed' and work.get('provider_reference'):
                 phase,rank,content='service_completed',60,'维修处理方已报告工单完成，可查询工单详情。'
             elif sale['kind']=='exchange' and sale['status']=='completed' and work.get('provider_reference'):

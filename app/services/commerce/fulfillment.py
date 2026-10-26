@@ -95,6 +95,7 @@ class FulfillmentService:
 
     def apply_provider_response(self,tx,job,order,response):
         now=utcnow(); kind=job['kind']; status=response['status']; target=job['target_id']
+        if kind=='order_cancel': return self.apply_cancellation_response(tx,job,order,response)
         if kind=='dispatch': return
         if kind=='invoice_reissue':
             correction=tx.one('SELECT * FROM invoice_corrections WHERE correction_id=%s FOR UPDATE',(target,))

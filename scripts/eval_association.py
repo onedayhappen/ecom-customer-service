@@ -47,6 +47,27 @@ CASES = [
     dict(name="correct_reason", tasks=[dict(key="ear", goal="耳机退货", order="ORD-DEMO-A")],
          text="ORD-DEMO-A 更正退货原因：不是不想要了，是左耳没声音。", expected=["update:ear"],
          detail=("reason", "左耳没声音")),
+    dict(name="missing_business_details", tasks=[], text="帮我退货", expected=["create"], empty_details=True),
+    dict(name="generic_question_selection", tasks=[dict(
+        key="ear", goal="耳机退货", order="ORD-DEMO-A", question=dict(
+            field="details", prompt="这副耳机是什么问题？1. 左耳没声音；2. 右耳没声音。",
+            options=[dict(label="左耳没声音", value="receipt-option-left"),
+                     dict(label="右耳没声音", value="receipt-option-right")]))],
+         text="第二个", expected=["update:ear"], empty_details=True,
+         goal_contains=["耳机", "右耳没声音"], effect="answer"),
+    dict(name="append_conditions", tasks=[dict(
+        key="ear", goal="耳机退货，只有免运费才退", order="ORD-DEMO-A",
+        details=dict(conditions="只有免运费才退"))],
+         text="ORD-DEMO-A 还必须原路退款", expected=["update:ear"],
+         detail=("conditions", "只有免运费才退"), goal_contains=["免运费", "原路退款"]),
+    dict(name="verbatim_invoice_type", tasks=[dict(
+        key="invoice", goal="ORD-DEMO-A 开发票", order="ORD-DEMO-A", question=dict(
+            field="invoice_type", prompt="发票类型是个人还是公司？", options=[]))],
+         text="公司", expected=["update:invoice"], detail=("invoice_type", "公司"), effect="answer"),
+    dict(name="cancel_order_is_business_goal", tasks=[], text="帮我取消 ORD-DEMO-A 订单",
+         expected=["create"], effect="new", goal_contains=["取消"]),
+    dict(name="incomplete_candidate_context", tasks=[], text="帮我退货", expected=["clarify"],
+         gaps=["history_unavailable"]),
 ]
 
 
@@ -62,10 +83,11 @@ def fixture(store, case):
             seq = store._event(tx, c, "message", user, {"role": "user", "content": spec["order"] + " " + spec["goal"]})
         source = dict(kind="message", session_id=session, sequence=seq)
         record = repo.create(session, change_id=str(uuid4()), source=source, goal=spec["goal"],
-                             details={"order_id": spec["order"], "item_name": "鞋子" if "鞋" in spec["goal"] else "耳机"})
-        if spec.get("ask"):
+                             details={"order_id": spec["order"], "item_name": "鞋子" if "鞋" in spec["goal"] else "耳机",
+                                      **spec.get("details", {})})
+        if spec.get("ask") or spec.get("question"):
             record = repo.ask(record.task_id, session, expected_version=record.version, change_id=str(uuid4()), source=source,
-                              question=dict(field="reason", prompt="请说明这件商品哪里出了问题"))
+                              question=spec.get("question") or dict(field="reason", prompt="请说明这件商品哪里出了问题"))
             with store.transaction() as tx:
                 c = store._control(tx, session, user)
                 store._event(tx, c, "message", "bot", {
@@ -102,6 +124,7 @@ def main():
             service = AssociationService(store, batch.user_id)
             service.intake.renew(batch, 60)
             snapshot = service.snapshot(batch)
+            snapshot.context.gaps.extend(case.get("gaps", []))
             result = dict(name=case["name"], input=case["text"], expected=case["expected"])
             since, started = len(measurement.calls), time.monotonic()
             try:
@@ -119,12 +142,17 @@ def main():
                 result["unnecessary_clarification"] = "clarify" in predicted and "clarify" not in case["expected"]
                 committed = service.commit(batch, snapshot, proposal)
                 correct = sorted(predicted) == sorted(case["expected"])
+                written = [service.repo.get(d["task_id"]) for d in committed["decisions"] if d["task_id"]]
+                if case.get("empty_details"):
+                    correct &= all(not decision.details for decision in proposal.decisions)
+                if "effect" in case:
+                    correct &= all(decision.effect == case["effect"] for decision in proposal.decisions)
+                if "goal_contains" in case:
+                    correct &= any(all(word in record.goal for word in case["goal_contains"]) for record in written)
                 if "detail" in case:
                     key, value = case["detail"]
-                    written = [service.repo.get(d["task_id"]) for d in committed["decisions"] if d["task_id"]]
                     correct &= any(record.details.get(key) == value for record in written)
                 if case.get("conditions"):
-                    written = [service.repo.get(d["task_id"]) for d in committed["decisions"] if d["task_id"]]
                     correct &= any(all(word in str(record.details.get("conditions", "")) for word in ("免运费", "否则", "不退")) for record in written)
                 result["passed"] = bool(correct)
                 result["guard"] = "accepted"

@@ -34,6 +34,7 @@ from typing import Any, Callable, Optional
 from app.observability.audit import audit_event, mask_sensitive
 from app.observability.metrics import emit_llm
 from app.observability.trace import SpanKind, TraceManager
+from app.observability.interactions import observed_model, record
 
 logger = logging.getLogger(__name__)
 
@@ -284,6 +285,7 @@ class LlmClient:
 
     # -- 内部实现（被 OpenAI 兼容代理调用） --------------------------------
 
+    @observed_model
     def _sync_call(self, params: dict) -> LLMCallResult:
         params = dict(params)
         scene = params.pop("scene", self._default_scene)
@@ -307,6 +309,7 @@ class LlmClient:
             )
             raise
 
+    @observed_model
     async def _async_call(self, params: dict) -> LLMCallResult:
         params = dict(params)
         scene = params.pop("scene", self._default_scene)
@@ -351,6 +354,7 @@ class LlmClient:
         after = estimate_request_tokens(bounded)
         removed = len(params.get("messages", [])) - len(bounded.get("messages", []))
         report.update(context_input_estimated_after=after, context_messages_removed=removed)
+        record("model.budget", output=report, scene=scene)
         logger.info("LLM context budget scene=%s model=%s before=%s after=%s limit=%s removed=%s",
                     scene, model, before, after, report["context_input_limit"], removed)
         return bounded
@@ -380,6 +384,7 @@ class LlmClient:
                 kwargs['max_tokens'] = settings.model_max_output_tokens
             with model_budget(str(kwargs.get('model', 'default')), kwargs):
                 check_bot()
+                record("model.request", input=kwargs)
                 return raw.chat.completions.create(**kwargs)
 
     async def _raw_acreate(self, **kwargs: Any) -> Any:
@@ -426,6 +431,7 @@ class LlmClient:
             try:
                 await asyncio.to_thread(check_bot)
                 if inspect.iscoroutinefunction(raw.chat.completions.create):
+                    record("model.request", input=kwargs)
                     return await raw.chat.completions.create(**kwargs)
                 return await asyncio.to_thread(raw.chat.completions.create, **kwargs)
             finally:

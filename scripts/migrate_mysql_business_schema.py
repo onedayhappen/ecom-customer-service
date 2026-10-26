@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from app.data.order_dao import MySqlOrderDAO, parse_mysql_dsn  # noqa: E402
 from app.data.product_dao import MySqlProductDAO  # noqa: E402
 
 
-VERSIONS = ("001_business_schema", "002_remove_legacy_commerce", "003_core_tools", "004_extended_tools", "005_merchant_store_type", "006_order_statuses", "007_pending_receipt", "008_after_sale_fulfillment", "009_coupon_eligibility", "010_membership_programs")
+VERSIONS = ("001_business_schema", "002_remove_legacy_commerce", "003_core_tools", "004_extended_tools", "005_merchant_store_type", "006_order_statuses", "007_pending_receipt", "008_after_sale_fulfillment", "009_coupon_eligibility", "010_membership_programs", "011_order_changes")
 SQL_FILE = ROOT / "migrations" / "mysql" / f"{VERSIONS[0]}.sql"
 LEGACY_SQL_FILE = ROOT / "migrations" / "mysql" / f"{VERSIONS[1]}.sql"
 LEGACY_ORDER_COLUMNS = (
@@ -278,6 +279,27 @@ def _apply_010(conn) -> None:
     conn.commit()
 
 
+def _apply_011(conn) -> None:
+    with conn.cursor() as cur:
+        for statement in (ROOT / 'migrations/mysql/011_order_changes.sql').read_text(encoding='utf-8').split(';'):
+            if statement.strip(): cur.execute(statement)
+        # Version existing local policies; do not invent authority for a new platform.
+        cur.execute("SELECT * FROM business_policy_versions WHERE action='cancel_order' AND status='active' AND channel IS NULL")
+        for row in cur.fetchall():
+            rules = json.loads(row['rules']) if isinstance(row['rules'], str) else row['rules']
+            if not rules.get('local_authority'): continue
+            states = ['pending_payment', 'paid', 'pending_receipt']
+            if rules.get('allowed_statuses') == states: continue
+            rules['allowed_statuses'] = states
+            cur.execute('SELECT COALESCE(MAX(version),0)+1 AS v FROM business_policy_versions WHERE policy_id=%s', (row['policy_id'],))
+            version = cur.fetchone()['v']
+            cur.execute("UPDATE business_policy_versions SET status='superseded',effective_until=UTC_TIMESTAMP(6) WHERE policy_id=%s AND version=%s", (row['policy_id'], row['version']))
+            cur.execute('''INSERT INTO business_policy_versions(policy_id,version,action,platform_code,channel,rules,effective_from,effective_until,source,status)
+                VALUES (%s,%s,%s,%s,NULL,%s,UTC_TIMESTAMP(6),%s,%s,'active')''',
+                (row['policy_id'], version, row['action'], row['platform_code'], json.dumps(rules), row['effective_until'], 'knowledge/cancel_order.md'))
+    conn.commit()
+
+
 def migrate(dsn: str, *, check: bool = False) -> bool:
     params = parse_mysql_dsn(dsn)
     if not params.get("database"):
@@ -306,7 +328,7 @@ def migrate(dsn: str, *, check: bool = False) -> bool:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""")
                 cur.execute("SELECT version FROM schema_migrations WHERE version IN (" + ",".join(["%s"] * len(VERSIONS)) + ")", VERSIONS)
                 applied = {row["version"] for row in cur.fetchall()}
-            for version, operation in ((VERSIONS[0], _apply_001), (VERSIONS[1], _apply_002), (VERSIONS[2], _apply_003), (VERSIONS[3], _apply_004), (VERSIONS[4], _apply_005), (VERSIONS[5], _apply_006), (VERSIONS[6], _apply_007), (VERSIONS[7], _apply_008), (VERSIONS[8], _apply_009), (VERSIONS[9], _apply_010)):
+            for version, operation in ((VERSIONS[0], _apply_001), (VERSIONS[1], _apply_002), (VERSIONS[2], _apply_003), (VERSIONS[3], _apply_004), (VERSIONS[4], _apply_005), (VERSIONS[5], _apply_006), (VERSIONS[6], _apply_007), (VERSIONS[7], _apply_008), (VERSIONS[8], _apply_009), (VERSIONS[9], _apply_010), (VERSIONS[10], _apply_011)):
                 if version in applied:
                     continue
                 if version == VERSIONS[0]:

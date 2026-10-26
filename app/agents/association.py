@@ -87,7 +87,8 @@ def propose(client, model, context):
         **settings.chat_completion_options,
     }
     params = context.request(template)
-    response = client.chat.completions.create(**params)
+    from app.observability.interactions import call_model
+    response = call_model(client, params)
     content = response.choices[0].message.content
     if not isinstance(content, str) or len(content) > 100000:
         raise ValueError("Invalid association output")

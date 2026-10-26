@@ -188,6 +188,29 @@ class PrepareInvoice(Order):
 class ChangeAddress(Order):
     address_id: Annotated[str,Field(pattern=r'^[1-9]\d{0,19}$',description='本人已保存的收货地址编号')]
 
+class OrderInvoiceInfo(Input):
+    invoice_type: Literal['personal','company']
+    title: str = Field(min_length=1,max_length=200)
+    tax_number: str | None = Field(None,min_length=1,max_length=64)
+
+    @model_validator(mode='after')
+    def tax(self):
+        if self.invoice_type=='company' and not self.tax_number:
+            raise ValueError('企业发票信息需要税号')
+        return self
+
+class UpdateOrder(Order):
+    phone: str | None = Field(None,pattern=r'^\+?[0-9][0-9 -]{5,23}$',description='用户指定的收货人电话')
+    recipient_name: str | None = Field(None,min_length=1,max_length=100)
+    note: str | None = Field(None,max_length=500,description='订单备注；空字符串表示清空')
+    invoice: OrderInvoiceInfo | None = Field(None,description='待付款订单的开票信息，仅保存信息，不开票')
+
+    @model_validator(mode='after')
+    def changed(self):
+        if all(getattr(self,k) is None for k in ('phone','recipient_name','note','invoice')):
+            raise ValueError('至少指定一项要修改的订单信息')
+        return self
+
 class CancelOrder(Order):
     reason: Reason | None = None
 

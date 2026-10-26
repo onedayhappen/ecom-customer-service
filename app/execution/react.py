@@ -62,6 +62,7 @@ class ReactExecutor:
         execute: ToolExecutor | None = None,
         chat_completion_options: dict | None = None,
         convergence_detector=None,
+        checkpoint=None,
     ):
         self.client = client
         self.model = model
@@ -72,6 +73,7 @@ class ReactExecutor:
         # Harness 测试 / 生产可注入 ConvergenceDetector，触发后终止循环并返回
         # CONVERGENCE_REPLY（不经过 LLM，保证语义稳定）。
         self.convergence_detector = convergence_detector
+        self.checkpoint = checkpoint
         # 第12期：若传入 LlmClient，绑定 react 场景（与查询改写/主生成分开统计 token）
         if hasattr(client, "bind_scene"):
             from app.observability.llm_client import SCENE_REACT
@@ -183,15 +185,21 @@ class ReactExecutor:
 
         def make_result(reply: str, **kwargs: Any) -> ExecutionResult:
             """终点出口：Evidence Pack 校验后构造 ExecutionResult。"""
+            original_reply = reply
             report = verify_reply(reply, [*(historical_evidence or []), *business_evidence(steps)])
             if report.has_unsupported:
                 reply = sanitize_reply(reply, report)
+            from app.observability.interactions import record
+            record("reply.validation", status="corrected" if report.has_unsupported else "ok",
+                   input=original_reply, output=reply, report=report)
             return ExecutionResult(
                 intent=plan.intent, execution=plan.execution,
                 reply=reply, tool_steps=steps, replayed=any_replayed, **kwargs,
             )
 
         for _ in range(max_steps):
+            if self.checkpoint is not None:
+                await call_sync(self.checkpoint)
             from app.support.runtime import check_bot
             await call_sync(check_bot)
             # 第13期：收敛检测（规则1 最大轮次阈值）——每轮「思考+工具」计一步
@@ -225,6 +233,8 @@ class ReactExecutor:
             })
 
             for tc in assistant_msg.tool_calls:
+                if self.checkpoint is not None:
+                    await call_sync(self.checkpoint)
                 name = tc.function.name
                 args = self._safe_arguments(tc.function.arguments)
 
@@ -364,9 +374,13 @@ class ReactExecutor:
             reply = (reply.rstrip("\u3002") + "\u3002" + EVIDENCE_FINALIZE_NOTE) if reply else EVIDENCE_FINALIZE_NOTE
         else:
             reply = fixed_reply
+        original_reply = reply
         report = verify_reply(reply, [*(historical_evidence or []), *business_evidence(steps)])
         if report.has_unsupported:
             reply = sanitize_reply(reply, report)
+        from app.observability.interactions import record
+        record("reply.validation", status="corrected" if report.has_unsupported else "ok",
+               input=original_reply, output=reply, report=report)
         return ExecutionResult(
             intent=plan.intent, execution=plan.execution,
             reply=reply, tool_steps=steps, replayed=any_replayed,

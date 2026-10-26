@@ -82,11 +82,11 @@ def test_address_change_rechecks_delivery_and_fee(extended):
     prepared=svc.preview('prepare_order_address_change',args)
     assert prepared['review']['shipping_amount']=='7.00'
     with svc.store.transaction(write=True) as tx: tx.execute("UPDATE user_addresses SET province_code='unsupported'")
-    with pytest.raises(BusinessError,match='运费规则'): svc.preview('prepare_order_address_change',args)
+    with pytest.raises(BusinessError,match='同城'): svc.preview('prepare_order_address_change',args)
     with svc.store.transaction(write=True) as tx:
         tx.execute("UPDATE user_addresses SET province_code='p'")
         tx.execute("UPDATE delivery_rules SET base_fee=6")
-    with pytest.raises(BusinessError,match='运费与原订单不同'):
+    with pytest.raises(BusinessError,match='已变化'):
         svc.submit('prepare_order_address_change',prepared['arguments'],'address-change',prepared['business_version'])
     with svc.store.transaction() as tx:
         assert tx.one('SELECT COUNT(*) n FROM order_address_changes')['n']==0

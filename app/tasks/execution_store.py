@@ -138,6 +138,8 @@ class TaskRuns:
                        "scope": {key: record.details.get(key) for key in vars(self.candidates.scope)}}
             if previous:
                 queued = json.loads(previous["payload"])
+                if queued.get("usage"):
+                    payload["usage"] = queued["usage"]
                 if queued.get("schedule"):
                     payload["schedule"] = queued["schedule"]
                     payload["scope"] = queued["scope"]
@@ -212,6 +214,23 @@ class TaskRuns:
             self.store._event(tx, control, "task_tool_result", "system", evidence, private=True, key="task-tool:" + eid)
             return evidence
 
+    def save_late_tool(self, request, payload, original, index, name, arguments, result):
+        """Audit an admitted call after its version/lease changed; never authorize reuse."""
+        with self.store.transaction() as tx:
+            control = self.store._control(tx, request.session_id, self.user)
+            row = self._row(tx, request.job_id)
+            if json.loads(row["payload"]).get("owner") != payload["owner"]:
+                raise SupportError("工具结果不属于原执行")
+            self._scope(tx, request.task_id)
+            eid = _id(request.job_id, "tool:" + str(index))
+            evidence = dict(event_id=eid, tool=name, arguments=arguments, result=result,
+                            task_id=request.task_id, task_version=original.version, object=object_key(original),
+                            provenance=payload["provenance"], controls=payload.get("controls"), late=True,
+                            observed_at=now(), observed_epoch=clock(tx))
+            self.store._event(tx, control, "task_tool_result", "system", evidence,
+                              private=True, key="task-tool:" + eid)
+            return evidence
+
     def evidence(self, record, *, seconds=60):
         with self.store.transaction(read_only=True) as tx:
             task_field = "e.payload::jsonb->>'task_id'" if tx.postgres else "json_extract(e.payload,'$.task_id')"
@@ -220,6 +239,7 @@ class TaskRuns:
                 (self.user, record.task_id))
             cutoff = clock(tx) - seconds
             return [e for r in reversed(rows) if (e := json.loads(r["payload"]))["object"] == object_key(record)
+                    and not e.get("late")
                     and e.get('tool') not in {'search_knowledge','search_policies'}
                     and e["observed_epoch"] >= cutoff and e["result"].get("success")
                     and self.control_versions_valid(tx, e.get("controls"))
@@ -254,6 +274,11 @@ class TaskRuns:
                 self.check(tx, request, payload, lock=True, allow_wait=True)
             result = {**result, "job_id": request.job_id, "task_id": request.task_id,
                       "provenance": payload["provenance"], "controls": payload.get("controls", {})}
+            from app.observability.interactions import record as trace_record
+            trace_record("execution.saved", tx=tx, session_id=request.session_id,
+                         job_id=request.job_id, task_id=request.task_id,
+                         status="error" if result.get("state") in {"interrupted", "deferred", "expired"} else "ok",
+                         output=result)
             tx.execute("""UPDATE runtime_jobs SET status=?,response=?,finished_at=? WHERE job_id=?""",
                        ("interrupted" if interrupted else "completed", json.dumps(result, ensure_ascii=False), clock(tx), request.job_id))
             if not interrupted and result.get('needs_human') is True:

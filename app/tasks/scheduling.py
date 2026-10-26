@@ -120,6 +120,9 @@ def dependencies_ready(tx, runs, schedule):
 def admit_execution(tx, runs, previous):
     """Caller holds its conversation/user/task locks; serialize only quota checks."""
     from app.config.settings import settings
+    from app.tasks.execution_updates import pending_input
+    if pending_input(tx, runs.user):
+        raise ScheduleBlocked("input_pending")
     schedule = json.loads(previous["payload"]).get("schedule") if previous else None
     if schedule:
         if previous["queue_deadline"] <= clock(tx):
@@ -141,7 +144,7 @@ class TaskSchedule:
         self.store, self.user, self.queue = store, user, queue
         self.runs = TaskRuns(store, user, scope=scope)
 
-    def enqueue(self, request, *, dependencies=(), queue_seconds=300, tx=None, recovery=0):
+    def enqueue(self, request, *, dependencies=(), queue_seconds=300, tx=None, recovery=0, usage=None):
         own_transaction = tx is None
         request = TaskExecutionInput.model_validate(request)
         deps = [Dependency.model_validate(d).model_dump() for d in dependencies]
@@ -198,6 +201,8 @@ class TaskSchedule:
             payload = dict(request=request.model_dump(), request_hash=self.runs.repo._fingerprint(request.model_dump()),
                            task_id=record.task_id, scope=vars(self.runs.candidates.scope), schedule=schedule,
                            controls=self.runs.controls(tx, request))
+            if usage:
+                payload["usage"] = dict(usage)
             waiting = record.status != "in_progress"
             receipt = dict(job_id=request.job_id, task_id=record.task_id, task_version=record.version,
                            state=record.status, reply="", waiting_for=record.waiting_for,
@@ -210,6 +215,10 @@ class TaskSchedule:
                  json.dumps(payload), "completed" if waiting else "pending", timestamp,
                  timestamp + queue_seconds, request.budget.seconds, timestamp,
                  json.dumps(receipt) if receipt else None, timestamp if waiting else None))
+            from app.observability.interactions import record as trace_record
+            trace_record("schedule.enqueued", tx=tx, session_id=request.session_id,
+                         job_id=request.job_id, task_id=record.task_id,
+                         output={"request": request, "schedule": schedule, "waiting": waiting})
         # A hint is optional. Never send before the caller's outer transaction commits.
         if self.queue and not waiting and own_transaction:
             self.queue.notify(request.job_id)
@@ -292,6 +301,10 @@ class TaskWorker:
 
     def _defer(self, row, reason, *, tx=None):
         with (nullcontext(tx) if tx is not None else self.store.transaction()) as tx:
+            if row.get("error") != reason:
+                from app.observability.interactions import record as trace_record
+                trace_record("schedule.deferred", status="deferred", tx=tx,
+                             session_id=row["session_id"], job_id=row["job_id"], reason=reason)
             tx.execute("""UPDATE runtime_jobs SET error=?,next_delivery=? WHERE job_id=?
                 AND status IN ('pending','dispatched')""", (reason, clock(tx) + .2, row["job_id"]))
 
@@ -318,6 +331,9 @@ class TaskWorker:
                 running = row["status"] == "running"
                 receipt = dict(job_id=row["job_id"], task_id=payload["task_id"], state="interrupted" if running else "expired",
                                reply="", reason="worker_expired" if running else "queue_expired")
+                from app.observability.interactions import record as trace_record
+                trace_record("schedule.expired", status="error", tx=tx, session_id=row["session_id"],
+                             job_id=row["job_id"], task_id=payload["task_id"], output=receipt)
                 tx.execute("UPDATE runtime_jobs SET status=?,response=?,finished_at=? WHERE job_id=?",
                            (receipt["state"], json.dumps(receipt), timestamp, row["job_id"]))
                 recovered += 1
@@ -339,9 +355,18 @@ class TaskWorker:
                     continue
                 record = service.runs.repo._record(service.runs.repo._row(tx, request.task_id))
                 attempts = payload["schedule"]["recovery"]
-                if running and attempts < 2 and record.status == "in_progress" and record.version == request.expected_version:
-                    request = request.model_copy(update={"job_id": _id(row["job_id"], "readonly-recovery")})
-                    service.enqueue(request, dependencies=payload["schedule"]["dependencies"], tx=tx, recovery=attempts + 1)
+                effective_version = payload.get("provenance", {}).get("tasks", {}).get(record.task_id, request.expected_version)
+                usage = payload.get("usage", {})
+                remaining = (usage.get("model_calls", 0) < request.budget.model_calls
+                             and usage.get("tool_calls", 0) < request.budget.tool_calls)
+                if running and attempts < 2 and remaining and record.status == "in_progress" and record.version == effective_version:
+                    request = request.model_copy(update={"job_id": _id(row["job_id"], "readonly-recovery"),
+                                                         "expected_version": record.version})
+                    if payload.get("execution_source"):
+                        from app.tasks.models import MessageSource
+                        request = request.model_copy(update={"source": MessageSource.model_validate(payload["execution_source"])})
+                    service.enqueue(request, dependencies=payload["schedule"]["dependencies"], tx=tx,
+                                    recovery=attempts + 1, usage=usage)
                     # Executor loads only fresh, object-matching successful task
                     # evidence. Missing/failed reads are safe to repeat; no model
                     # continuation, question or business action is blindly replayed.

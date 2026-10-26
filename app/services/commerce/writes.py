@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import uuid4
 from app.services.commerce.common import BusinessError,at,decoded,digest,dumps,money,ok,ref,unref,utcnow
 
-PREPARES={'prepare_after_sale','prepare_invoice','prepare_order_address_change','prepare_order_cancel','prepare_after_sale_cancel',
+PREPARES={'prepare_after_sale','prepare_invoice','prepare_order_address_change','prepare_order_update','prepare_order_cancel','prepare_after_sale_cancel',
     'prepare_price_protection','prepare_exchange','prepare_return_shipment','prepare_repair','prepare_invoice_reissue','prepare_purchase',
     'claim_coupon','request_dispatch'}
 
@@ -14,6 +14,8 @@ def json_binary(row):
 
 class WriteService:
     def private_review(self,tx,action,args):
+        if action=='prepare_order_update':
+            return {'changes':{k:v for k,v in args.items() if k!='order_ref' and v is not None}}
         if action=='prepare_invoice':
             return {'invoice_title':args['title'],'tax_number':args.get('tax_number')}
         if action=='prepare_order_address_change':
@@ -121,6 +123,9 @@ class WriteService:
                 jobs=tx.all('SELECT status FROM commerce_provider_requests WHERE target_id=%s',(work['work_order_id'],))
                 if any(j['status']!='queued' for j in jobs): raise BusinessError('not_eligible','业务已提交处理方，不能本地撤回')
             extra={'sale':sale,'events':events,'refunds':refunds,'work':work}; review.update(title='撤销售后申请',after_sale_id=sale['after_sale_id'],reason=args.get('reason'))
+        elif action=='prepare_order_update':
+            policy,changes,extra=self.order_update_plan(tx,order,args)
+            review.update(changes)
         else:
             assessment=action.removeprefix('prepare_order_') if action.startswith('prepare_order_') else 'invoice'
             assessment={'cancel':'cancel_order','address_change':'change_address'}.get(assessment,assessment)
@@ -130,17 +135,26 @@ class WriteService:
                 address=tx.one('SELECT * FROM user_addresses WHERE address_id=%s AND user_id=%s AND deleted_at IS NULL',(args['address_id'],self.user))
                 old=tx.one('SELECT * FROM order_address_snapshots WHERE platform_code=%s AND order_id=%s',(order['platform_code'],order['order_id']))
                 if not address or not old: raise BusinessError('not_found','地址或订单收货快照不存在')
+                if not old['city_code'] or (address['province_code'],address['city_code'])!=(old['province_code'],old['city_code']):
+                    raise BusinessError('not_eligible','收货地址仅限同城修改')
                 items=self.order_rows(tx,'order_items',order)
                 delivery=self.delivery_for_address(tx,items,address,order['platform_code'])['data']
-                if delivery['currency']!=order['currency'] or money(delivery['shipping_amount'])!=money(order['shipping_amount']):
-                    raise BusinessError('not_eligible','新地址运费与原订单不同，尚不支持自动补退运费',
-                        original_shipping=order['shipping_amount'],new_shipping=delivery['shipping_amount'])
+                if delivery['currency']!=order['currency']:
+                    raise BusinessError('insufficient_data','配送币种与订单不同')
                 extra={'address':json_binary(address),'previous':json_binary(old),'delivery':delivery}
                 review.update(title='修改订单收货地址',address_id=args['address_id'],region=[address[k] for k in ['province_code','city_code','district_code']],impact='仅更新此订单地址，保留变更历史')
-                review.update(shipping_amount=delivery['shipping_amount'],currency=delivery['currency'],delivery_days=delivery['delivery_days'])
+                payable=money(order['payable_amount'])-money(order['shipping_amount'])+money(delivery['shipping_amount'])
+                if payable<0: raise BusinessError('insufficient_data','订单金额无法核实')
+                review.update(original_shipping_amount=order['shipping_amount'],shipping_amount=delivery['shipping_amount'],payable_amount=payable,currency=delivery['currency'],delivery_days=delivery['delivery_days'])
             if action=='prepare_order_cancel':
-                self.validate_reservations(tx,order)
-                review.update(title='取消未支付订单',reason=args.get('reason'),impact='取消订单并释放该订单库存与券占用')
+                facts=self.cancellation_facts(tx,order); extra['cancellation']=facts
+                if facts['mode']=='unpaid':
+                    self.validate_reservations(tx,order)
+                    review.update(title='取消未支付订单',reason=args.get('reason'),impact='取消订单并释放该订单库存与券占用')
+                else:
+                    if not args.get('reason'): raise BusinessError('invalid_arguments','已付款取消需要退款原因')
+                    self.provider_required('order_cancel')
+                    review.update(title='申请取消已付款订单',reason=args['reason'],cancellation_mode=facts['mode'],refund_amount=facts['amount'],shipping_deduction=facts['shipping_deduction'],currency=facts['currency'],impact='审核通过后全额原路退款' if facts['mode']=='paid_unshipped' else '拒收并退回商家验货后扣除订单运费原路退款；申请不等于已经取消')
         version=digest({'order':self.snapshot(tx,order),'policy':policy,'extra':extra,'args':args})
         return review,version
     def preview(self,action,args):
@@ -187,6 +201,9 @@ class WriteService:
                 tax=self.cipher.seal(args['tax_number'],'invoice-tax:'+self.user) if args.get('tax_number') else None
                 tx.execute('INSERT INTO invoice_requests(invoice_id,platform_code,order_id,user_id,invoice_type,title_ciphertext,tax_number_ciphertext,key_version,status,request_id,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',(iid,order['platform_code'],order['order_id'],self.user,args['invoice_type'],title,tax,self.cipher.version,'pending',oid,now))
                 result['invoice_id']=iid
+            elif action=='prepare_order_update':
+                self.save_order_update(tx,order,args,oid)
+                result['status']='updated'
             elif action=='prepare_order_address_change':
                 address=tx.one('SELECT * FROM user_addresses WHERE address_id=%s AND user_id=%s AND deleted_at IS NULL FOR UPDATE',(args['address_id'],self.user))
                 old=tx.one('SELECT * FROM order_address_snapshots WHERE platform_code=%s AND order_id=%s',(order['platform_code'],order['order_id']))
@@ -196,7 +213,10 @@ class WriteService:
                 fields=['recipient_name_ciphertext','phone_ciphertext','province_code','city_code','district_code','detail_ciphertext','key_version']
                 tx.execute('INSERT INTO order_address_changes(change_id,platform_code,order_id,operation_id,previous_ciphertext,replacement_ciphertext,key_version,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',(uuid4().hex,order['platform_code'],order['order_id'],oid,self.cipher.seal(dumps(json_binary(old)),'address-history:'+self.user),self.cipher.seal(dumps(json_binary(address)),'address-history:'+self.user),self.cipher.version,now))
                 tx.execute('UPDATE order_address_snapshots SET '+','.join(f+'=%s' for f in fields)+',captured_at=%s WHERE platform_code=%s AND order_id=%s',tuple(address[f] for f in fields)+(now,order['platform_code'],order['order_id']))
+                tx.execute('UPDATE orders SET shipping_amount=%s,payable_amount=%s,updated_at=%s WHERE platform_code=%s AND order_id=%s',(review['shipping_amount'],review['payable_amount'],now,order['platform_code'],order['order_id']))
                 result['status']='updated'
+            elif action=='prepare_order_cancel' and order['status']!='pending_payment':
+                result.update(self.submit_paid_cancellation(tx,order,args,oid,self.cancellation_facts(tx,order)))
             elif action=='prepare_order_cancel':
                 self.release_reservations(tx,order)
                 for red in self.order_rows(tx,'coupon_redemptions',order):
@@ -218,6 +238,7 @@ class WriteService:
             if action in {'prepare_after_sale','prepare_after_sale_cancel'}:
                 self.sync_order_after_sale(tx,order)
             tx.execute('INSERT INTO order_events(event_id,platform_code,order_id,operation_id,kind,payload,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s)',(uuid4().hex,order['platform_code'],order['order_id'],oid,action.removeprefix('prepare_'),dumps({'status':result['status']}),now))
+            result=decoded(dumps(result))
             self.record_receipt(tx,oid,action,args,result)
             return result
     def sale_event(self,tx,aid,oid,kind,payload):

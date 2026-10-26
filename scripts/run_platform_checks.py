@@ -33,6 +33,7 @@ def main():
             'MEMORY_STORAGE_BACKEND': 'json', 'MEMORY_ENABLED': 'false',
             'MEMORY_DIR': str(Path(directory) / 'memory'),
             'OBSERVABILITY_ENABLED': 'true', 'AUDIT_ENABLED': 'false',
+            'OBSERVABILITY_LOG_DIR': str(artifacts / 'traces'),
             'MCP_ENABLED': 'false', 'RETRIEVAL_SERVICE_URL': '',
             'DEEPSEEK_API_KEY': '', 'OPENAI_API_KEY': '', 'DASHSCOPE_API_KEY': '', 'ROUTER_API_KEY': '',
             'EMBEDDING_API_KEY': '', 'EMBEDDING_BASE_URL': '', 'AUDIT_POSTGRES_DSN': '',

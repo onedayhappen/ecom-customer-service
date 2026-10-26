@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     # One task pipeline. Database rollout controls govern users across instances.
     task_intake_enabled: bool = True
     task_worker_enabled: bool = True
+    # Optional bounded look-ahead; association remains ordered per session.
+    query_rewrite_prefetch: bool = True
     task_operations_enabled: bool = True
     task_external_progress_enabled: bool = True
     task_external_interval_seconds: float = Field(default=300, ge=1, le=86400)
@@ -189,10 +191,12 @@ class Settings(BaseSettings):
     model_max_output_tokens: int = Field(default=2048, ge=1)
     model_queue_wait_seconds: float = Field(default=3, ge=0)
 
-    # 业务链日志监控（第11期）：线上 chat 请求全链路观测轨迹。
-    # 每条请求一个 JSON 对象（事件流 + LLM 调用 + 工具步骤），按天追加写 JSONL。
+    # 业务观测：旧按日 trace 保持可读；当前链路写 conversations/ 会话日志。
     observability_enabled: bool = True
     observability_log_dir: str = "logs/traces"
+    # One session file, one JSONL row per user-message group / formal reply.
+    interaction_trace_enabled: bool = True
+    interaction_trace_stale_seconds: int = Field(default=300, ge=30)
 
     # 可观测性埋点（第12期）：Trace/Span + Prometheus 指标 + 审计日志。
     # 审计：异常 100% 写 agent_audit_log（PostgreSQL），正常流量按抽样率；

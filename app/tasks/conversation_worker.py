@@ -1,6 +1,7 @@
 """Compose the existing association and execution harnesses; no extra Agent."""
 from concurrent.futures import ThreadPoolExecutor
 import logging
+import time
 from types import SimpleNamespace
 from app.config.settings import settings
 
@@ -24,6 +25,12 @@ class ConversationWorker:
         self.capacity, self.associations = min(concurrency, 4), {}
         self.receipt_pool = ThreadPoolExecutor(1, thread_name_prefix="business-receipt")
         self.receipt_future = None
+        self.trace_flush_at = 0
+        self.rewrite_ahead = None
+        if settings.query_rewrite_prefetch and callable(getattr(engine, "rewrite", None)):
+            from app.tasks.rewrite_ahead import RewriteAhead
+            self.rewrite_ahead = RewriteAhead(store, engine, capacity=min(concurrency, 2),
+                                              batch_size=self.intake.batch_size)
 
     def recover_operations(self):
         """One bounded receipt lookup at a time; business writes are never retried."""
@@ -46,9 +53,15 @@ class ConversationWorker:
             self.receipt_future = self.receipt_pool.submit(
                 TaskOperations(self.store, row["user_id"]).reconcile, row["operation_id"])
 
-    def _associate(self, batch):
+    def _associate(self, batch, prepared=None):
         engine = SimpleNamespace(associate=lambda context: bounded_calls.run(
             lambda: self.engine.associate(context), 15))
+        if callable(getattr(self.engine, "rewrite", None)):
+            def rewrite(context):
+                if prepared is not None and prepared.matches(context):
+                    return prepared.future.result(timeout=15)
+                return self.engine.rewrite(context)
+            engine.rewrite = rewrite
         return AssociationService(self.store, batch.user_id).process(batch, engine)
 
     def reconcile(self):
@@ -92,6 +105,10 @@ class ConversationWorker:
                                (clock(tx) + 2, row["task_id"]))
 
     def tick(self):
+        if time.monotonic() >= self.trace_flush_at:
+            from app.observability.interactions import flush_pending
+            flush_pending(self.store)
+            self.trace_flush_at = time.monotonic() + 10
         self.recover_operations()
         for jid, future in list(self.associations.items()):
             if future.done():
@@ -115,11 +132,17 @@ class ConversationWorker:
         for row in pending:
             with self.store.transaction() as tx:
                 self.intake._wake(tx, self.store._control(tx, row['session_id'], row['user_id']))
+        if self.rewrite_ahead:
+            try:
+                self.rewrite_ahead.tick(job_ids=self.associations.keys())
+            except Exception:
+                log.exception("Optional rewrite prefetch unavailable")
         while len(self.associations) < self.capacity:
-            batch = self.intake.claim_next()
+            batch = self.intake.claim_next(batch_limits=self.rewrite_ahead.limits() if self.rewrite_ahead else None)
             if not batch:
                 break
-            self.associations[batch.job_id] = self.pool.submit(self._associate, batch)
+            prepared = self.rewrite_ahead.take(batch) if self.rewrite_ahead else None
+            self.associations[batch.job_id] = self.pool.submit(self._associate, batch, prepared)
         self.reconcile()
         self.executions.tick()
         with self.store.transaction() as tx:
@@ -143,4 +166,6 @@ class ConversationWorker:
     def close(self):
         self.receipt_pool.shutdown(wait=True)
         self.pool.shutdown(wait=True)
+        if self.rewrite_ahead:
+            self.rewrite_ahead.close()
         self.executions.close()

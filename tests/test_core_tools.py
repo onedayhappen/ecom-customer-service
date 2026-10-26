@@ -70,7 +70,7 @@ def commit(svc,name,args,oid=None):
     return svc.submit(name,p['arguments'],oid or uuid4().hex,p['business_version'])
 
 def test_catalog_and_strict_validation():
-    assert len(TOOLS)==48
+    assert len(TOOLS)==49
     token=set_current_user_id('alice')
     try:
         for t in TOOLS:
@@ -200,8 +200,8 @@ def test_address_history_and_scope(svc):
         tx.execute("INSERT INTO delivery_rules VALUES ('address-rule',1,'shop','m','warehouse','p','*','*','CNY',1000,0,500,0,1,3,'test',%s,NULL,'active')",(now-timedelta(days=1),))
         tx.execute('INSERT INTO user_addresses(user_id,recipient_name_ciphertext,phone_ciphertext,province_code,city_code,district_code,detail_ciphertext,key_version,is_default,created_at,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,1,1,%s,%s)',('alice',encrypted['recipient_name'],encrypted['phone'],'p','c','d',encrypted['detail'],now,now))
         aid=str(tx.one('SELECT address_id FROM user_addresses')['address_id'])
-        tx.execute('INSERT INTO order_address_snapshots(platform_code,order_id,recipient_name_ciphertext,phone_ciphertext,province_code,city_code,district_code,detail_ciphertext,key_version,captured_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,1,%s)',('shop','paid',b'oldname',b'oldphone','p','c','d',b'old',now))
-    args={'order_ref':ref('order','shop','paid'),'address_id':aid}
+        tx.execute('INSERT INTO order_address_snapshots(platform_code,order_id,recipient_name_ciphertext,phone_ciphertext,province_code,city_code,district_code,detail_ciphertext,key_version,captured_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,1,%s)',('shop','unpaid',b'oldname',b'oldphone','p','c','d',b'old',now))
+    args={'order_ref':ref('order','shop','unpaid'),'address_id':aid}
     prepared=svc.preview('prepare_order_address_change',args)
     assert '新地址' not in dumps(prepared)
     assert svc.confirmation_review(prepared)['address']['detail']=='新地址'

@@ -62,6 +62,17 @@ class ReplacementShipment(ProviderModel):
     delivered_at: datetime | None=None
     receipt_confirmed_at: datetime | None=None
 
+class RefusedReturn(ProviderModel):
+    shipment_id: str=Field(min_length=1,max_length=64)
+    refused_at: datetime
+    returned_at: datetime
+    inspected_at: datetime
+
+class CancellationEvidence(ProviderModel):
+    approved: bool=False
+    fulfillment_stopped: bool=False
+    returns: list[RefusedReturn]=Field(default_factory=list,max_length=100)
+
 class ProviderResponse(ProviderModel):
     status: Literal['accepted','processing','completed','rejected','not_found']
     reference: str | None=Field(None,max_length=128)
@@ -69,6 +80,8 @@ class ProviderResponse(ProviderModel):
     return_authorization: ReturnAuthorization | None=None
     return_events: list[ReturnEvent]=Field(default_factory=list,max_length=20)
     refund: Refund | None=None
+    refunds: list[Refund]=Field(default_factory=list,max_length=100)
+    cancellation: CancellationEvidence | None=None
     invoice: IssuedInvoice | None=None
     original_voided: bool=False
     replacement_shipment: ReplacementShipment | None=None

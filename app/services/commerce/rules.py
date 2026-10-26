@@ -77,11 +77,11 @@ class RuleService:
         ships=self.order_rows(tx,'shipments',order)
         if action in {'cancel_order','change_address'}:
             if not r.local_authority: raise BusinessError('insufficient_data','未接通该订单的履约控制接口')
-            if any(s['status']!='cancelled' for s in ships): raise BusinessError('not_eligible','订单已进入发货流程')
+        if action=='change_address':
+            self.check_order_editable(tx,order,address=True)
         if action=='cancel_order':
-            if order['status']!='pending_payment' or money(order['paid_amount'])!=0: raise BusinessError('not_eligible','仅支持未支付订单取消')
-            if any(p['status'] not in {'failed','closed'} for p in self.order_rows(tx,'payment_transactions',order)): raise BusinessError('not_eligible','存在支付中或已成功交易')
-            if not r.inventory_managed or not r.coupons_managed: raise BusinessError('insufficient_data','库存与券占用尚未纳入本地事务管理')
+            facts=self.cancellation_facts(tx,order)
+            if facts['mode']=='unpaid' and (not r.inventory_managed or not r.coupons_managed): raise BusinessError('insufficient_data','库存与券占用尚未纳入本地事务管理')
         if action=='invoice':
             if money(order['paid_amount'])<=0: raise BusinessError('not_eligible','订单没有已核实支付金额')
             if any(x['status'] not in {'cancelled','rejected','closed'} for x in self.order_rows(tx,'invoice_requests',order)): raise BusinessError('not_eligible','订单已有有效开票申请')

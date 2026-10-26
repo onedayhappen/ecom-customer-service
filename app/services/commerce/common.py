@@ -160,6 +160,10 @@ class BaseService:
         product=self.public_product(tx,row['product_id'])
         inv=tx.one('SELECT available_qty,updated_at FROM sku_inventory WHERE sku_id=%s'+lock,(sid,))
         row['spec_values']=decoded(row['spec_values'],{})
+        allowed=row['spec_values'].get('cancel_allowed',(product.get('specs') or {}).get('cancel_allowed'))
+        if allowed is not None and not isinstance(allowed,bool):
+            raise BusinessError('insufficient_data','商品取消条件格式无法核实')
+        row['cancel_allowed']=allowed if allowed is not None else product['category'] not in {'定制','定制商品','生鲜','生鲜食品'}
         row.update(merchant_id=product['merchant_id'],product_name=product['name'],inventory=inv,
             subject_ref=ref('sku',sid))
         return row

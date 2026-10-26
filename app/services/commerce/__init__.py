@@ -9,8 +9,9 @@ from app.services.commerce.queries import QueryService
 from app.services.commerce.extensions import ExtendedService
 from app.services.commerce.extended_writes import ExtendedWriteService
 from app.services.commerce.fulfillment import FulfillmentService
+from app.services.commerce.order_changes import OrderChangeService
 
-class CommerceService(FulfillmentService, ExtendedWriteService, ExtendedService, QueryService, BaseService, ReadService, RuleService, WriteService):
+class CommerceService(OrderChangeService, FulfillmentService, ExtendedWriteService, ExtendedService, QueryService, BaseService, ReadService, RuleService, WriteService):
     def read(self,name,args):
         with self.store.transaction() as tx:
             result=getattr(self,name)(tx,**args)

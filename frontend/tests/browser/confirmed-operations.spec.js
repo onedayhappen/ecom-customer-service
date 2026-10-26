@@ -181,7 +181,9 @@ test('order edits show contact, note and invoice before confirmation', async ({ 
   })
   await expect(page.getByText('收货人电话：13900000000')).toBeVisible()
   await expect(page.getByText('备注：（清空）')).toBeVisible()
-  await expect(page.getByText(/发票信息：企业；\s*抬头：修改后的抬头；税号：EDIT-TAX/)).toBeVisible()
+  await expect(
+    page.getByText(/发票信息：企业；\s*抬头：修改后的抬头；税号：EDIT-TAX/),
+  ).toBeVisible()
 })
 
 test('cancellation review shows refund and shipping deduction', async ({ page }) => {

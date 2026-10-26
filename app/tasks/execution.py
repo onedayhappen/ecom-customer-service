@@ -20,8 +20,10 @@ from app.session.request_budget import request_input_limit
 from app.support.store import SupportError
 from app.tasks.execution_models import ProgressInput, ReadTaskContext, TASK_PROMPT, TaskExecutionInput
 from app.tasks.execution_store import TaskRuns
+from app.tasks.execution_updates import ReplanExecution, refresh, save_usage
 from app.tasks.runtime import task_scope
 from app.tools.request_context import reset_current_user_id, set_current_user_id
+from app.observability.interactions import observed_execution, observed_tool, call_model, record
 
 
 class ExecutionStopped(RuntimeError):
@@ -40,14 +42,14 @@ class _ModelClient:
 
     def create(self, **params):
         ctx = self.context
-        ctx.check()
+        ctx.checkpoint()
         from app.observability.llm_client import LlmClient
         # LlmClient accounts for every actual provider call, including calls
         # made inside read tools. Injected test/raw clients use this boundary.
         if not isinstance(self.client, LlmClient):
             ctx.model_request(params)
         try:
-            result = bounded_calls.run(lambda: self.client.chat.completions.create(**params), ctx.call_timeout())
+            result = bounded_calls.run(lambda: call_model(self.client, params), ctx.call_timeout())
         except (SupportError, ExecutionStopped):
             raise
         except TimeoutError:
@@ -56,6 +58,7 @@ class _ModelClient:
             raise ExecutionStopped("call_capacity") from None
         except Exception:
             raise ExecutionStopped("model_unavailable") from None
+        ctx.checkpoint()
         ctx.check()
         return result
 
@@ -65,7 +68,10 @@ class _TaskContext:
         self.runs, self.request, self.tools = runs, request, tools
         self.record, self.payload = reservation["record"], reservation["payload"]
         self.deadline = time.monotonic() + request.budget.seconds
-        self.model_calls, self.tool_calls, self.progress_calls = 0, 0, 0
+        usage = self.payload.get("usage", {})
+        self.model_calls = usage.get("model_calls", 0)
+        self.tool_calls = usage.get("tool_calls", 0)
+        self.progress_calls = usage.get("progress_calls", 0)
         self.budget_lock = threading.Lock()
         self.receipts = []
         self.validation_errors = []
@@ -74,6 +80,38 @@ class _TaskContext:
         from app.memory.task_context import TaskMemory
         self.memory = TaskMemory(runs.store, runs.user)
         self.allowed_tools = frozenset()
+
+    def checkpoint(self):
+        """Wait without DB locks; association continues in its separate pool."""
+        waiting = False
+        while True:
+            if time.monotonic() >= self.deadline:
+                raise ExecutionStopped("time_budget")
+            update = refresh(self.runs, self.request, self.payload)
+            if update is not None:
+                break
+            if not waiting:
+                record("execution.waiting_input", task_id=self.record.task_id)
+                waiting = True
+            time.sleep(min(.05, max(0, self.deadline - time.monotonic())))
+        if waiting:
+            record("execution.input_ready", task_id=self.record.task_id)
+        current, payload, changed = update
+        if changed:
+            self.record, self.payload = current, payload
+            from app.tasks.models import MessageSource
+            self.request = self.request.model_copy(update={
+                "source": MessageSource.model_validate(payload["execution_source"])})
+            self.operation_id = None
+            self.historical = self.runs.evidence(current)
+            self.receipts = []
+            from app.memory.task_context import TaskMemory
+            self.memory = TaskMemory(self.runs.store, self.runs.user)
+            raise ReplanExecution()
+
+    def persist_usage(self):
+        save_usage(self.runs, self.request, self.payload, dict(
+            model_calls=self.model_calls, tool_calls=self.tool_calls, progress_calls=self.progress_calls))
 
     def call_timeout(self):
         return min(self.request.budget.call_seconds, max(0, self.deadline - time.monotonic()))
@@ -93,6 +131,7 @@ class _TaskContext:
             if self.model_calls >= self.request.budget.model_calls:
                 raise ExecutionStopped("model_call_budget")
             self.model_calls += 1
+            self.persist_usage()
         output_key = "max_completion_tokens" if "max_completion_tokens" in params else "max_tokens"
         params[output_key] = min(int(params.get(output_key) or self.request.budget.output_tokens), self.request.budget.output_tokens)
         params["timeout"] = self.call_timeout()
@@ -142,10 +181,13 @@ class _TaskContext:
             return _failure("external_wait_requires_current_evidence")
         self.check()
         self.progress_calls += 1
+        self.persist_usage()
         self.record, self.payload = self.runs.save_progress(self.request, self.payload, progress, self.progress_calls)
         return {"success": True, "task": self.record.model_dump(), "note": "只保存事项进度，未办理业务操作。"}
 
+    @observed_tool
     def tool(self, name, arguments):
+        self.checkpoint()
         self.check()
         if name not in self.allowed_tools:
             return json.dumps(_failure("tool_not_allowed"))
@@ -155,17 +197,32 @@ class _TaskContext:
         from app.services.commerce.common import dumps
         from app.observability.audit import mask_sensitive
         self.tool_calls += 1
+        self.persist_usage()
         spec = BY_NAME[name]
         # Read calls may run with a deadline; writes/preparations must never be detached.
-        raw = bounded_calls.run(lambda: self.tools(name, arguments), self.call_timeout()) if not spec.task_only else self.tools(name, arguments)
-        result = json.loads(raw) if isinstance(raw, str) else raw
-        if not isinstance(result, dict):
-            result = _failure("invalid_tool_result")
-        if name not in {"ask_user", "handoff_to_human"}:
-            self.check()
-            evidence = self.runs.save_tool(self.request, self.payload, self.tool_calls,
-                name, mask_sensitive(arguments), result)
+        # Persist inside the bounded worker so a timed-out read is still recorded
+        # when it eventually returns. Never treat that late result as current.
+        admitted = self.record
+        admitted_payload = json.loads(json.dumps(self.payload))
+        call_index = self.tool_calls
+        def invoke():
+            raw = self.tools(name, arguments)
+            result = json.loads(raw) if isinstance(raw, str) else raw
+            if not isinstance(result, dict):
+                result = _failure("invalid_tool_result")
+            if name not in {"ask_user", "handoff_to_human"}:
+                try:
+                    evidence = self.runs.save_tool(self.request, admitted_payload, call_index,
+                        name, mask_sensitive(arguments), result)
+                except SupportError:
+                    evidence = self.runs.save_late_tool(self.request, admitted_payload, admitted,
+                        call_index, name, mask_sensitive(arguments), result)
+                return result, evidence
+            return result, None
+        result, evidence = bounded_calls.run(invoke, self.call_timeout()) if not spec.task_only else invoke()
+        if evidence is not None and not evidence.get("late"):
             self.receipts.append(evidence)
+        self.checkpoint()
         return dumps(result)
 
 
@@ -184,6 +241,7 @@ class TaskExecutor:
             return replay
         return self.run_reserved(request, engine, reservation)
 
+    @observed_execution
     def run_reserved(self, request, engine, reservation):
         """Internal Worker continuation of a DB reservation; not an HTTP input."""
         context = _TaskContext(self.runs, request, reservation, self.tools)
@@ -194,6 +252,7 @@ class TaskExecutor:
         executor = ReactExecutor(_ModelClient(context, engine.client), engine.model,
             system_prompt=TASK_PROMPT,
             execute=context.tool,
+            checkpoint=context.checkpoint,
             convergence_detector=ConvergenceDetector(max_steps=request.budget.model_calls + 1, max_same_tool_calls=3))
         identity = set_current_user_id(self.runs.user)
         result, stop_reason = None, None
@@ -202,10 +261,8 @@ class TaskExecutor:
             # Redis loss. Direct compatibility calls retain their existing lease.
             partition = nullcontext() if context.payload.get("schedule") else agent_partition(self.runs.user)
             with task_scope(context), partition:
-                context.check()
                 try:
-                    result = executor.run(context.messages(), plan, max_steps=request.budget.model_calls,
-                        tool_definitions=[d for d in TOOL_DEFINITIONS if d["function"]["name"] in context.allowed_tools], historical_evidence=[e["result"] for e in context.historical])
+                    result = self._react(context, executor, plan, TOOL_DEFINITIONS, request)
                 except ExecutionStopped as exc:
                     stop_reason = str(exc)
                     has_evidence = any(e["result"].get("success") for e in context.receipts + context.historical)
@@ -213,6 +270,7 @@ class TaskExecutor:
                         "已取得当前事项的查询结果，结果已保存，可继续核实处理。" if has_evidence
                         else "暂时无法取得可核实的信息，请稍后重试。"))
                 if result.question:
+                    record("execution.question", output=result.question)
                     saved = context.save_progress({"expected_version": context.record.version, "state": "waiting_user",
                                                    "question": result.question})
                     if not saved.get("success"):
@@ -222,6 +280,7 @@ class TaskExecutor:
                 state = context.record.status if context.record.status in {"waiting_user", "waiting_external"} else (
                     "needs_human" if result.needs_human else "needs_confirmation" if context.operation_id
                     else "deferred" if stop_reason else "ready")
+                record("react.result", output=result, stop_reason=stop_reason)
                 return self.runs.finish(request, context.payload, {
                     "state": state, "reply": result.reply, "task_version": context.record.version,
                     "question": context.record.waiting_for if context.record.status == "waiting_user" else None,
@@ -234,9 +293,28 @@ class TaskExecutor:
         except (SupportError, ExecutionStopped):
             return self.runs.finish(request, context.payload, {"state": "interrupted", "reply": "",
                 "reason": "execution_no_longer_current", "needs_human": False}, interrupted=True)
-        except Exception:
+        except Exception as exc:
             # No provider/tool exception text is stored or shown to customers.
+            record("execution.exception", status="error", error={"type": type(exc).__name__, "message": str(exc)})
             return self.runs.finish(request, context.payload, {"state": "deferred", "reply": "暂时无法继续处理，请稍后重试。",
                 "reason": "execution_unavailable", "needs_human": False}, interrupted=True)
         finally:
             reset_current_user_id(identity)
+
+    @staticmethod
+    def _react(context, executor, plan, definitions, request):
+        """Rebuild only after a committed update; counters and deadline survive."""
+        while True:
+            try:
+                context.checkpoint()
+                if context.model_calls >= request.budget.model_calls:
+                    raise ExecutionStopped("model_call_budget")
+                result = executor.run(context.messages(), plan, max_steps=request.budget.model_calls,
+                    tool_definitions=[d for d in definitions if d["function"]["name"] in context.allowed_tools],
+                    historical_evidence=[e["result"] for e in context.historical])
+                context.checkpoint()
+                return result
+            except ReplanExecution:
+                record("execution.replan", task_id=context.record.task_id,
+                       output={"task_version": context.record.version,
+                               "model_calls": context.model_calls, "tool_calls": context.tool_calls})

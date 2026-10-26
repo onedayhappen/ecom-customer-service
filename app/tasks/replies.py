@@ -25,6 +25,12 @@ class ReplyCoordinator:
             WHERE user_id=? AND item_key=? AND disposition<>'deferred'""", (self.user, key))
 
     def _mark(self, tx, sid, key, sequence=None, disposition="published"):
+        previous = tx.one("SELECT disposition FROM task_reply_items WHERE user_id=? AND item_key=?", (self.user, key))
+        if disposition != "published" and (not previous or previous["disposition"] != disposition):
+            from app.observability.interactions import record
+            record("reply.disposition", status=disposition, tx=tx, session_id=sid,
+                   job_id=key[4:] if key.startswith("job:") else None,
+                   output={"item_key": key, "disposition": disposition})
         tx.execute("""INSERT INTO task_reply_items VALUES (?,?,?,?,?,?,?)
             ON CONFLICT(user_id,item_key) DO UPDATE SET sequence=excluded.sequence,
                 disposition=excluded.disposition,checked_at=excluded.checked_at
@@ -52,6 +58,7 @@ class ReplyCoordinator:
 
     def _valid_receipt(self, tx, record, evidence):
         return (evidence.get('task_id') == record.task_id and evidence.get('object') == object_key(record)
+            and not evidence.get('late')
             and isinstance(evidence.get('result'), dict) and evidence['result'].get('success') is True
             and evidence.get('observed_epoch', 0) >= clock(tx) - 60
             and self.runs.control_versions_valid(tx, evidence.get('controls'))
@@ -277,7 +284,8 @@ class ReplyCoordinator:
                     text = "订单 " + label(view["review"]["order_id"]) + "：预检已完成，请核对确认卡片后决定是否提交。"
                     metadata["operation_id"] = row["operation_id"]
                 else:
-                    receipts = self._receipts(tx, record, result, policy_checks, payload['request']['source'])
+                    receipts = self._receipts(tx, record, result, policy_checks,
+                                              payload.get('execution_source', payload['request']['source']))
                     if receipts is None:
                         self._mark(tx, sid, key, disposition="deferred")
                         continue

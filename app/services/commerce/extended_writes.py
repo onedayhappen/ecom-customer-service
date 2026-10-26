@@ -184,7 +184,7 @@ class ExtendedWriteService:
             sid=line['sku_id']; qty=line['quantity']; sku=self.sku(tx,sid); iid=uuid4().hex
             if tx.execute('UPDATE sku_inventory SET available_qty=available_qty-%s,reserved_qty=reserved_qty+%s,version=version+1,updated_at=%s WHERE sku_id=%s AND available_qty>=%s',(qty,qty,now,sid,qty))!=1: raise BusinessError('state_changed','库存不足')
             tx.execute('''INSERT INTO order_items(order_item_id,platform_code,order_id,sku_id,product_id,title_snapshot,spec_snapshot,quantity,unit_price,discount_amount,payable_amount)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',(iid,platform,order_id,sid,sku['product_id'],sku['product_name'],dumps(sku['spec_values']),qty,sku['list_price'],money(sku['list_price'])*qty-money(line['amount']),line['amount']))
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',(iid,platform,order_id,sid,sku['product_id'],sku['product_name'],dumps(dict(sku['spec_values'],cancel_allowed=sku['cancel_allowed'])),qty,sku['list_price'],money(sku['list_price'])*qty-money(line['amount']),line['amount']))
             tx.execute('''INSERT INTO inventory_reservations(reservation_id,platform_code,order_id,order_item_id,sku_id,quantity,status,request_id,created_at,updated_at)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',(uuid4().hex,platform,order_id,iid,sid,qty,'reserved',digest([oid,sid]),now,now))
         for coupon in pricing['coupons']:

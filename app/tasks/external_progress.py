@@ -54,7 +54,7 @@ def binding_for(tx, runs, record):
         op=tx.one('''SELECT p.payload,o.tool,o.status,o.result FROM task_operation_proposals p
             JOIN support_operations o ON o.operation_id=p.operation_id
             WHERE p.user_id=? AND p.task_id=? AND p.operation_id=?''',(runs.user,record.task_id,waiting['operation_id']))
-        if op and op['tool'] in {'prepare_after_sale','prepare_invoice','prepare_exchange','prepare_repair','prepare_price_protection','prepare_invoice_reissue'}:
+        if op and op['tool'] in {'prepare_after_sale','prepare_invoice','prepare_exchange','prepare_repair','prepare_price_protection','prepare_invoice_reissue','prepare_order_cancel'}:
             receipt=json.loads(op['result'] or '{}'); prepared=json.loads(op['payload'])['prepared']
             if op['status']!='succeeded' or receipt.get('success') is not True or receipt.get('request_id')!=waiting['operation_id']:
                 raise ExternalEvidenceError('业务操作尚未确认登记')

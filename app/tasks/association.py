@@ -12,6 +12,7 @@ from app.support.store import SupportError, now
 from app.tasks.candidates import CandidateService
 from app.tasks.intake import MessageIntake
 from app.tasks.repository import TaskRepository, VersionConflict
+from app.observability.interactions import observed_association, record
 
 
 class AssociationRejected(SupportError):
@@ -110,10 +111,11 @@ class AssociationService:
                          and all(available[o["task_id"]]["version"] == o["version"] for o in visible),
             })
 
-    def snapshot(self, batch, *, check_orders=False):
+    def snapshot(self, batch, *, check_orders=False, dialogue=None, rewritten_query=""):
         if batch.user_id != self.user:
             raise SupportError("归属判断任务不存在", 404)
-        context = self.candidates.build(batch.session_id, [m["sequence"] for m in batch.messages], check_orders=check_orders)
+        context = self.candidates.build(batch.session_id, [m["sequence"] for m in batch.messages],
+                                        check_orders=check_orders, dialogue=dialogue, rewritten_query=rewritten_query)
         with self.store.transaction(read_only=True) as tx:
             self.store._control(tx, batch.session_id, self.user)
             context.control_notices = self._controls(tx, batch)
@@ -350,9 +352,21 @@ class AssociationService:
                             patch["status"] = {"pause": "paused", "cancel": "cancelled"}.get(decision.effect, "in_progress")
                         if decision.effect in {"cancel", "answer"}:
                             patch["waiting_for"] = None
-                        record = self.repo.update(tid, batch.session_id, expected_version=current.version,
-                                                  change_id=did, source=source, patch=patch, tx=tx,
-                                                  written_fields=["details." + d.field for d in decision.details])
+                        if (decision.effect in {"supplement", "amend"}
+                                and current.status in {"waiting_user", "waiting_external"}
+                                and (decision.goal or decision.details)):
+                            # A new request invalidates the old version-bound
+                            # question/wait. Re-evaluate instead of leaving an
+                            # unanswerable question attached to the new version.
+                            patch.update(status="in_progress", waiting_for=None)
+                        # Explicit field reaffirmations still need provenance:
+                        # a later correction must not erase the user's restatement.
+                        if not decision.details and decision.goal is None and all(getattr(current, k) == v for k, v in patch.items()):
+                            record, change_id = current, None
+                        else:
+                            record = self.repo.update(tid, batch.session_id, expected_version=current.version,
+                                                      change_id=did, source=source, patch=patch, tx=tx,
+                                                      written_fields=["details." + d.field for d in decision.details])
                     tid, version = record.task_id, record.version
                     current_records[tid] = record
                     # The repository allocates provenance events in this same
@@ -424,35 +438,86 @@ class AssociationService:
             "candidate_task_ids": [c["task_id"] for c in snapshot.context.candidates][:50],
         }]})
 
+    @observed_association
     def process(self, batch, engine):
         if batch.user_id != self.user:
             raise SupportError("归属判断任务不存在", 404)
         replay = self.result(batch.job_id)
         if replay:
             return replay
+        self.intake.renew(batch, 60)
+        dialogue = self.candidates.dialogue(batch.session_id, [m["sequence"] for m in batch.messages])
+        rewritten = self._rewrite(batch, engine, dialogue)
         rejections = []
         for attempt in range(self.max_attempts):
             self.intake.renew(batch, 60)
-            snapshot = self.snapshot(batch, check_orders=attempt > 0)
+            snapshot = self.snapshot(batch, check_orders=attempt > 0,
+                                     dialogue=dialogue, rewritten_query=rewritten)
+            record("association.candidates", attempt=attempt + 1, output=snapshot.context.data())
             try:
                 proposal = AssociationProposal.model_validate(engine.associate(snapshot.context))
+                record("association.proposal", attempt=attempt + 1, output=proposal)
             except ContextBudgetExceeded:
+                record("association.validation", status="error", attempt=attempt + 1, error="context_budget")
                 rejections.append("context_budget")
                 break
-            except (ValueError, ValidationError):
+            except (ValueError, ValidationError) as exc:
+                record("association.validation", status="error", attempt=attempt + 1,
+                       error={"code": "invalid_model_output", "type": type(exc).__name__, "message": str(exc)})
                 rejections.append("invalid_model_output")
                 continue
-            except Exception:
+            except Exception as exc:
+                record("association.validation", status="error", attempt=attempt + 1,
+                       error={"code": "model_unavailable", "type": type(exc).__name__, "message": str(exc)})
                 rejections.append("model_unavailable")
                 continue
             try:
-                return self.commit(batch, snapshot, proposal, rejections=rejections)
+                result = self.commit(batch, snapshot, proposal, rejections=rejections)
+                record("association.validation", attempt=attempt + 1, output=result)
+                return result
             except AssociationRejected as exc:
+                record("association.validation", status="error", attempt=attempt + 1, error=exc.code)
                 rejections.append(exc.code)
             except VersionConflict:
+                record("association.validation", status="error", attempt=attempt + 1, error="version_or_control_changed")
                 rejections.append("version_or_control_changed")
         # No guessed business fields survive an invalid/ambiguous proposal.
         # Snapshot again so the fallback itself does not reuse stale control.
         self.intake.renew(batch, 60)
-        snapshot = self.snapshot(batch)
+        snapshot = self.snapshot(batch, dialogue=dialogue, rewritten_query=rewritten)
+        record("association.fallback", status="fallback", rejections=rejections)
         return self.commit(batch, snapshot, self._fallback(batch, snapshot), rejections=rejections)
+
+    def _rewrite(self, batch, engine, dialogue):
+        """Persist one bounded rewrite per claimed range, including fallback."""
+        from app.agents.query_rewrite import validate_rewrite
+        from app.harness.bounded_call import bounded_calls
+        with self.store.transaction(read_only=True) as tx:
+            row = tx.one("SELECT payload FROM runtime_jobs WHERE job_id=?", (batch.job_id,))
+            saved = json.loads(row["payload"]).get("query_rewrite") if row else None
+        fingerprint = self.repo._fingerprint(dialogue.current_messages)
+        if saved and saved["fingerprint"] == fingerprint:
+            # Reuse the same original history after a lease recovery.
+            dialogue.recent_messages = saved["recent_messages"]
+            return saved["text"]
+        text = "\n".join(m["content"] for m in dialogue.current_messages)
+        status, error = "skipped", None
+        if callable(getattr(engine, "rewrite", None)):
+            try:
+                text = validate_rewrite(bounded_calls.run(lambda: engine.rewrite(dialogue), 15))
+                status = "ok"
+            except Exception as exc:
+                status, error = "fallback", type(exc).__name__
+        self.intake.renew(batch, 60)
+        with self.store.transaction() as tx:
+            self.store._control(tx, batch.session_id, self.user)
+            state = self.intake._state(tx, batch.session_id)
+            if state["active_job_id"] != batch.job_id or state["lease_owner"] != batch.owner:
+                raise SupportError("改写批次租约已失效")
+            row = tx.one("SELECT payload FROM runtime_jobs WHERE job_id=?", (batch.job_id,))
+            payload = json.loads(row["payload"])
+            payload["query_rewrite"] = dict(fingerprint=fingerprint, text=text, status=status,
+                                             recent_messages=dialogue.recent_messages)
+            tx.execute("UPDATE runtime_jobs SET payload=? WHERE job_id=?", (json.dumps(payload, ensure_ascii=False), batch.job_id))
+            record("query_rewrite", tx=tx, status=status, input=dialogue.data(), output=text, error=error)
+        return text

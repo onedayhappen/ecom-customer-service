@@ -200,7 +200,7 @@ class MessageIntake:
                     "messages": items, "processing": processing, "active_tasks": active,
                     'human_tasks': [r['task_id'] for r in human]}
 
-    def claim(self, sid, user):
+    def claim(self, sid, user, *, through_sequence=None):
         with self.store.transaction() as tx:
             from app.tasks.rollout import running
             if not running(tx, user):
@@ -219,10 +219,15 @@ class MessageIntake:
             messages = tx.all("""SELECT i.sequence,i.request_id,e.payload FROM message_intake_items i
                 JOIN support_events e ON e.session_id=i.session_id AND e.sequence=i.sequence
                 WHERE i.session_id=? AND i.association_status='pending' ORDER BY i.sequence LIMIT ?""", (sid, self.batch_size))
+            previous = json.loads(job["payload"] or "{}")
+            if previous.get("sequences"):
+                messages = [m for m in messages if m["sequence"] in previous["sequences"]]
+            elif through_sequence is not None:
+                messages = [m for m in messages if m["sequence"] <= through_sequence]
             if not messages:
                 return None
             owner = str(uuid4())
-            payload = dict(session_id=sid, user_id=user, sequences=[r["sequence"] for r in messages],
+            payload = dict(previous, session_id=sid, user_id=user, sequences=[r["sequence"] for r in messages],
                            control_version=control["control_version"])
             tx.execute("""UPDATE runtime_jobs SET status='running',payload=?,started_at=?,run_deadline=?,
                 attempts=attempts+1,error=NULL WHERE job_id=?""",
@@ -250,7 +255,7 @@ class MessageIntake:
             if updated != 1:
                 raise SupportError("归属判断占用已过期")
 
-    def claim_next(self):
+    def claim_next(self, *, batch_limits=None):
         """Poll durable outbox, including an expired lease after worker death.
 
         Association has no external side effect; recovery can re-read pending
@@ -264,7 +269,8 @@ class MessageIntake:
                 (j.status IN ('pending','dispatched') OR (j.status='running' AND j.run_deadline<=?))
                 ORDER BY j.created_at LIMIT 100""", (timestamp,))
         for candidate in candidates:
-            batch = self.claim(candidate["session_id"], candidate["user_id"])
+            batch = self.claim(candidate["session_id"], candidate["user_id"],
+                               through_sequence=(batch_limits or {}).get(candidate["session_id"]))
             if batch:
                 return batch
         return None
