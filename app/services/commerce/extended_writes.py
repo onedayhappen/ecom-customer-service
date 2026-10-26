@@ -3,14 +3,14 @@ import base64
 from datetime import timedelta
 from decimal import Decimal
 from uuid import uuid4
-from app.services.commerce.common import BusinessError,at,decoded,digest,dumps,money,ok,ref,unref,utcnow
+from app.services.commerce.common import BusinessError,at,decoded,digest,dumps,money,ref,unref,utcnow
 from app.services.commerce.writes import WriteService,json_binary
 
 EXTENDED_PREPARES={'prepare_price_protection','prepare_exchange','prepare_return_shipment',
     'prepare_repair','prepare_invoice_reissue','prepare_purchase'}
 
 
-class ExtendedWriteService:
+class ExtendedWriteService(WriteService):
     def provider_required(self,kind):
         from app.services.commerce.providers import gateway
         provider=gateway(kind)
@@ -100,7 +100,7 @@ class ExtendedWriteService:
         return review,version,private
 
     def preview(self,action,args):
-        if action not in EXTENDED_PREPARES: return WriteService.preview(self,action,args)
+        if action not in EXTENDED_PREPARES: return super().preview(action,args)
         with self.store.transaction() as tx:
             order=self.extended_target(tx,action,args); review,version,private=self.extended_plan(tx,action,args,order)
             sealed=self.cipher.seal(dumps({'action':action,'arguments':args,'user_id':self.user,'private_review':private}),'operation:'+self.user)
@@ -108,7 +108,7 @@ class ExtendedWriteService:
                 'sealed':base64.b64encode(sealed).decode(),'key_version':self.cipher.version},'business_version':version,'review':review}))
 
     def submit(self,action,arguments,oid,version):
-        if action not in EXTENDED_PREPARES: return WriteService.submit(self,action,arguments,oid,version)
+        if action not in EXTENDED_PREPARES: return super().submit(action,arguments,oid,version)
         body=decoded(self.cipher.open(base64.b64decode(arguments['sealed']),'operation:'+self.user,arguments['key_version']))
         if body['action']!=action or body['user_id']!=self.user: raise BusinessError('invalid_arguments','操作绑定不匹配')
         args=body['arguments']; kind=action.removeprefix('prepare_')

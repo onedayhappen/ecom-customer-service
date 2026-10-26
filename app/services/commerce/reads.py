@@ -1,7 +1,7 @@
 """Customer-owned reads over the normalized business schema."""
 from datetime import timedelta
 from decimal import Decimal
-from app.services.commerce.common import BusinessError,at,decoded,money,ok,ref,unref,utcnow
+from app.services.commerce.common import BusinessError,at,decoded,money,ok,ref,utcnow
 
 ORDER_STATES={'pending_payment','paid','pending_receipt','received','after_sale','cancelled','closed'}
 SALE_STATES={'pending_review','approved','rejected','processing','completed','cancelled','closed'}
@@ -28,24 +28,9 @@ class ReadService:
                 vip_plan_code=sub['plan_code'] if sub else None,vip_starts_at=sub['starts_at'] if sub else None,
                 vip_expires_at=sub['ends_at'] if sub else None,vip_status=facts['vip']['status'])
         return ok({'username':user['username'],'membership_summary':{k:v for k,v in user.items() if k not in {'user_id','username'}},'membership_summary_authoritative':False,'profile':profile,'contacts':[dict(r,value='***') for r in contacts[:20]],'contacts_total':len(contacts)},limitations=['联系方式仅展示验证状态']+(['联系方式超过摘要上限'] if len(contacts)>20 else []))
-    def list_addresses(self,tx,**args):
-        rows=tx.all('SELECT address_id,province_code,city_code,district_code,is_default,updated_at FROM user_addresses WHERE user_id=%s AND deleted_at IS NULL ORDER BY is_default DESC,address_id',(self.user,))
-        return self.page([dict(r,address_id=str(r['address_id']),recipient='***',phone='***',detail='***') for r in rows],'list_addresses',args)
     def list_platform_accounts(self,tx,**args):
         rows=tx.all('SELECT platform_code,status,verified_at FROM user_platform_accounts WHERE user_id=%s ORDER BY platform_code,id',(self.user,))
         return ok({'items':rows[:20],'total':len(rows)},limitations=['平台账号内容已隐藏']+(['超过摘要上限，请在账号页面查看'] if len(rows)>20 else []))
-    def search_products(self,tx,**args):
-        query=args['query']; pattern='%'+query.replace('!','!!').replace('%','!%').replace('_','!_')+'%'
-        rows=tx.all("SELECT product_id,merchant_id,name,category,description FROM products WHERE name LIKE %s ESCAPE '!' OR category LIKE %s ESCAPE '!' OR description LIKE %s ESCAPE '!' ORDER BY product_id",(pattern,pattern,pattern))
-        results=[]
-        for row in rows:
-            if getattr(self.scope,'store_id',None) and row['merchant_id']!=self.scope.store_id: continue
-            skus=tx.all('SELECT sku_id,list_price,currency,status FROM product_skus WHERE product_id=%s ORDER BY sku_id',(row['product_id'],))
-            cap=args.get('max_price')
-            matched=[x for x in skus if x['status']=='active' and (not cap or x['currency']==cap['currency'] and money(x['list_price'])<=money(cap['amount']))]
-            if cap and not matched: continue
-            results.append(dict(row,subject_ref=ref('product',row['product_id']),sku_summary=matched[:5],sku_count=len(matched)))
-        return self.page(results,'search_products',args,data={'applied_conditions':{'keyword':query,'max_price':args.get('max_price')},'unapplied_conditions':['自然语言中未显式提供的颜色、性能等限制']})
     def get_product(self,tx,**args):
         p=self.public_product(tx,args['product_id'])
         rows=tx.all('SELECT sku_id,sku_code,spec_values,list_price,currency,status FROM product_skus WHERE product_id=%s ORDER BY sku_id',(p['product_id'],))
@@ -129,11 +114,6 @@ class ReadService:
         if any(r['order_item_id'] not in ids for r in rows): raise BusinessError('insufficient_data','售后明细归属不一致')
         refunds=tx.all('SELECT refund_id,status,amount,currency FROM refund_transactions WHERE after_sale_id=%s ORDER BY refund_id',(sale['after_sale_id'],))
         return self.page(rows,'get_after_sale',args,data={'after_sale':state(masked(sale),SALE_STATES),'currency':o['currency'],'refunds':{'count':len(refunds),'references':[r['refund_id'] for r in refunds[:20]]}},limitations=['审核意见、退货授权地址和验货过程尚未接入'])
-    def get_refunds(self,tx,**args):
-        sale,o=self.sale(tx,args['after_sale_id']); rows=tx.all('SELECT * FROM refund_transactions WHERE after_sale_id=%s ORDER BY requested_at,refund_id',(sale['after_sale_id'],))
-        payments={r['payment_id'] for r in self.order_rows(tx,'payment_transactions',o)}
-        if any(r['currency']!=o['currency'] or r['payment_id'] and r['payment_id'] not in payments for r in rows): raise BusinessError('insufficient_data','退款关联或币种不一致')
-        return self.page(rows,'get_refunds',args,data={'currency':o['currency'],'recorded_success_amount':sum((money(r['amount']) for r in rows if r['status']=='succeeded'),Decimal(0))},limitations=['渠道成功不代表已独立核实银行卡入账'])
     def list_invoice_requests(self,tx,**args):
         if args.get('order_ref'): self.owned_order(tx,args['order_ref'])
         rows=tx.all('SELECT invoice_id,platform_code,order_id,user_id,invoice_type,status,created_at,issued_at FROM invoice_requests WHERE user_id=%s ORDER BY created_at DESC,invoice_id',(self.user,)); result=[]

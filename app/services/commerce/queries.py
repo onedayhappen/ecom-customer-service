@@ -1,8 +1,8 @@
 """Resource queries for the 48-tool contract; projections contain recorded facts only."""
 from decimal import Decimal
 import json
-from app.services.commerce.common import BusinessError, at, decoded, money, ok, ref, unref, utcnow
-from app.services.commerce.reads import ReadService, masked, state, ORDER_STATES, SALE_STATES
+from app.services.commerce.common import BusinessError, at, decoded, money, ok, ref, unref
+from app.services.commerce.reads import ReadService, masked, state, SALE_STATES
 from app.services.commerce.rules import RuleService
 
 
@@ -23,7 +23,7 @@ def filter_specs(rows, specs):
     return ([r for r in rows if all(str(r['spec_values'].get(s['name'])) == s['value'] for s in applied)], unknown)
 
 
-class QueryService:
+class QueryService(ReadService, RuleService):
     def replacement_shipments(self,tx,order):
         rows=tx.all('''SELECT w.details,w.after_sale_id FROM service_work_orders w
             JOIN after_sale_requests a ON a.after_sale_id=w.after_sale_id
@@ -110,7 +110,7 @@ class QueryService:
 
     def find_orders(self, tx, **args):
         # Reuse the ownership and date predicates, then add bounded purchase labels.
-        result=ReadService.find_orders(self,tx,**dict(args,keyword=args.get('query',args.get('keyword'))))
+        result=super().find_orders(tx,**dict(args,keyword=args.get('query',args.get('keyword'))))
         for row in result['data']['items']:
             items=self.order_rows(tx,'order_items',row)
             row['purchase_summary']=[{'name':i['title_snapshot'],'specs':decoded(i['spec_snapshot']),'quantity':i['quantity']} for i in items[:3]]
@@ -118,7 +118,7 @@ class QueryService:
         return result
 
     def get_order(self, tx, **args):
-        result=ReadService.get_order(self,tx,**args)
+        result=super().get_order(tx,**args)
         order=self.owned_order(tx,args['order_ref'])
         items=self.order_rows(tx,'order_items',order)
         progress=self.get_order_items(tx,order_ref=args['order_ref'])['data']['items']
@@ -135,7 +135,7 @@ class QueryService:
         return result
 
     def get_order_items(self, tx, **args):
-        result=ReadService.get_order_items(self,tx,**args)
+        result=super().get_order_items(tx,**args)
         order=self.owned_order(tx,args['order_ref'])
         sales=self.order_rows(tx,'after_sale_requests',order)
         ships=self.order_rows(tx,'shipments',order)
@@ -169,7 +169,7 @@ class QueryService:
         return result
 
     def get_payments(self,tx,**args):
-        result=ReadService.get_payments(self,tx,**args)
+        result=super().get_payments(tx,**args)
         data=result['data']; currency=data['order_currency']; paid=data['order_paid_amount']
         data['recorded_difference']=data['recorded_success_amounts'].get(currency,Decimal(0))-money(paid) if paid is not None and currency else None
         return result
@@ -253,7 +253,7 @@ class QueryService:
                 lines=[dict(r,amount=r['payable_amount'],merchant_id=order['merchant_id']) for r in self.order_rows(tx,'order_items',order)]
                 platform,currency=order['platform_code'],order['currency']
             else:
-                estimate=RuleService.estimate_purchase(self,tx,items=target['items'],coupon_refs=[])['data']
+                estimate=self.estimate_purchase(tx,items=target['items'],coupon_refs=[])['data']
                 lines=estimate['items']; platform=self.sales_platform(tx); currency=estimate['currency']
                 policy={'policy_id':estimate['policy_id'],'version':estimate['policy_version']}
             template,instance,scopes=self.coupon(tx,args['coupon_ref'])

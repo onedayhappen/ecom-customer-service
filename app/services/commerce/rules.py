@@ -3,7 +3,7 @@ from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from app.services.commerce.common import BusinessError,at,decoded,digest,money,ok,ref,unref,utcnow
+from app.services.commerce.common import BusinessError,at,decoded,money,ok,ref,unref,utcnow
 
 class Rules(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
@@ -258,14 +258,6 @@ class RuleService:
         minimum=money(t['threshold_amount'])
         if base<minimum or not matching: raise BusinessError('not_eligible','商品范围或用券门槛不满足',threshold_gap=format(max(minimum-base,Decimal(0)),'.2f'))
         return {'coupon_ref':value,'eligible_amount':base,'discount_amount':self.discount(t,base),'threshold_gap':Decimal(0)}
-    def check_coupon(self,tx,**args):
-        order=self.owned_order(tx,args['order_ref'])
-        def evaluate():
-            if order['status']!='pending_payment': raise BusinessError('not_eligible','该订单不能补用优惠券；实际核销请查询券记录')
-            self.policy(tx,'pricing',order)
-            lines=[dict(r,amount=r['payable_amount'],merchant_id=order['merchant_id']) for r in self.order_rows(tx,'order_items',order)]
-            return dict(self.coupon_amount(tx,args['coupon_ref'],lines,order['platform_code'],order['currency']),eligibility='eligible')
-        return self.decision(evaluate)
     def estimate_purchase(self,tx,**args):
         platform=self.sales_platform(tx)
         p,r=self.policy(tx,'pricing',platform=platform); merged={}

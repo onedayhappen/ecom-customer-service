@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from app.services.commerce import CommerceService
 import pymysql
+import pytest
 from app.services.commerce.common import BusinessError
 from app.config.settings import settings
 from tests.api_fixtures import api
@@ -35,7 +36,7 @@ def test_profile_uses_current_account_and_membership_facts(api, monkeypatch):
                     vip=dict(status='expired', is_vip=False), store_memberships=[])
 
     monkeypatch.setattr('app.api.commerce.service', lambda user: SimpleNamespace(user=user, store=SimpleNamespace(transaction=transaction)))
-    monkeypatch.setattr('app.api.commerce.membership_facts', facts)
+    monkeypatch.setattr('app.services.commerce.customer_views.membership_facts', facts)
     assert client.get('/api/commerce/profile').status_code == 401
     response = client.get('/api/commerce/profile?user_id=bob', headers=headers('alice'))
     assert response.status_code == 200 and response.headers['Cache-Control'] == 'no-store'
@@ -111,6 +112,28 @@ def test_order_filters_cursor_and_product_serialization(api, monkeypatch):
     response = client.get('/api/commerce/orders?cursor=bad', headers=headers())
     assert response.status_code == 400
     assert response.json()['detail'] == '分页游标无效或已过期'
+
+
+@pytest.mark.parametrize('path,error,status,detail', [
+    ('profile', BusinessError('not_found', '会员资料暂不可用'), 503, '会员资料暂不可用'),
+    ('orders', BusinessError('invalid_cursor', '游标无效'), 400, '游标无效'),
+    ('coupons', BusinessError('state_changed', '查询结果已变化'), 400, '查询结果已变化'),
+    ('coupons', pymysql.OperationalError('private database details'), 503, '暂时无法加载，请稍后重试'),
+])
+def test_customer_list_errors_preserve_status_and_redaction(api, monkeypatch, path, error, status, detail):
+    client, headers, *_ = api
+    monkeypatch.setattr(settings, 'api_allow_legacy_jwt', True)
+
+    @contextmanager
+    def transaction():
+        raise error
+        yield
+
+    monkeypatch.setattr('app.api.commerce.service', lambda user: SimpleNamespace(
+        user=user, store=SimpleNamespace(transaction=transaction)))
+    response = client.get('/api/commerce/' + path, headers=headers())
+    assert response.status_code == status
+    assert response.json() == {'detail': detail}
 
 
 def test_coupon_expiry_types_and_pagination_with_owned_wallet(api, monkeypatch):
