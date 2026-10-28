@@ -423,7 +423,9 @@ def test_all_tools_schema_and_provider_validation():
     from app.tools.contracts import Question,CheckCoupon,CancelOrder
     from app.services.commerce.providers import HttpGateway,ProviderResponse
     from pydantic import ValidationError
-    assert for_task('refund','任意问题')==frozenset(t.name for t in TOOLS)
+    selected = for_task('refund_service', '申请退款')
+    assert {'find_orders', 'assess_after_sale', 'prepare_after_sale'} <= selected
+    assert 'prepare_invoice' not in selected and len(selected) < len(TOOLS)
     schema=BY_NAME['prepare_invoice_reissue'].definition()['function']['parameters']
     assert 'title' in schema['properties'] and 'title' in schema['required']
     assert CancelOrder(order_ref='ref').reason is None

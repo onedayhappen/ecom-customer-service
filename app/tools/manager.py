@@ -33,6 +33,8 @@ class ToolManager:
             self._init_local()
 
         registered = {d["function"]["name"] for d in LOCAL_TOOL_DEFINITIONS}
+        from app.tools.selection import global_tools
+        registered &= global_tools()
         self._filter_tools(registered if allowed_tools is None else registered.intersection(allowed_tools))
 
     def _init_local(self):

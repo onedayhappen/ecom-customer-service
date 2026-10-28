@@ -1,17 +1,41 @@
-openai>=1.0.0
-pydantic>=2.0.0
-pydantic-settings>=2.0.0
-python-dotenv>=1.0.0
-mcp>=1.8.0,<2
-httpx>=0.27.0
-chromadb>=0.5.0
-sentence-transformers>=5.0.0
-psycopg[binary]>=3.2.0
-redis>=5.0.0
-pymysql>=1.1.0
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-PyJWT>=2.9.0
-prometheus_client>=0.20.0
+# Python 3.11+ runtime dependencies.
+# Direct versions match the project .venv at the time of this update.
+# This is not a full transitive dependency lock file.
 
-cryptography>=44.0.0
+# HTTP API and ASGI server
+fastapi==0.159.1
+starlette==1.9.0
+uvicorn[standard]==0.54.0
+httpx==0.28.1
+
+# Configuration and structured data
+pydantic==2.14.1
+pydantic-settings==2.16.1
+python-dotenv==1.2.4
+
+# LLM API and MCP tools
+openai==3.36.1
+mcp==1.30.0
+
+# Policy retrieval and local embeddings
+chromadb==1.5.9
+sentence-transformers==6.2.0
+
+# Business data, persistent task state and cache
+PyMySQL==1.2.3
+psycopg[binary]==3.3.6
+redis==8.1.0
+
+# Authentication and sensitive business data
+PyJWT==2.15.1
+cryptography==50.0.2
+
+# Monitoring and Windows IANA timezone data (zoneinfo)
+prometheus-client==0.26.0
+tzdata==2026.5; sys_platform == "win32"
+
+# Development tools are installed separately:
+#   python -m pip install pytest
+#   python -m pip install playwright  # Python browser integration tests only
+#   python -m playwright install chromium  # When no system browser is supplied
+# Frontend tooling is managed by frontend/package.json and package-lock.json.

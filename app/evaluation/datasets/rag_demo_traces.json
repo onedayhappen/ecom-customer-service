@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "description": "人工构造的检索和回答快照，未运行 embedding 或真实 Agent。包含错版本和排序干扰，用于演示指标。",
+  "traces": [
+    {
+      "case_id": "return-policy",
+      "query": "耳机未使用，签收三天可以退吗？",
+      "context": {
+        "platform_code": "demo",
+        "store_id": "shop-a",
+        "channel": "web",
+        "category": "headphones",
+        "request_at": "2026-10-28T00:00:00Z"
+      },
+      "requested_k": 5,
+      "retrieval": {
+        "success": true,
+        "results": [
+          {
+            "source_id": "returns",
+            "version": "v1",
+            "section": "退货条件",
+            "chunk_id": "returns-v1-退货条件",
+            "text": "签收七天内，未使用且包装完整的普通商品可以申请退货。定制商品不适用。"
+          },
+          {
+            "source_id": "coupons",
+            "version": "v1",
+            "section": "优惠券条件",
+            "chunk_id": "coupons-v1-优惠券条件",
+            "text": "优惠券仅适用于券面指定商品，具体门槛以持券规则为准。"
+          }
+        ]
+      },
+      "answer": "普通商品未使用且包装完整，在签收七天内可申请退货；定制商品不适用。"
+    },
+    {
+      "case_id": "return-shipping",
+      "query": "质量问题耳机退货条件和退货运费是什么？",
+      "context": {
+        "platform_code": "demo",
+        "store_id": "shop-a",
+        "channel": "web",
+        "category": "headphones",
+        "request_at": "2026-10-28T00:00:00Z"
+      },
+      "requested_k": 5,
+      "retrieval": {
+        "success": true,
+        "results": [
+          {
+            "source_id": "coupons",
+            "version": "v1",
+            "section": "优惠券条件",
+            "chunk_id": "coupons-v1-优惠券条件",
+            "text": "优惠券仅适用于券面指定商品，具体门槛以持券规则为准。"
+          },
+          {
+            "source_id": "shipping",
+            "version": "v1",
+            "section": "退货运费",
+            "chunk_id": "shipping-v1-退货运费",
+            "text": "质量问题退货经核实后由商家承担退货运费；非质量问题由用户承担。"
+          },
+          {
+            "source_id": "returns",
+            "version": "v1",
+            "section": "退货条件",
+            "chunk_id": "returns-v1-退货条件",
+            "text": "签收七天内，未使用且包装完整的普通商品可以申请退货。定制商品不适用。"
+          }
+        ]
+      },
+      "answer": "质量问题经核实后由商家承担退货运费。普通商品还需满足签收七天内、未使用且包装完整的条件，定制商品不适用。"
+    },
+    {
+      "case_id": "refund-status",
+      "query": "售后申请提交，是不是退款已经到账？",
+      "context": {
+        "platform_code": "demo",
+        "store_id": "shop-a",
+        "channel": "web",
+        "category": "headphones",
+        "request_at": "2026-10-28T00:00:00Z"
+      },
+      "requested_k": 5,
+      "retrieval": {
+        "success": true,
+        "results": [
+          {
+            "source_id": "refund",
+            "version": "v1",
+            "section": "退款进度",
+            "chunk_id": "refund-v1-退款进度",
+            "text": "售后申请提交后需要审核。审核通过不代表银行已到账，以支付渠道和银行处理记录为准。"
+          }
+        ]
+      },
+      "answer": "申请提交后还需审核，不能据此确认退款到账，需要核实支付渠道和银行的处理记录。"
+    },
+    {
+      "case_id": "wrong-version-first",
+      "query": "现在的退货条件是什么？",
+      "context": {
+        "platform_code": "demo",
+        "store_id": "shop-a",
+        "channel": "web",
+        "category": "headphones",
+        "request_at": "2026-10-28T00:00:00Z"
+      },
+      "requested_k": 5,
+      "retrieval": {
+        "success": true,
+        "results": [
+          {
+            "source_id": "returns",
+            "version": "v0",
+            "section": "退货条件",
+            "chunk_id": "returns-v0-退货条件",
+            "text": "旧版规则不用于本次咨询。"
+          },
+          {
+            "source_id": "returns",
+            "version": "v1",
+            "section": "退货条件",
+            "chunk_id": "returns-v1-退货条件",
+            "text": "签收七天内，未使用且包装完整的普通商品可以申请退货。定制商品不适用。"
+          }
+        ]
+      },
+      "answer": "按当前条款，普通商品需在签收七天内、未使用且包装完整，定制商品不适用。"
+    },
+    {
+      "case_id": "no-policy",
+      "query": "有没有火星配送服务？",
+      "context": {
+        "platform_code": "demo",
+        "store_id": "shop-a",
+        "channel": "web",
+        "category": "headphones",
+        "request_at": "2026-10-28T00:00:00Z"
+      },
+      "requested_k": 5,
+      "retrieval": {
+        "success": false,
+        "results": [],
+        "error_code": "policy_evidence_missing",
+        "missing_fields": []
+      },
+      "answer": "当前没有可核实的适用条款，无法确认是否有该配送服务。"
+    },
+    {
+      "case_id": "missing-category",
+      "query": "退货政策是什么？",
+      "context": {
+        "platform_code": "demo",
+        "store_id": "shop-a",
+        "channel": "web",
+        "category": null,
+        "request_at": "2026-10-28T00:00:00Z"
+      },
+      "requested_k": 5,
+      "retrieval": {
+        "success": false,
+        "results": [],
+        "error_code": "policy_context_missing",
+        "missing_fields": [
+          "category"
+        ]
+      },
+      "answer": "需要先确认商品品类，才能核实适用的退货政策。"
+    }
+  ]
+}

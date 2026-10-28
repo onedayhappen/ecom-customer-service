@@ -311,6 +311,14 @@ class TaskExecutor:
                 context.checkpoint()
                 if context.model_calls >= request.budget.model_calls:
                     raise ExecutionStopped("model_call_budget")
+                # Rebuild visible schemas and execution fence after goal updates.
+                from app.tools.selection import for_task, task_profiles
+                context.allowed_tools = for_task(plan.intent, context.record.goal)
+                plan = build_task_plan(plan.intent, allowed_tools=context.allowed_tools)
+                record("execution.tools_selected", task_id=context.record.task_id,
+                       task_version=context.record.version,
+                       output=dict(profiles=sorted(task_profiles(plan.intent, context.record.goal)),
+                                   tools=sorted(context.allowed_tools), count=len(context.allowed_tools)))
                 result = executor.run(context.messages(), plan, max_steps=request.budget.model_calls,
                     tool_definitions=[d for d in definitions if d["function"]["name"] in context.allowed_tools],
                     historical_evidence=[e["result"] for e in context.historical])

@@ -37,9 +37,11 @@ import json
 @mcp._mcp_server.list_tools()
 async def list_business_tools():
     # Standalone MCP carries identity, but no durable task/confirmation context.
+    from app.tools.selection import global_tools
+    allowed = global_tools()
     return [types.Tool(name=t.name, description=t.description, inputSchema=t.arguments.model_json_schema(),
         annotations=types.ToolAnnotations(readOnlyHint=True, destructiveHint=False))
-        for t in TOOLS if not t.task_only]
+        for t in TOOLS if not t.task_only and t.name in allowed]
 
 @mcp._mcp_server.call_tool()
 async def call_business_tool(name: str, arguments: dict):

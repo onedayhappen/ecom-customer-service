@@ -1,4 +1,4 @@
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     # ReAct 循环
     max_react_steps: int = 5
     compact_react_enabled: bool = True
+
+    # '*' = all registered names, CSV = explicit allowlist, empty = no tools.
+    # Task profiles further narrow this global ceiling.
+    tool_allowlist: str = '*'
+
+    @field_validator('tool_allowlist')
+    @classmethod
+    def validate_tool_allowlist(cls, value):
+        from app.tools.selection import parse_allowlist
+        parse_allowlist(value)
+        return value
 
     # MCP 配置
     mcp_enabled: bool = False

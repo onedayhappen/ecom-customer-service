@@ -9,6 +9,9 @@ TOOL_DEFINITIONS=[t.definition() for t in TOOLS]
 
 
 def execute_tool(name: str, arguments: dict) -> str:
+    from app.tools.selection import global_tools
+    if name not in global_tools():
+        return dumps(failure(BusinessError('invalid_arguments','工具未在全局白名单中启用')))
     function=_TOOL_MAP.get(name)
     if function is None:
         return dumps(failure(BusinessError('invalid_arguments','未知工具')))

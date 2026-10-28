@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "name": "synthetic-rag-demo-v1",
+  "description": "人工构造的格式及评分演示，6 条用例；不是生产评测集。相关性按 source_id、version、section 标注，未标注条款按不相关处理。",
+  "cases": [
+    {
+      "id": "return-policy",
+      "query": "耳机未使用，签收三天可以退吗？",
+      "relevance": [
+        {
+          "source_id": "returns",
+          "version": "v1",
+          "section": "退货条件",
+          "grade": 3
+        }
+      ],
+      "reference_answer": "说明七天、未使用、包装完整和定制商品例外。",
+      "tags": [
+        "policy",
+        "conditions"
+      ],
+      "context": {
+        "platform_code": "demo",
+        "store_id": "shop-a",
+        "channel": "web",
+        "category": "headphones",
+        "request_at": "2026-10-28T00:00:00Z"
+      }
+    },
+    {
+      "id": "return-shipping",
+      "query": "质量问题耳机退货条件和退货运费是什么？",
+      "relevance": [
+        {
+          "source_id": "returns",
+          "version": "v1",
+          "section": "退货条件",
+          "grade": 3
+        },
+        {
+          "source_id": "shipping",
+          "version": "v1",
+          "section": "退货运费",
+          "grade": 2
+        }
+      ],
+      "tags": [
+        "multi-evidence",
+        "ranking"
+      ],
+      "context": {
+        "platform_code": "demo",
+        "store_id": "shop-a",
+        "channel": "web",
+        "category": "headphones",
+        "request_at": "2026-10-28T00:00:00Z"
+      }
+    },
+    {
+      "id": "refund-status",
+      "query": "售后申请提交，是不是退款已经到账？",
+      "relevance": [
+        {
+          "source_id": "refund",
+          "version": "v1",
+          "section": "退款进度",
+          "grade": 3
+        }
+      ],
+      "tags": [
+        "faithfulness"
+      ],
+      "context": {
+        "platform_code": "demo",
+        "store_id": "shop-a",
+        "channel": "web",
+        "category": "headphones",
+        "request_at": "2026-10-28T00:00:00Z"
+      }
+    },
+    {
+      "id": "wrong-version-first",
+      "query": "现在的退货条件是什么？",
+      "relevance": [
+        {
+          "source_id": "returns",
+          "version": "v1",
+          "section": "退货条件",
+          "grade": 3
+        }
+      ],
+      "tags": [
+        "version",
+        "ranking"
+      ],
+      "context": {
+        "platform_code": "demo",
+        "store_id": "shop-a",
+        "channel": "web",
+        "category": "headphones",
+        "request_at": "2026-10-28T00:00:00Z"
+      }
+    },
+    {
+      "id": "no-policy",
+      "query": "有没有火星配送服务？",
+      "relevance": [],
+      "expected_error": "policy_evidence_missing",
+      "tags": [
+        "abstention"
+      ],
+      "context": {
+        "platform_code": "demo",
+        "store_id": "shop-a",
+        "channel": "web",
+        "category": "headphones",
+        "request_at": "2026-10-28T00:00:00Z"
+      }
+    },
+    {
+      "id": "missing-category",
+      "query": "退货政策是什么？",
+      "relevance": [],
+      "expected_error": "policy_context_missing",
+      "context": {
+        "platform_code": "demo",
+        "store_id": "shop-a",
+        "channel": "web",
+        "category": null,
+        "request_at": "2026-10-28T00:00:00Z"
+      },
+      "tags": [
+        "clarification"
+      ]
+    }
+  ]
+}

@@ -8,7 +8,7 @@ from enum import Enum
 class Intent(str, Enum):
     """Business labels, including values still present in historical records."""
 
-    # 业务标签，仅用于描述与记录，不决定执行路径。
+    # 业务标签用于描述、记录和工具筛选提示，不授予业务权限。
     PRODUCT_COMPARISON = "product_comparison"
     INVENTORY_INQUIRY = "inventory_inquiry"
     DELIVERY_INQUIRY = "delivery_inquiry"

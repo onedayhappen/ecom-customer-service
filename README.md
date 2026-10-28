@@ -6,7 +6,7 @@
 
 系统以持久化的“客服事项”组织进度：一次对话可以包含多个订单和目标，独立事项可以并行处理，用户也可以跨会话继续补充问题。消息归属、执行恢复、业务确认、回复发布和人工接管由后台运行层协调。
 
-![项目背景](项目背景.png)
+![项目背景](assets/项目背景.png)
 
 ### 核心能力
 
@@ -42,66 +42,9 @@
 
 系统将消息处理、Agent 执行和业务提交分开：事项运行层保存进度并协调执行，Agent 调用工具查询事实或准备操作，业务服务负责规则校验与事务提交。
 
-```mermaid
-flowchart TD
-    subgraph Access[交互与接口]
-        UI[React 客户界面 / 人工工作台]
-        API[FastAPI：认证、消息、确认与 SSE]
-        UI --> API
-    end
+![系统架构](assets/系统架构.png)
 
-    subgraph Runtime[事项运行层]
-        Intake[消息接收与归属校验]
-        Schedule[事项调度：并行、版本与恢复]
-        Agent[ReAct 执行：模型调用与工具选择]
-        Reply[回复协调：证据校验与持久化]
-        Notify[通知 Worker]
-        Intake --> Schedule --> Agent
-        Agent --> Reply --> Notify
-    end
-
-    subgraph Capabilities[工具与业务能力]
-        Tools[工具目录：参数与上下文校验]
-        Commerce[业务服务：查询、规则、事务与幂等]
-        Operations[操作准备 / 用户确认与状态重验]
-        RAG[政策 RAG：范围过滤与混合检索]
-        Memory[用户记忆：来源、更正与遗忘校验]
-        Tools --> Commerce
-        Tools --> RAG
-        Tools --> Memory
-        Tools --> Operations
-        Operations -->|确认后提交| Commerce
-    end
-
-    subgraph Storage[数据存储]
-        PG[(PostgreSQL：会话、事项、事件与记忆)]
-        Redis[(Redis：唤醒、缓存与并发协调)]
-        MySQL[(MySQL：账号与业务数据)]
-        Chroma[(Chroma：政策向量索引)]
-    end
-
-    subgraph Background[后台进程]
-        MemoryWorker[记忆 Worker]
-        CommerceWorker[交易 Worker]
-        Maintenance[维护进程]
-    end
-
-    API --> Intake
-    API -->|用户确认| Operations
-    API -->|人工接管| Schedule
-    Agent --> Tools
-    Notify -->|发布事件| API
-    API -->|SSE 更新| UI
-    Intake --> PG
-    Schedule <--> Redis
-    Reply --> PG
-    Memory --> PG
-    Commerce --> MySQL
-    RAG --> Chroma
-    MemoryWorker --> Memory
-    CommerceWorker --> Commerce
-    Maintenance --> Schedule
-```
+[查看可缩放矢量图](assets/系统架构.svg) · [架构与流程详解](docs/系统架构设计.md)
 
 事项 Worker 推进消息关联和 ReAct 执行，通知 Worker 发布持久化回复；记忆、交易与维护进程分别处理记忆提取、超时及业务回执、恢复和外部进度跟踪。PostgreSQL 保存持久化进度，Redis 用于唤醒与协调。
 
@@ -135,7 +78,7 @@ ecom-customer-service/
 ├── docs/                    # 设计文档与运行说明
 ├── data/                    # 本地索引及运行数据，不提交
 ├── model/                   # 本地向量模型，不提交
-├── 项目背景.png
+├── assets/                  # README 等文档使用的图片资源
 ├── .env.example
 ├── requirements.txt
 ├── Dockerfile
@@ -316,6 +259,31 @@ python scripts/run_platform_checks.py
 python scripts/run_platform_checks.py tests/test_memory_v3.py
 ```
 
+### RAG 质量评测
+
+正式评测入口位于 `app/evaluation/`，支持 Recall@k、Precision@k、MRR@k、NDCG@k，以及基于实际证据的答案忠实度评分。
+
+```powershell
+# 离线演示，不调用模型；示例分数不代表真实项目效果
+python -m app.evaluation.run --output data/evaluation/demo.json
+
+# 回放已采集的检索结果，计算召回与排序指标
+python -m app.evaluation.run --dataset data/evaluation/cases.json --traces data/evaluation/traces.json --output data/evaluation/replay.json
+
+# 使用当前政策检索服务，需要已发布的政策索引及相应检索配置
+python -m app.evaluation.run --mode retrieve --dataset data/evaluation/cases.json --live --output data/evaluation/retrieval.json
+
+# 对采集的实际答案进行模型评分
+python -m app.evaluation.run --dataset data/evaluation/cases.json --traces data/evaluation/traces.json --judge --live --output data/evaluation/judged.json
+
+# 生成独立的 RAG 答案并评分
+python -m app.evaluation.run --mode retrieve --dataset data/evaluation/cases.json --generate-answers --judge --live --output data/evaluation/generated.json
+```
+
+`cases.json` 与 `traces.json` 需按 `app/evaluation/datasets/` 中的示例结构准备。`--live` 开启配置中的检索或模型调用；模型评分复用项目的模型服务配置，可能产生 API 费用。可用 `--k 1 3 5` 指定评测范围，`--model` 与 `--answer-model` 分别指定裁判和生成模型。
+
+退出码 0 表示通过当前启用的检查，1 表示有题未通过，2 表示参数、输入或配置错误。模块职责、数据流和指标口径见 [RAG 评测说明](docs/RAG评测说明.md)。
+
 ### 真实数据库集成测试
 
 使用专用 MySQL、PostgreSQL 和 Redis 测试环境：
@@ -392,6 +360,7 @@ docker compose build backend frontend
 - [数据库表设计](docs/数据库表设计.md)：业务领域表、约束与运行数据。
 - [上下文与记忆设计](docs/上下文与记忆设计.md)：原话、请求预算、记忆更新与遗忘。
 - [政策检索设计](docs/政策检索设计.md)：适用条件、证据与索引版本。
+- [RAG 评测说明](docs/RAG评测说明.md)：召回、排序、答案忠实度和评测命令。
 - [人工接管设计](docs/人工接管设计.md)：工单、权限、交接与机器人恢复。
 - [运行与可观测性设计](docs/运行与可观测性设计.md)：调度、通知、额度、控制与日志。
 - [前端交互设计](docs/前端交互设计.md)：界面分工、事件恢复与确认卡片。

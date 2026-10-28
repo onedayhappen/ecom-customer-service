@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1120" viewBox="0 0 1120 1120" fill="none" role="img" aria-labelledby="title description">
+  <title id="title">电商客服 Agent 系统架构</title>
+  <desc id="description">从 React 界面经 FastAPI 接收消息，由事项运行层完成关联、调度、ReAct 执行与回复校验，再通过通知 Worker 和 SSE 返回界面。工具层提供业务服务、政策检索和用户记忆；业务变更经用户确认、状态重验后提交。底部列出数据存储和后台进程。</desc>
+  <defs>
+    <linearGradient id="core" x1="576" y1="300" x2="814" y2="424" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#174EAD"/><stop offset="1" stop-color="#10387C"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 9 5 1 9" fill="none" stroke="#7186A4" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <marker id="tealArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 9 5 1 9" fill="none" stroke="#16877F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <style>
+      text { font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif; }
+      .heading { font-size: 23px; font-weight: 700; fill: #172D4D; }
+      .body { font-size: 19px; fill: #52657F; }
+      .small { font-size: 18px; fill: #52657F; }
+      .label { font-size: 19px; font-weight: 700; fill: #52657F; }
+      .line { stroke: #7186A4; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+
+  <rect width="1120" height="1120" rx="24" fill="#FFFFFF"/>
+  <rect x="1" y="1" width="1118" height="1118" rx="23" stroke="#E0E7EF" stroke-width="2"/>
+  <rect x="40" y="39" width="5" height="35" rx="2.5" fill="#245FCC"/>
+  <text x="60" y="66" font-size="30" font-weight="700" fill="#142B4E">电商客服 Agent · 系统架构</text>
+  <text x="60" y="101" class="body">以事项组织进度，以工具核实事实，以程序控制业务提交</text>
+
+  <!-- 接入：两张等宽卡片，消息向右进入 API。 -->
+  <rect x="60" y="135" width="466" height="103" rx="14" fill="#F4F7FD" stroke="#DCE5F3"/>
+  <rect x="594" y="135" width="466" height="103" rx="14" fill="#F4F7FD" stroke="#DCE5F3"/>
+  <text x="84" y="174" class="heading">React 交互界面</text>
+  <text x="84" y="207" class="body">客户会话 · 业务确认 · 人工工作台</text>
+  <text x="618" y="174" class="heading">FastAPI 接入服务</text>
+  <text x="618" y="207" class="body">身份校验 · 消息接收 · 确认入口 · SSE</text>
+  <path d="M530 185H584" class="line" marker-end="url(#arrow)"/>
+
+  <!-- 主链路与回复回路：连接线固定走空白区域。 -->
+  <rect x="42" y="278" width="1036" height="191" rx="18" fill="#F7F9FD" stroke="#DCE5F3"/>
+  <path d="M827 239V258H179V325" class="line" marker-end="url(#arrow)"/>
+  <text x="60" y="306" class="label">事项运行层</text>
+  <text x="1048" y="306" text-anchor="end" class="small">独立事项并行 · 持久化进度 · 版本校验</text>
+
+  <rect x="60" y="326" width="238" height="122" rx="12" fill="#FFFFFF" stroke="#D8E2F0"/>
+  <text x="80" y="360" class="heading">消息理解与关联</text>
+  <text x="80" y="395" class="body">原话保存 · 查询改写</text>
+  <text x="80" y="424" class="body">事项归属 · 补充与纠错</text>
+
+  <rect x="318" y="326" width="238" height="122" rx="12" fill="#FFFFFF" stroke="#D8E2F0"/>
+  <text x="338" y="360" class="heading">事项调度</text>
+  <text x="338" y="395" class="body">依赖与并发控制</text>
+  <text x="338" y="424" class="body">执行租约 · 中断与恢复</text>
+
+  <rect x="576" y="326" width="238" height="122" rx="12" fill="url(#core)"/>
+  <text x="596" y="360" font-size="23" font-weight="700" fill="#FFFFFF">ReAct 执行</text>
+  <text x="596" y="395" font-size="19" fill="#DFEAFE">模型决策 · 工具调用</text>
+  <text x="596" y="424" font-size="19" fill="#DFEAFE">证据整理 · 操作准备</text>
+
+  <rect x="834" y="326" width="226" height="122" rx="12" fill="#FFFFFF" stroke="#D8E2F0"/>
+  <text x="854" y="360" class="heading">回复协调</text>
+  <text x="854" y="395" class="body">结论与版本校验</text>
+  <text x="854" y="424" class="body">持久化回复事件</text>
+
+  <path d="M299 386H311" class="line" marker-end="url(#arrow)"/>
+  <path d="M557 386H569" class="line" marker-end="url(#arrow)"/>
+  <path d="M815 386H827" class="line" marker-end="url(#arrow)"/>
+  <path d="M1061 386H1094V119H293V135" stroke="#16877F" stroke-width="2" stroke-dasharray="6 6" stroke-linejoin="round" marker-end="url(#tealArrow)"/>
+  <rect x="867" y="245" width="204" height="28" rx="7" fill="#FFFFFF"/>
+  <text x="969" y="265" text-anchor="middle" font-size="18" fill="#16877F">通知 Worker → SSE</text>
+
+  <!-- 工具层：ReAct 与工具之间双向传递调用和结果。 -->
+  <path d="M695 449V518" class="line" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <rect x="712" y="479" width="172" height="28" rx="7" fill="#FFFFFF"/>
+  <text x="724" y="499" class="small">调用 / 结果与证据</text>
+
+  <rect x="42" y="522" width="1036" height="248" rx="18" fill="#F3FAF9" stroke="#D6EBE8"/>
+  <text x="60" y="553" class="label">工具与业务能力</text>
+  <rect x="60" y="570" width="1000" height="49" rx="10" fill="#E1F1EF"/>
+  <text x="560" y="601" text-anchor="middle" font-size="21" font-weight="700" fill="#126F69">统一工具入口：参数契约 · 用户身份 · 上下文与权限校验</text>
+
+  <path d="M560 620V632M225 632H895M225 632V644M560 632V644M895 632V644" stroke="#77A9A3" stroke-width="1.6"/>
+  <rect x="60" y="645" width="330" height="104" rx="12" fill="#FFFFFF" stroke="#D3E7E4"/>
+  <text x="80" y="678" class="heading">业务查询与办理</text>
+  <text x="80" y="709" class="body">事实查询 · 规则计算</text>
+  <text x="80" y="735" class="body">确认卡片 · 事务与幂等提交</text>
+
+  <rect x="405" y="645" width="310" height="104" rx="12" fill="#FFFFFF" stroke="#D3E7E4"/>
+  <text x="425" y="678" class="heading">政策 RAG</text>
+  <text x="425" y="709" class="body">适用范围过滤 · 混合检索</text>
+  <text x="425" y="735" class="body">规则来源与有效期核验</text>
+
+  <rect x="730" y="645" width="330" height="104" rx="12" fill="#FFFFFF" stroke="#D3E7E4"/>
+  <text x="750" y="678" class="heading">上下文与用户记忆</text>
+  <text x="750" y="709" class="body">会话上下文 · 长期偏好</text>
+  <text x="750" y="735" class="body">原话证据 · 更正与遗忘</text>
+
+  <rect x="60" y="789" width="1000" height="53" rx="11" fill="#FFF8EC" stroke="#F0DFC1"/>
+  <circle cx="85" cy="815" r="8" fill="#CB8B26"/>
+  <text x="108" y="823" font-size="20" fill="#805C22">业务变更：准备操作 → 用户确认 → 权限与状态重验 → 服务端提交</text>
+
+  <!-- 共享资源按职责分组，省略密集的逐模块存储连线。 -->
+  <text x="60" y="883" class="label">数据存储</text>
+  <text x="1060" y="883" text-anchor="end" class="small">各模块按职责访问</text>
+  <rect x="60" y="901" width="238" height="93" rx="12" fill="#F7F9FC" stroke="#E0E7EF"/>
+  <text x="80" y="935" class="heading">PostgreSQL</text>
+  <text x="80" y="969" class="small">会话 · 事项 · 事件 · 记忆</text>
+  <rect x="314" y="901" width="238" height="93" rx="12" fill="#F7F9FC" stroke="#E0E7EF"/>
+  <text x="334" y="935" class="heading">Redis</text>
+  <text x="334" y="969" class="small">唤醒 · 缓存 · 并发协调</text>
+  <rect x="568" y="901" width="238" height="93" rx="12" fill="#F7F9FC" stroke="#E0E7EF"/>
+  <text x="588" y="935" class="heading">MySQL</text>
+  <text x="588" y="969" class="small">账号 · 订单 · 业务事实</text>
+  <rect x="822" y="901" width="238" height="93" rx="12" fill="#F7F9FC" stroke="#E0E7EF"/>
+  <text x="842" y="935" class="heading">Chroma</text>
+  <text x="842" y="969" class="small">政策向量索引</text>
+
+  <path d="M60 1020H1060" stroke="#E0E7EF"/>
+  <text x="60" y="1054" class="label">后台进程</text>
+  <text x="190" y="1054" class="body">事项 Worker · 通知 Worker · 记忆 Worker · 交易 Worker · 维护进程</text>
+  <text x="60" y="1090" class="small">人工接管由运行层控制，阻止旧执行继续自动回复或办理操作。</text>
+</svg>

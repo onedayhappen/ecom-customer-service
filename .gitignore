@@ -38,6 +38,9 @@ data/**
 # 业务链观测日志（含用户消息，禁止提交）
 logs/
 
+# 本地生成的预览、中间素材与恢复备份；正式文档图片位于 assets/
+output/
+
 # Docker Desktop persistent data (kept on the project drive, never committed)
 .docker-data/
 
