@@ -10,10 +10,14 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import json
 import math
+from hashlib import sha256
 from uuid import uuid4
 
 from app.config.settings import settings
-from app.memory.extraction import MemoryExtractionError, build_extraction_messages, extract_long_term_facts
+from app.memory.extraction import (
+    ExtractionBatch, MemoryExtractionError, build_extraction_messages,
+    extract_long_term_facts, isolate_related_updates,
+)
 from app.session.context_budget import estimate_request_tokens
 from app.session.request_budget import request_input_limit
 
@@ -32,6 +36,11 @@ SCHEMA = (
         last_error TEXT, updated_at TEXT NOT NULL)''',
     '''CREATE INDEX IF NOT EXISTS support_memory_jobs_due
         ON support_memory_jobs(available_at,updated_at)''',
+    '''CREATE TABLE IF NOT EXISTS support_memory_candidate_outcomes (
+        user_id TEXT NOT NULL, session_id TEXT NOT NULL, batch_id TEXT NOT NULL,
+        candidate_id TEXT NOT NULL, source_sequence INTEGER, predicate TEXT,
+        scope_key TEXT, reason TEXT NOT NULL, status TEXT NOT NULL,
+        created_at TEXT NOT NULL, PRIMARY KEY(user_id,batch_id,candidate_id))''',
 )
 
 
@@ -210,16 +219,20 @@ def _extract(messages, existing_facts, *, on_segment=None):
     from app.observability.llm_client import LlmClient
 
     segments = _extraction_segments(messages, existing_facts)
-    facts = []
+    facts = ExtractionBatch()
     with OpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url,
                 timeout=45, max_retries=0) as raw:
         client = LlmClient(raw, settings.model_name, default_scene='long_term_extraction')
         seen = set()
-        for part, existing in segments:
+        for segment_index, (part, existing) in enumerate(segments):
             if on_segment:
                 on_segment()
             extracted = extract_long_term_facts(client, settings.model_name, part, None, existing,
                                                 strict=True, user_sources_only=True, schema_version=2)
+            for issue in getattr(extracted, 'issues', []):
+                index = issue['source_index']
+                facts.issues.append(dict(issue, segment_index=segment_index,
+                    source_index=part[index]['_batch_index'] if index is not None else None))
             for fact in extracted:
                 source = part[fact.metadata['source_index']]
                 fact.metadata['source_index'] = source['_batch_index']
@@ -230,7 +243,7 @@ def _extract(messages, existing_facts, *, on_segment=None):
                 if key not in seen:
                     facts.append(fact)
                     seen.add(key)
-    return facts
+    return isolate_related_updates(facts)
 
 
 def _ground_facts(facts, messages, sid):
@@ -240,7 +253,7 @@ def _ground_facts(facts, messages, sid):
 
     if not isinstance(facts, list) or any(not isinstance(fact, MemoryFact) for fact in facts):
         raise MemoryExtractionError('Extractor must return a list of MemoryFact')
-    result = []
+    result = ExtractionBatch(issues=getattr(facts, 'issues', []))
     for candidate in facts:
         if candidate.category not in {'identity', 'preference', 'behavior', 'other'}:
             continue
@@ -278,17 +291,24 @@ def _ground_facts(facts, messages, sid):
         fact.allowed_agents = []
         fact.supersedes_memory_id = fact.superseded_by_memory_id = ''
         if atomic:
-            from app.memory.atomic import canonical_memory_key, ground_time, normalize_candidate
+            from app.memory.atomic import AtomicValidationError, canonical_memory_key, ground_time, normalize_candidate
 
             candidate_item = dict(predicate=fact.predicate, value=fact.value, qualifiers=fact.qualifiers,
                 polarity=fact.polarity, operation=fact.operation, source_index=index,
                 source_quote=fact.source_span, confidence=fact.confidence,
                 valid_time_quote=fact.metadata.get('valid_time_quote', ''))
-            normalized = normalize_candidate(candidate_item, messages)
-            if normalized is None:
+            try:
+                normalized = normalize_candidate(candidate_item, messages, explain=True)
+            except AtomicValidationError as error:
+                result.issues.append(dict(source_index=index, predicate=fact.predicate,
+                    group=tuple(sorted(fact.qualifiers.items())), operation=fact.operation,
+                    reason=str(error), status='deferred'))
                 continue
             fact.predicate, fact.value, fact.qualifiers = normalized['predicate'], normalized['value'], normalized['qualifiers']
             fact.content, fact.memory_key = normalized['content'], canonical_memory_key(fact.predicate, fact.qualifiers)
+            if fact.source_span != normalized['source_quote']:
+                fact.metadata.pop('quote_start', None)
+                fact.source_span = normalized['source_quote']
             fact.observed_at = fact.created_at
             fact.recorded_at = _now().isoformat()
             temporal = ground_time(fact.metadata.get('valid_time_quote') or fact.source_span, source['created_at'])
@@ -297,12 +317,31 @@ def _ground_facts(facts, messages, sid):
             end = start + len(fact.source_span)
             if type(start) is not int or start < 0 or source['content'][start:end] != fact.source_span:
                 raise MemoryExtractionError('Atomic quote offsets do not match source')
-            fact.metadata = temporal.get('metadata', {})
+            fact.metadata = dict(temporal.get('metadata', {}), source_index=index)
+            if 'source_proof' in source:
+                fact.metadata['source_proof'] = deepcopy(source['source_proof'])
             fact.evidence = [dict(source_event_id=fact.source_event_id, source_session=sid,
                                   source_span=fact.source_span, observed_at=fact.observed_at,
                                   start_offset=start, end_offset=end)]
         result.append(fact)
+    result = isolate_related_updates(result)
+    for fact in result:
+        fact.metadata.pop('source_index', None)
     return result
+
+
+def _save_candidate_outcomes(tx, job, batch_id, messages, issues):
+    """Durable, bounded diagnostics. Raw model output never enters this ledger."""
+    for issue in issues:
+        index = issue['source_index']
+        sequence = messages[index]['sequence'] if index is not None else None
+        serialized = json.dumps(issue, sort_keys=True, ensure_ascii=False)
+        identity = sha256(serialized.encode()).hexdigest()
+        tx.execute('''INSERT INTO support_memory_candidate_outcomes
+            (user_id,session_id,batch_id,candidate_id,source_sequence,predicate,scope_key,reason,status,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,batch_id,candidate_id) DO NOTHING''',
+            (job['user_id'], job['session_id'], batch_id, identity, sequence, issue['predicate'],
+             json.dumps(issue['group'], ensure_ascii=False), issue['reason'], issue['status'], _now().isoformat()))
 
 
 def process_memory_jobs(store, extract_fn=None, limit=20):
@@ -358,18 +397,22 @@ def process_memory_jobs(store, extract_fn=None, limit=20):
                     raise MemoryLeaseLost('Extraction worker no longer owns its lease')
 
             extracted = (extract_fn(batch, existing, on_segment=renew_lease) if use_atomic_model else extract_fn(batch, existing)) if batch else []
-            facts = [f for f in _ground_facts(extracted, batch, job['session_id'])
+            grounded = _ground_facts(extracted, batch, job['session_id'])
+            facts = [f for f in grounded
                      if manager.source_policy.allows(f)]
+            batch_id = f"{job['session_id']}:{job['through_sequence']}:{through}"
             # Renew the ownership fence before crossing into the memory store.
             with store.transaction() as tx:
                 owned = tx.execute('''UPDATE support_memory_jobs SET lease_until=?
                     WHERE session_id=? AND lease_token=? AND version=? AND through_sequence=?''',
                     ((_now() + timedelta(seconds=180)).isoformat(), job['session_id'], job['lease_token'],
                      job['version'], job['through_sequence'])).rowcount
+                if owned:
+                    _save_candidate_outcomes(tx, job, batch_id, batch, grounded.issues)
             if not owned:
                 counts['stale'] += 1
                 continue
-            manager.ltm.merge_and_save(facts, source_batch_id=f"{job['session_id']}:{job['through_sequence']}:{through}")
+            manager.ltm.merge_and_save(facts, source_batch_id=batch_id)
             with store.transaction() as tx:
                 saved = tx.execute('''UPDATE support_memory_jobs SET through_sequence=?,attempts=0,last_error=NULL,
                     batch_through_sequence=NULL,lease_token=NULL,lease_until=NULL,available_at=? WHERE session_id=? AND lease_token=?

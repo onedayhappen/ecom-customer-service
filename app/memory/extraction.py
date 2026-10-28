@@ -56,6 +56,65 @@ class MemoryExtractionError(ValueError):
     """Model response could not be safely interpreted as an extraction batch."""
 
 
+class ExtractionBatch(list):
+    """Accepted facts plus candidate outcomes; compatible with legacy list callers."""
+
+    def __init__(self, facts=(), issues=()):
+        super().__init__(facts)
+        self.issues = list(issues)
+
+
+def candidate_group(item, messages):
+    """A failed candidate can fence its own slot, not unrelated preferences."""
+    from app.memory.atomic import CATEGORY_ALIASES, SIZE_SYSTEM_ALIASES, _canonical, _categories, _scope_quote
+    if not isinstance(item, dict):
+        return None, None
+    predicate = item.get('predicate')
+    if not isinstance(predicate, str):
+        return None, None
+    qualifiers = item.get('qualifiers')
+    if not isinstance(qualifiers, dict):
+        return predicate, None
+    try:
+        normalized = {}
+        for name, aliases in (('product_category', CATEGORY_ALIASES), ('size_system', SIZE_SYSTEM_ALIASES)):
+            if name in qualifiers:
+                normalized[name] = _canonical(qualifiers[name], aliases)
+        index, quote = item.get('source_index'), item.get('source_quote')
+        if predicate == 'budget_range' and 'product_category' not in normalized:
+            if type(index) is int and 0 <= index < len(messages) and isinstance(quote, str) and quote in messages[index]['content']:
+                categories = _categories(_scope_quote(messages[index]['content'], quote))
+                if len(categories) == 1:
+                    normalized['product_category'] = categories[0]
+        return predicate, tuple(sorted(normalized.items())) if normalized else None
+    except ValueError:
+        return predicate, None
+
+
+def isolate_related_updates(batch):
+    """A rejected replacement must not leave a matching revocation half applied."""
+    from collections import defaultdict
+
+    result = ExtractionBatch(issues=batch.issues)
+    blocked, retractions = defaultdict(set), defaultdict(set)
+    for issue in batch.issues:
+        blocked[issue['predicate']].add(issue['group'])
+        if issue.get('operation') == 'RETRACT':
+            retractions[issue['predicate']].add(issue['group'])
+    for fact in batch:
+        if fact.operation == 'RETRACT':
+            retractions[fact.predicate].add(tuple(sorted(fact.qualifiers.items())))
+    for fact in batch:
+        group = (fact.predicate, tuple(sorted(fact.qualifiers.items())))
+        fences, changes = blocked.get(group[0], ()), retractions.get(group[0], ())
+        if (None in changes or group[1] in changes) and (None in fences or group[1] in fences):
+            result.issues.append(dict(source_index=fact.metadata['source_index'], predicate=fact.predicate,
+                group=group[1], operation=fact.operation, reason='related_candidate_failed', status='deferred'))
+        else:
+            result.append(fact)
+    return result
+
+
 def build_extraction_messages(messages, summary, existing_facts, *, user_sources_only=False, schema_version=1):
     if schema_version == 2:
         sources = [{'role': m['role'], 'content': m['content']} for m in messages]
@@ -206,13 +265,20 @@ def _atomic_facts(data, messages):
         raise MemoryExtractionError('Invalid atomic extraction root')
     if len(data['facts']) > 128:
         raise MemoryExtractionError('Too many atomic candidates')
-    result = []
-    for item in data['facts']:
+    result = ExtractionBatch()
+    for candidate_index, item in enumerate(data['facts']):
         try:
-            normalized = normalize_candidate(item, messages)
+            normalized = normalize_candidate(item, messages, explain=True)
         except AtomicValidationError as error:
-            raise MemoryExtractionError(str(error)) from error
-        if normalized is None:
+            predicate, group = candidate_group(item, messages)
+            index = item.get('source_index') if isinstance(item, dict) else None
+            from app.memory.atomic import PREDICATE_ALIASES
+            result.issues.append(dict(candidate_index=candidate_index,
+                source_index=index if type(index) is int and 0 <= index < len(messages) else None,
+                operation=item.get('operation') if isinstance(item, dict) and item.get('operation') in ('ASSERT', 'RETRACT') else None,
+                predicate=predicate if predicate in PREDICATE_ALIASES else None, group=group,
+                reason=str(error), status='rejected' if str(error) in {
+                    'non_stable_or_uncertain_source', 'undated_past_preference'} else 'deferred'))
             continue
         result.append(MemoryFact(content=normalized['content'], category='preference', created_at='',
             source_type='user_explicit', source_span=normalized['source_quote'], confidence=normalized['confidence'],
@@ -220,4 +286,4 @@ def _atomic_facts(data, messages):
             predicate=normalized['predicate'], value=normalized['value'], qualifiers=normalized['qualifiers'],
             polarity=normalized['polarity'], operation=normalized['operation'],
             metadata={'source_index': normalized['source_index'], 'valid_time_quote': normalized['valid_time_quote']}))
-    return result
+    return isolate_related_updates(result)
