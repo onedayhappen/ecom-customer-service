@@ -20,6 +20,9 @@ _RETRY_GUIDANCE = {
     "invalid_model_output": "按附带 Schema 修正输出，不补充没有原话证据的字段。",
     "version_or_control_changed": "使用本次候选版本与控制状态，不复用旧版本。",
     "model_unavailable": "上次调用失败不表示订单或事项不存在；按本次上下文重新关联。",
+    "clarification_target": "回答澄清时，sequences 必须包含该澄清 sources 的全部序号及本轮序号，evidence 逐条引用；非空 options 的 update 目标必须在其中。",
+    "ungrounded_quantity": "quantity 只能是用户明确说出的正整数件数；尺码、金额、日期不算件数。不确定时省略该字段。",
+    "negated_or_ambiguous_cancel": "本批有明确不取消的限制，不能pause/cancel。若只是先别买或保留订单，用supplement/amend记录完整限制，不改变事项状态。",
 }
 
 
@@ -75,7 +78,7 @@ class CandidateContext:
         def render():
             from app.memory.source_policy import safe_context
             params["messages"] = original_messages + [{
-                "role": "user", "content": json.dumps(safe_context(context.data()), ensure_ascii=False, separators=(",", ":")),
+                "role": "user", "content": json.dumps(safe_context(context.wire_data()), ensure_ascii=False, separators=(",", ":")),
             }]
             return estimate_request_tokens(params) <= limit
         if render():
@@ -100,6 +103,34 @@ class CandidateContext:
             if render():
                 return params
         raise ContextBudgetExceeded(estimate_request_tokens(params), limit, reason="candidate_context")
+
+    def wire_data(self):
+        """Losslessly share repeated source text without changing validation data.
+
+        A content_ref is a JSON pointer to an earlier full content field. Source
+        identity and all metadata stay local; different texts never coalesce.
+        """
+        data = deepcopy(self.data())
+        for clarification in data["clarifications"]:
+            clarification["answer_sequences"] = sorted({m["sequence"] for m in self.current_messages}
+                | {s["sequence"] for s in clarification.get("sources", [])})
+        seen = {}
+        for section in ("current_messages", "recent_messages"):
+            for index, message in enumerate(data[section]):
+                if "content" in message:
+                    seen.setdefault(message["content"], f"/{section}/{index}/content")
+        for section in ("candidates", "clarifications"):
+            for index, item in enumerate(data[section]):
+                for offset, source in enumerate(item.get("sources", [])):
+                    content = source.get("content")
+                    if content is None:
+                        continue
+                    if content in seen:
+                        source["content_ref"] = seen[content]
+                        del source["content"]
+                    else:
+                        seen[content] = f"/{section}/{index}/sources/{offset}/content"
+        return data
 
 
 def _entity_field(tx, name):

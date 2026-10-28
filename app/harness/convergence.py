@@ -8,10 +8,7 @@ from enum import Enum
 from typing import Any, Optional
 
 #: 收敛提示 prompt（给 LLM 的追加指令）：强制停止调用工具、向用户说明情况。
-CONVERGENCE_PROMPT = (
-    "多次调用工具未得到有效结果，请停止调用工具，"
-    "直接向用户说明情况，不要继续重试。"
-)
+from app.prompts.execution import CONVERGENCE_PROMPT
 
 #: 终止循环后给用户的固定回复（不经过 LLM，保证语义稳定）。
 CONVERGENCE_REPLY = (

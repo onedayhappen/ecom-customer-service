@@ -31,7 +31,7 @@ def money(value):
     return None
 
 
-def facts(record, receipts):
+def facts(record, receipts, *, include_context=True):
     """Keep each task's facts together; never mix another task's evidence."""
     lines = []
     for receipt in receipts:
@@ -42,7 +42,7 @@ def facts(record, receipts):
             tool='search_knowledge'
         elif tool in __import__('app.tools.catalog',fromlist=['BY_NAME']).BY_NAME:
             from app.tasks.tool_facts import render
-            lines.extend(render(receipt['tool'],result))
+            lines.extend(render(receipt['tool'],result,query=record.goal,include_context=include_context))
             continue
         if tool == 'search_knowledge' and result.get('backend') == 'chroma-policy':
             for clause in result.get('results', []):

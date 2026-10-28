@@ -66,7 +66,7 @@ class ExtendedService:
         from app.data.membership_store import membership_facts
         facts=membership_facts(tx,self.user,platform,store_id=getattr(self.scope,'store_id',None))
         return ok({**facts,'ledger_balance':sum(p['delta'] for p in points)},
-            limitations=['会员券配置为planned时尚未开放领取，不能视为已持有或可使用的优惠券'])
+            limitations=['会员券处于筹备状态时尚未开放领取，不能视为已持有或可使用的优惠券'])
 
     def item_order(self,tx,item_id,lock=False):
         item=tx.one('SELECT * FROM order_items WHERE order_item_id=%s',(item_id,))

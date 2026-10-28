@@ -190,7 +190,8 @@ class AssociationService:
                         or not assess(row, {tid: r.version for tid, r in locked.items()},
                                       published_event(tx, row, before_sequence=min(current))).valid):
                     raise AssociationRejected("expired_clarification")
-                if not extra <= sources or (decision.action == "update" and decision.task_id not in {o["task_id"] for o in clarification["options"]}):
+                if not extra <= sources or (decision.action == "update" and clarification["options"]
+                        and decision.task_id not in {o["task_id"] for o in clarification["options"]}):
                     raise AssociationRejected("clarification_target")
                 if decision.clarification_id in answered:
                     raise AssociationRejected("duplicate_answer")
@@ -291,7 +292,7 @@ class AssociationService:
                 if detail.field == "quantity":
                     numeral = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5}
                     value = detail.value
-                    units = r"\s*(?:件|个|只|双|台|套|本)"
+                    units = r"\s*(?:件|个|只|双|台|套|本|口)"
                     mentioned = re.search(r"(?<![A-Za-z\d-])" + re.escape(str(value)) + units, detail.evidence.quote)
                     named = any(re.search(n + units, detail.evidence.quote) and v == value for n, v in numeral.items())
                     answer = question and question["field"] == "quantity" and (
@@ -437,8 +438,11 @@ class AssociationService:
         return AssociationProposal.model_validate({"decisions": [{
             "action": "clarify", "sequences": sorted(sources),
             "evidence": [dict(session_id=batch.session_id, sequence=n, quote=text[:1]) for n, text in sources.items()],
-            "clarification": "请说明这条补充对应哪笔订单、哪件事；也可以直接说明新的需求。",
-            "candidate_task_ids": [c["task_id"] for c in snapshot.context.candidates][:50],
+            # Infrastructure/validation failure is not evidence that every
+            # recalled task is a plausible choice. Keep the unresolved sources
+            # but do not manufacture a historical task menu from retrieval.
+            "clarification": "刚才没能准确接上您的意思。请直接说一下商品和现在想办的事，不用提供订单号。",
+            "candidate_task_ids": [],
         }]})
 
     @observed_association

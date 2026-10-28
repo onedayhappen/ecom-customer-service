@@ -14,6 +14,7 @@ from app.data_plan import DataPlan
 from app.data_plan.capabilities import MUTATING_CAPABILITIES
 from app.execution.types import ExecutionResult, ToolStep
 from app.harness.convergence import CONVERGENCE_REPLY
+from app.prompts.execution import FINALIZE_PROMPT
 from app.reliability.evidence import sanitize_reply, verify_reply
 from app.reliability.failure_policy import (
     EVIDENCE_FINALIZE_NOTE,
@@ -360,11 +361,7 @@ class ReactExecutor:
         if fixed_reply is None:
             nudged = [*working, {
                 "role": "system",
-                "content": (
-                    "本轮处理即将结束，请停止调用工具，仅基于以上工具返回的信息"
-                    "组织最终答复。信息不足时如实告知用户，并建议补充信息或转人工，"
-                    "不要编造任何业务数据。"
-                ),
+                "content": FINALIZE_PROMPT,
             }]
             response = await call_llm(
                 model=self.model, messages=nudged, temperature=self.temperature,

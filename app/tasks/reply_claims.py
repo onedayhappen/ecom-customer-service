@@ -9,7 +9,7 @@ from hashlib import sha256
 import json
 
 from app.tasks.reply_facts import facts, label, money
-from app.tasks.tool_facts import STATES
+from app.tasks.tool_facts import STATES, restriction
 
 
 def _subject(row, fallback):
@@ -53,7 +53,7 @@ def _qualification(result):
     if result.get("completeness") != "complete" or result.get("next_cursor"):
         parts.append("以上仅依据本次查到的记录。")
     # Keep source-specific restrictions inseparable from the conclusion.
-    parts.extend(label(v, len(v)) for v in limitations
+    parts.extend(restriction(v) for v in limitations
                  if v != "读取时刻不代表上游同步时刻；数据同步时间未记录")
     return " ".join(parts)
 
@@ -195,7 +195,10 @@ def build_claims(record, receipts):
                 # Scope and uncertainty travel with each search, including
                 # empty results and a later successful rewording.
                 text = SearchGuard.correction([[search]])
-                projected = facts(record, [receipt])
+                # The claim's qualification below already carries freshness and
+                # receipt restrictions. Don't print them again inside the body.
+                text = text.removesuffix("数据同步时间未记录。")
+                projected = facts(record, [receipt], include_context=False) if search['outcome'] == 'matched' else ""
                 add("product_search", scope, text + ("\n" + projected if projected else ""))
         elif tool in {"get_shipments", "get_shipment_tracking", "get_after_sale_status", "get_after_sale", "find_after_sales"}:
             for block in project(record, [receipt]):
@@ -204,10 +207,9 @@ def build_claims(record, receipts):
             # Existing typed projections cover policies, payments, refunds,
             # products and legacy tools. Preserve each receipt as a distinct
             # observation; do not let the model infer extra business conclusions.
-            text = facts(record, [receipt])
+            text = facts(record, [receipt], include_context=False)
             if text:
-                text = "查询记录：\n" + text
-                if tool in {"get_refunds", "query_after_sale"}:
+                if tool == "query_after_sale":
                     text += "\n渠道退款成功记录不等于已核实银行卡到账。"
                 add("record", _subject(data, scope), text)
     return claims

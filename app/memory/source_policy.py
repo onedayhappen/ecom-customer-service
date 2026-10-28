@@ -8,7 +8,7 @@ import json
 import re
 
 _PRIVATE = re.compile(
-    r"密码|口令|验证码|令牌|密钥|私钥|免确认|无需.{0,8}确认|不用.{0,8}确认|"
+    r"密码|口令|验证码|令牌|密钥|私钥|免确认|无需[^，。；！？,;!?\n]{0,8}确认|不用[^，。；！？,;!?\n]{0,8}确认|"
     r"跳过.{0,8}确认|永久.{0,8}授权|以后.{0,8}直接.{0,8}(?:退款|支付|提交)|"
     r"password|passwd|api[_ -]?key|access[_ -]?token|\b(?:token|secret)\s*[:=]|bearer\s+|"
     r"private[_ -]?key|skip.{0,12}confirmation|without.{0,12}confirm|"
