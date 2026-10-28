@@ -75,7 +75,7 @@ def _parcel_text(row, events):
         values = item.get("actual_spec_snapshot") or {}
         specs.extend(label(v, 30) for v in list(values.values())[:4])
     subject = "订单 " + label(row.get("order_id") or "对应售后") + "的" + kind
-    subject += "（" + label(row.get("shipment_id") or row.get("return_shipment_id"))
+    subject += "（" + label(row.get("shipment_id") or row.get("return_shipment_id") or "编号未记录")
     subject += ("，" + "、".join(specs) if specs else "") + "）"
     status = row.get("status")
     state = STATES.get(status, "未知")
@@ -111,11 +111,18 @@ def build_claims(record, receipts):
         if receipt["result"].get("success") is not True:
             continue
         data = receipt["result"].get("data") or {}
+        if not isinstance(data, dict):
+            continue
         rows = ([data] if receipt["tool"] == "get_order" else
-                data.get("items", [])[:10] if receipt["tool"] == "find_orders" else [])
+                (data.get("items") or [])[:10] if receipt["tool"] == "find_orders" else [])
         for row in rows:
+            if not isinstance(row, dict):
+                continue
             if row.get("order_ref"):
                 subjects[row["order_ref"]] = _order_label(row)
+            elif row.get("platform_code") and row.get("order_id"):
+                from app.services.commerce.common import ref
+                subjects[ref("order", row["platform_code"], row["order_id"])] = _order_label(row)
     for receipt in receipts[:30]:
         result, tool = receipt["result"], receipt["tool"]
         if result.get("success") is not True:
@@ -146,6 +153,13 @@ def build_claims(record, receipts):
             claim["claim_id"] = sha256(json.dumps(claim, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:24]
             claims.append(claim)
 
+        from app.tasks.reply_observations import binding_verified, project
+        invalid_rows = (tool == "find_orders" and (
+            not isinstance(data.get("items"), list) or any(not isinstance(row, dict) for row in data["items"])))
+        if not binding_verified(record, receipt) or invalid_rows:
+            subject = "订单 " + label(record.details["order_id"]) if record.details.get("order_id") else "这件事项"
+            add("unverified_binding", scope, subject + "：暂时没有可核实的查询结果；业务对象或记录归属尚未确认，不能据此判断发货、签收或退款情况。")
+            continue
         if tool in {"get_order", "find_orders"}:
             rows = [data] if tool == "get_order" else data.get("items", [])[:10]
             for row in rows:
@@ -169,8 +183,6 @@ def build_claims(record, receipts):
                     subjects.get(scope, "查询对象「" + label(scope) + "」")
                     + "：本次物流查询暂未查到包裹或发货记录，实际是否已经交给快递仍需核实；暂时无法确认送达时间。")
             for row in rows:
-                if not (row.get("shipment_id") or row.get("return_shipment_id")):
-                    continue
                 summary, text = _parcel_text(row, data.get("items", []) if shipment else row.get("events", []))
                 add("parcel_record", _subject(row, scope), text, summary)
         elif tool == "search_products":
@@ -182,6 +194,9 @@ def build_claims(record, receipts):
                 text = SearchGuard.correction([[search]])
                 projected = facts(record, [receipt])
                 add("product_search", scope, text + ("\n" + projected if projected else ""))
+        elif tool in {"get_shipments", "get_shipment_tracking", "get_after_sale_status", "get_after_sale", "find_after_sales"}:
+            for block in project(record, [receipt]):
+                add("record", scope, block["text"])
         else:
             # Existing typed projections cover policies, payments, refunds,
             # products and legacy tools. Preserve each receipt as a distinct
@@ -202,6 +217,8 @@ def fallback_text(claims):
         # Don't collapse different orders/packages into one anonymous status.
         source = preferred[0]["evidence_id"]
         selected = [c for c in preferred if c["evidence_id"] == source]
+    elif searches := [c for c in claims if c["kind"] == "product_search"]:
+        selected = searches if len(searches) <= 2 else [searches[0], searches[-1]]
     else:
         selected = ([c for c in claims if c["kind"] == "order_record"] or claims)[:2]
     lines, size = [], 0

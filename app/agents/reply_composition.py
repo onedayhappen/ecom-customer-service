@@ -10,6 +10,23 @@ from app.session.context_budget import estimate_request_tokens
 from app.session.request_budget import ContextBudgetExceeded, request_input_limit
 
 
+def validate_reply(value, *, context=None):
+    """Compatibility gate for callers using the previous evidence-block API."""
+    if not isinstance(value, str) or not value.strip() or len(value) > 6000:
+        raise ValueError("invalid_composed_reply")
+    value = value.strip()
+    if context is not None:
+        if any("claims" in m for m in context["matters"]):
+            from app.tasks.reply_claims import render_plan
+            return render_plan(value, context)
+        from app.tasks.reply_observations import choices, validate
+        if choices(context):
+            return validate(value, context)
+    if value.startswith(("```", "{", "[")):
+        raise ValueError("structured_composed_reply")
+    return value
+
+
 def selection_context(context):
     """Send selection hints, not a second copy of every renderable sentence.
 
@@ -36,7 +53,23 @@ def selection_context(context):
 def compose(client, model, context):
     if hasattr(client, "bind_scene"):
         client = client.bind_scene("reply_composition")
-    data = selection_context(context)
+    legacy = any("grounding" in m for m in context["matters"]) and not any("claims" in m for m in context["matters"])
+    prompt = REPLY_COMPOSITION_PROMPT
+    if legacy:
+        from app.tasks.reply_observations import choices
+        from app.prompts.reply_composition import GROUNDED_REPLY_PROMPT
+        blocks = choices(context)
+        if not blocks:
+            raise ValueError("legacy_reply_without_evidence")
+        data = deepcopy(context)
+        for matter in data["matters"]:
+            matter.pop("grounding", None)
+            matter.pop("fallback", None)
+            matter["verified_facts"] = ""
+        data["evidence_blocks"] = blocks
+        prompt = GROUNDED_REPLY_PROMPT
+    else:
+        data = selection_context(context)
     if data.get("current_messages_incomplete"):
         raise ContextBudgetExceeded(reason="reply_current_messages")
     params = {**settings.chat_completion_options, "model": model, "temperature": 0,
@@ -46,7 +79,7 @@ def compose(client, model, context):
     params["response_format"] = {"type": "json_object"}
     while True:
         params["messages"] = [
-            {"role": "system", "content": REPLY_COMPOSITION_PROMPT},
+            {"role": "system", "content": prompt},
             {"role": "user", "content": json.dumps(safe_context(data), ensure_ascii=False)},
         ]
         estimated, limit = estimate_request_tokens(params), request_input_limit(params)
@@ -62,4 +95,4 @@ def compose(client, model, context):
         raise ValueError("incomplete_composed_reply")
     # Validate against the publisher's immutable snapshot, also for custom
     # composers that do not use this model adapter.
-    return choice.message.content
+    return validate_reply(choice.message.content, context=context) if legacy else choice.message.content

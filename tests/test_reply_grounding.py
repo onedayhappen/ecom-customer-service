@@ -153,7 +153,12 @@ def test_captured_failures_are_corrected_at_actual_publication_boundary(store, c
     reply = ReplyCoordinator(store, 'alice', composer=model).publish('s')
     expected, reasons = check_reply(case['original_reply'], [evidence_index(case['receipts'], record.details)])
     assert case['expected_reason'] in reasons
-    assert reply['content'] == expected != case['original_reply']
+    from app.tasks.reply_claims import fallback_text
+    assert reply['content'] == fallback_text(calls[0]['matters'][0]['claims'])
+    assert reply['content'] != case['original_reply']
+    assert '可以判断它还没有发货' not in reply['content']
+    assert '应该不是它' not in reply['content']
+    assert '数据同步时间未记录' in reply['content']
     assert reply['result_ids'] == ['job:' + jid]
     assert sorted(reply['evidence_ids']) == sorted(ids)
     assert len(calls) == 1
@@ -162,8 +167,7 @@ def test_captured_failures_are_corrected_at_actual_publication_boundary(store, c
     with store.transaction(read_only=True) as tx:
         traces = tx.all("SELECT stage,payload FROM interaction_trace_events WHERE stage LIKE 'reply.composition.%'")
         assert [t['stage'] for t in traces].count('reply.composition.finished') == 1
-        finished = next(t for t in traces if t['stage'] == 'reply.composition.finished')
-        assert case['expected_reason'] in json.loads(finished['payload'])['grounding']['reasons']
+        assert any(t['stage'] == 'reply.composition.fallback' for t in traces)
         assert not any(t['stage'] == 'reply.composition.grounding' for t in traces)
 
 
@@ -179,13 +183,13 @@ def test_corrected_reply_keeps_code_owned_question_and_no_new_queries(store, mon
         calls.append(context)
         # Grounding runs after this return; deliberately forbid it from opening a transaction.
         return '订单 ORD-A 已退款999元。'
-    import app.tasks.reply_grounding as grounding
-    check = grounding.check_reply
+    import app.tasks.reply_claims as grounding
+    check = grounding.render_plan
     def local_only(text, evidence):
         with monkeypatch.context() as patch:
             patch.setattr(store, 'transaction', lambda **_: pytest.fail('grounding performed I/O'))
             return check(text, evidence)
-    monkeypatch.setattr(grounding, 'check_reply', local_only)
+    monkeypatch.setattr(grounding, 'render_plan', local_only)
     result = ReplyCoordinator(store, 'alice', composer=model).publish('s')
     assert '999' not in result['content']
     assert calls[0]['required_notices'][0] in result['content']
@@ -194,14 +198,14 @@ def test_corrected_reply_keeps_code_owned_question_and_no_new_queries(store, mon
 
 def test_new_input_during_correction_still_discards_reply(store, monkeypatch):
     from app.tasks.intake import MessageIntake
-    import app.tasks.reply_grounding as grounding
+    import app.tasks.reply_claims as grounding
     a, source = task(store, 's')
     ready(store, a, source)
-    check = grounding.check_reply
+    check = grounding.render_plan
     def interrupted(text, evidence):
         MessageIntake(store).receive('old', 'alice', request_id='new-input', content='先不要查')
         return check(text, evidence)
-    monkeypatch.setattr(grounding, 'check_reply', interrupted)
+    monkeypatch.setattr(grounding, 'render_plan', interrupted)
     assert ReplyCoordinator(store, 'alice', composer=lambda _: '已退款999元。').publish('s') is None
     assert not replies(store)
 
@@ -263,9 +267,12 @@ def test_real_cross_session_inputs_and_versions_publish_with_grounding(store, ca
     coordinator = ReplyCoordinator(store, 'alice', composer=model)
     sent = coordinator.publish('s')
     assert sent['result_ids'] == ['job:' + jid]
-    assert sent['content'] == case['final_reply']
+    assert sent['content']
+    assert '您说的是哪一件' not in sent['content']
+    assert '执行草稿' not in sent['content']
     assert coordinator.publish('s') is None
-    assert len(calls) == len(replies(store)) == 1
+    assert len(replies(store)) == 1
+    assert len(calls) <= 1  # No model call when read_task_context supplies no business evidence.
     with store.transaction(read_only=True) as tx:
         assert tx.one('SELECT disposition FROM task_reply_items WHERE item_key=?', ('job:' + jid,))['disposition'] == 'published'
         assert tx.one('SELECT status FROM association_clarifications WHERE clarification_id=?',

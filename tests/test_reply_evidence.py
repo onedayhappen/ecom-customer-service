@@ -84,9 +84,15 @@ def test_real_cases_through_publication(store, case, mode):
     assert ReplyCoordinator(store, "alice", composer=model).publish("s") is None
 
 
-def catalogue(tool="get_logistics", data=None, *, scope="order-1", evidence="e1", **quality):
-    record = SimpleNamespace(task_id="t1", status="in_progress", goal="查进度", details={"order_id": "O1"})
-    receipt = dict(event_id=evidence, tool=tool, arguments={"target_ref": scope}, result=dict(
+def catalogue(tool="get_logistics", data=None, *, scope="O1", evidence="e1", **quality):
+    from app.services.commerce.common import ref
+    record = SimpleNamespace(task_id="t1", status="in_progress", goal="查进度", details={})
+    data = deepcopy(data)
+    if isinstance(data, dict):
+        for row in ([data["shipment"]] if data.get("shipment") else data.get("items", [])):
+            if isinstance(row, dict) and row.get("order_id"):
+                row.setdefault("platform_code", "test")
+    receipt = dict(event_id=evidence, tool=tool, arguments={"target_ref": ref("order", "test", scope)}, result=dict(
         success=True, data=data if data is not None else {"items": [], "total": 0},
         completeness="partial", data_as_of=None, observed_at="2026-10-27T01:00:00Z", limitations=[]))
     receipt["result"].update(quality)
@@ -233,3 +239,15 @@ def test_source_conditions_are_never_clipped_or_dropped():
     text = render_plan(plan(context["matters"][0]["claims"][0]), context)
     assert all(v in text for v in limitations)
     assert not catalogue(limitations=["说明" * 3000])["matters"][0]["claims"]
+
+
+@pytest.mark.parametrize("data", [{}, {"items": None}, {"items": ["malformed"]},
+    {"items": [dict(order_id="OTHER", platform_code="test", shipment_id="p1", status="delivered")]}])
+def test_claim_publication_rejects_missing_or_foreign_logistics(data):
+    context = catalogue(data=data)
+    claim = context["matters"][0]["claims"][0]
+    text = render_plan(plan(claim), context)
+    assert claim["kind"] == "unverified_binding"
+    assert "记录归属尚未确认" in text
+    assert "物流记录显示已签收" not in text
+    assert "暂未查到包裹或发货记录" not in text

@@ -184,7 +184,8 @@ class ReplyCoordinator:
                         text = "\n\n".join([text, *draft.context["required_notices"]])
                         observation["output"] = text
                 except Exception as exc:
-                    record("reply.composition.fallback", status="fallback", reason=type(exc).__name__)
+                    record("reply.composition.fallback", status="fallback",
+                           reason="ungrounded_composed_reply" if isinstance(exc, ValueError) else type(exc).__name__)
                     text = draft.fallback
             return self._prepare(sid, self._check_policy_results(sid), draft=draft, composed=text)
 

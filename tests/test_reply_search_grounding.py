@@ -93,13 +93,13 @@ def test_actual_publication_corrects_injected_absence_once(store, case, only_zer
         calls.append(context)
         return case['injected_reply']
     # Verify the guard uses the draft's already-loaded receipts, with no DB access.
-    import app.tasks.reply_grounding as grounding
-    original_check = grounding.check_reply
+    import app.tasks.reply_claims as grounding
+    original_check = grounding.render_plan
     def local_check(text, evidence):
         with monkeypatch.context() as patch:
             patch.setattr(store, 'transaction', lambda **_: pytest.fail('grounding performed I/O'))
             return original_check(text, evidence)
-    monkeypatch.setattr(grounding, 'check_reply', local_check)
+    monkeypatch.setattr(grounding, 'render_plan', local_check)
     coordinator = ReplyCoordinator(store, 'alice', composer=model)
     result = coordinator.publish('s')
     assert result['content'] != case['injected_reply']
@@ -114,7 +114,7 @@ def test_actual_publication_corrects_injected_absence_once(store, case, only_zer
     with store.transaction(read_only=True) as tx:
         finished = tx.all("SELECT payload FROM interaction_trace_events WHERE stage='reply.composition.finished'")
         assert len(finished) == 1
-        assert 'product_absence' in json.loads(finished[0]['payload'])['grounding']['reasons']
+        assert tx.one("SELECT 1 FROM interaction_trace_events WHERE stage='reply.composition.fallback'")
 
 
 def test_price_and_spec_filters_cannot_be_generalized_to_catalogue_absence():
