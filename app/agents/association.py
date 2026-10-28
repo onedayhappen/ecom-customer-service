@@ -76,6 +76,50 @@ class AssociationProposal(StrictModel):
         return self
 
 
+def complete_quoted_clarification_sources(proposal, context):
+    """Complete source bookkeeping only when the model already cited every input.
+
+    This never chooses a task, adds evidence, or accepts an expired question.
+    The transaction still checks publication, ownership, versions and quotes.
+    """
+    result = proposal.model_copy(deep=True)
+    questions = {c["clarification_id"]: c for c in context.clarifications}
+    current = {m["sequence"] for m in context.current_messages}
+    for decision in result.decisions:
+        question = questions.get(decision.clarification_id)
+        if not question or not question["valid"] or not question["published"]:
+            continue
+        sources = question["sources"]
+        if all(any(q.session_id == s["session_id"] and q.sequence == s["sequence"]
+                   and q.quote in s["content"] for q in decision.evidence) for s in sources):
+            combined = set(decision.sequences) | {s["sequence"] for s in sources}
+            if len(combined) <= 100 and combined & current:
+                decision.sequences = sorted(combined)
+    return result
+
+
+def omit_ungrounded_details(proposal, context):
+    """An optional bad extraction must not discard an otherwise grounded goal.
+
+    Never repair values or invent quotes. Keep the goal and all source evidence
+    for the transaction guard. Validated question option mappings remain legal.
+    """
+    result = proposal.model_copy(deep=True)
+    candidates = {c["task_id"]: c for c in context.candidates}
+    for decision in result.decisions:
+        if not decision.goal:
+            continue
+        question = candidates.get(decision.task_id, {}).get("question") or {}
+        def retain(detail):
+            if not isinstance(detail.value, str) or detail.value.casefold() in detail.evidence.quote.casefold():
+                return True
+            return (decision.effect == "answer" and question.get("valid")
+                and question.get("question_id") == decision.question_id and question.get("field") == detail.field
+                and any(o.get("value") == detail.value for o in question.get("options", [])))
+        decision.details = [detail for detail in decision.details if retain(detail)]
+    return result
+
+
 def propose(client, model, context):
     from app.config.settings import settings
     from app.prompts.association import ASSOCIATION_PROMPT
@@ -92,4 +136,5 @@ def propose(client, model, context):
     content = response.choices[0].message.content
     if not isinstance(content, str) or len(content) > 100000:
         raise ValueError("Invalid association output")
-    return AssociationProposal.model_validate_json(content)
+    proposal = complete_quoted_clarification_sources(AssociationProposal.model_validate_json(content), context)
+    return omit_ungrounded_details(proposal, context)

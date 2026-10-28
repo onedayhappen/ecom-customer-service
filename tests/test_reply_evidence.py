@@ -174,7 +174,7 @@ def test_evidence_quality_change_during_model_call_discards_publication(store, f
 def test_refund_success_is_not_bank_arrival():
     context = catalogue("get_refunds", {"recorded_success_amount": "88.00", "currency": "CNY"})
     text = render_plan(plan(context["matters"][0]["claims"][0]), context)
-    assert "渠道已报退款成功金额：88.00" in text
+    assert "渠道报告退款成功金额为88.00元" in text
     assert "不等于已核实银行卡到账" in text
 
 

@@ -1,0 +1,1662 @@
+{
+  "source_database": "data/evaluation/youyou_retest_20261028_620e38/support.db",
+  "cases": [
+    {
+      "id": "shirt",
+      "source": "archived",
+      "source_event": "62ea71d6-c53f-5c30-a871-f9e40f7c92a6",
+      "user": "海澜之家那件短袖蓝色M码还有没，多少钱",
+      "must": [
+        "短袖",
+        "88.00元",
+        "库存记录"
+      ],
+      "receipts": [
+        {
+          "tool": "get_product_details",
+          "arguments": {
+            "target_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2JyYW5kXzUwX3AzMCJd"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "applied_conditions": {
+                "specs": [],
+                "target_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2JyYW5kXzUwX3AzMCJd"
+              },
+              "has_more": false,
+              "items": [
+                {
+                  "cancel_allowed": true,
+                  "created_at": "2026-10-24T13:36:07.691227Z",
+                  "currency": "CNY",
+                  "inventory": {
+                    "available_qty": 58,
+                    "updated_at": "2026-10-24T13:36:07.691227Z"
+                  },
+                  "list_price": "88.00",
+                  "merchant_id": "mall_demo_brand_50",
+                  "product_id": "mall_demo_brand_50_p30",
+                  "product_name": "HLA海澜之家简约动物印花短袖T恤",
+                  "sku_code": "DEMO-brand_50-202004190030001",
+                  "sku_id": "mall_demo_brand_50_s179",
+                  "spec_values": {
+                    "尺寸": "X",
+                    "颜色": "蓝色"
+                  },
+                  "status": "active",
+                  "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNTBfczE3OSJd",
+                  "updated_at": "2026-10-24T13:36:07.691227Z"
+                },
+                {
+                  "cancel_allowed": true,
+                  "created_at": "2026-10-24T13:36:07.691227Z",
+                  "currency": "CNY",
+                  "inventory": {
+                    "available_qty": 65,
+                    "updated_at": "2026-10-24T13:36:07.691227Z"
+                  },
+                  "list_price": "88.00",
+                  "merchant_id": "mall_demo_brand_50",
+                  "product_id": "mall_demo_brand_50_p30",
+                  "product_name": "HLA海澜之家简约动物印花短袖T恤",
+                  "sku_code": "DEMO-brand_50-202004190030002",
+                  "sku_id": "mall_demo_brand_50_s180",
+                  "spec_values": {
+                    "尺寸": "XL",
+                    "颜色": "蓝色"
+                  },
+                  "status": "active",
+                  "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNTBfczE4MCJd",
+                  "updated_at": "2026-10-24T13:36:07.691227Z"
+                },
+                {
+                  "cancel_allowed": true,
+                  "created_at": "2026-10-24T13:36:07.691227Z",
+                  "currency": "CNY",
+                  "inventory": {
+                    "available_qty": 72,
+                    "updated_at": "2026-10-24T13:36:07.691227Z"
+                  },
+                  "list_price": "88.00",
+                  "merchant_id": "mall_demo_brand_50",
+                  "product_id": "mall_demo_brand_50_p30",
+                  "product_name": "HLA海澜之家简约动物印花短袖T恤",
+                  "sku_code": "DEMO-brand_50-202004190030003",
+                  "sku_id": "mall_demo_brand_50_s181",
+                  "spec_values": {
+                    "尺寸": "M",
+                    "颜色": "蓝色"
+                  },
+                  "status": "active",
+                  "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNTBfczE4MSJd",
+                  "updated_at": "2026-10-24T13:36:07.691227Z"
+                },
+                {
+                  "cancel_allowed": true,
+                  "created_at": "2026-10-24T13:36:07.691227Z",
+                  "currency": "CNY",
+                  "inventory": {
+                    "available_qty": 79,
+                    "updated_at": "2026-10-24T13:36:07.691227Z"
+                  },
+                  "list_price": "88.00",
+                  "merchant_id": "mall_demo_brand_50",
+                  "product_id": "mall_demo_brand_50_p30",
+                  "product_name": "HLA海澜之家简约动物印花短袖T恤",
+                  "sku_code": "DEMO-brand_50-202004190030004",
+                  "sku_id": "mall_demo_brand_50_s182",
+                  "spec_values": {
+                    "尺寸": "X",
+                    "颜色": "白色"
+                  },
+                  "status": "active",
+                  "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNTBfczE4MiJd",
+                  "updated_at": "2026-10-24T13:36:07.691227Z"
+                },
+                {
+                  "cancel_allowed": true,
+                  "created_at": "2026-10-24T13:36:07.691227Z",
+                  "currency": "CNY",
+                  "inventory": {
+                    "available_qty": 86,
+                    "updated_at": "2026-10-24T13:36:07.691227Z"
+                  },
+                  "list_price": "88.00",
+                  "merchant_id": "mall_demo_brand_50",
+                  "product_id": "mall_demo_brand_50_p30",
+                  "product_name": "HLA海澜之家简约动物印花短袖T恤",
+                  "sku_code": "DEMO-brand_50-202004190030005",
+                  "sku_id": "mall_demo_brand_50_s183",
+                  "spec_values": {
+                    "尺寸": "XL",
+                    "颜色": "白色"
+                  },
+                  "status": "active",
+                  "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNTBfczE4MyJd",
+                  "updated_at": "2026-10-24T13:36:07.691227Z"
+                },
+                {
+                  "cancel_allowed": true,
+                  "created_at": "2026-10-24T13:36:07.691227Z",
+                  "currency": "CNY",
+                  "inventory": {
+                    "available_qty": 93,
+                    "updated_at": "2026-10-24T13:36:07.691227Z"
+                  },
+                  "list_price": "88.00",
+                  "merchant_id": "mall_demo_brand_50",
+                  "product_id": "mall_demo_brand_50_p30",
+                  "product_name": "HLA海澜之家简约动物印花短袖T恤",
+                  "sku_code": "DEMO-brand_50-202004190030006",
+                  "sku_id": "mall_demo_brand_50_s184",
+                  "spec_values": {
+                    "尺寸": "M",
+                    "颜色": "白色"
+                  },
+                  "status": "active",
+                  "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNTBfczE4NCJd",
+                  "updated_at": "2026-10-24T13:36:07.691227Z"
+                }
+              ],
+              "product": {
+                "category": "T恤",
+                "description": "模拟店铺测试商品；规格沿用 mall 示例，未经品牌核实，报价和库存为模拟值。",
+                "merchant_id": "mall_demo_brand_50",
+                "name": "HLA海澜之家简约动物印花短袖T恤",
+                "product_id": "mall_demo_brand_50_p30",
+                "product_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2JyYW5kXzUwX3AzMCJd",
+                "specs": {
+                  "catalog_model_key": "mall-example-30",
+                  "image_url": "http://macro-oss.oss-cn-shenzhen.aliyuncs.com/mall/images/20180615/5ad83a4fN6ff67ecd.jpg!cc_350x449.jpg",
+                  "is_demo": true,
+                  "specification_verification": "source_example_unverified",
+                  "品牌": "海澜之家",
+                  "款式名称": "HLA海澜之家简约动物印花短袖T恤"
+                }
+              },
+              "total": 6,
+              "unapplied_conditions": []
+            },
+            "data_as_of": null,
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [],
+            "next_cursor": null,
+            "observed_at": "2026-10-28T01:51:11.287734Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "product_skus",
+                  "products",
+                  "sku_inventory"
+                ]
+              }
+            ],
+            "status": "ok",
+            "success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "shoes",
+      "source": "archived",
+      "source_event": "65bf1d3b-1e20-5d62-aec0-7e61c966ce53",
+      "user": "耐克那双鞋还有货吗",
+      "must": [
+        "耐克",
+        "标价",
+        "库存记录"
+      ],
+      "receipts": [
+        {
+          "tool": "get_product_details",
+          "arguments": {
+            "target_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNThfczE3MSJd"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "items": [
+                {
+                  "cancel_allowed": true,
+                  "created_at": "2026-10-24T13:36:07.691227Z",
+                  "currency": "CNY",
+                  "inventory": {
+                    "available_qty": 83,
+                    "updated_at": "2026-10-24T13:36:07.691227Z"
+                  },
+                  "list_price": "200.00",
+                  "merchant_id": "mall_demo_brand_58",
+                  "product_id": "mall_demo_brand_58_p35",
+                  "product_name": "耐克 NIKE ROSHE RUN 511881",
+                  "sku_code": "DEMO-brand_58-202002250035001",
+                  "sku_id": "mall_demo_brand_58_s171",
+                  "spec_values": {
+                    "尺寸": "38",
+                    "颜色": "红色",
+                    "风格": "夏季"
+                  },
+                  "status": "active",
+                  "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNThfczE3MSJd",
+                  "updated_at": "2026-10-24T13:36:07.691227Z"
+                }
+              ],
+              "product": {
+                "category": "男鞋",
+                "description": "模拟店铺测试商品；规格沿用 mall 示例，未经品牌核实，报价和库存为模拟值。",
+                "merchant_id": "mall_demo_brand_58",
+                "name": "耐克 NIKE ROSHE RUN 511881",
+                "product_id": "mall_demo_brand_58_p35",
+                "specs": {
+                  "catalog_model_key": "mall-example-35",
+                  "image_url": "http://macro-oss.oss-cn-shenzhen.aliyuncs.com/mall/images/20180615/5b235bb9Nf606460b.jpg",
+                  "is_demo": true,
+                  "specification_verification": "source_example_unverified",
+                  "品牌": "NIKE",
+                  "款式名称": "耐克 NIKE ROSHE RUN 511881"
+                }
+              },
+              "total": 1,
+              "unapplied_conditions": []
+            },
+            "data_as_of": null,
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [],
+            "next_cursor": null,
+            "observed_at": "2026-10-28T01:56:54.209852Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "product_skus",
+                  "products",
+                  "sku_inventory"
+                ]
+              }
+            ],
+            "status": "ok",
+            "success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "blanket-material",
+      "source": "archived",
+      "source_event": "43303190-18e0-5b26-9f2e-4d569c5913ca",
+      "user": "条纹那个盖毯，材质和重量写的啥，尺寸多大",
+      "must": [
+        "100%纯棉",
+        "1280g",
+        "150*200cm"
+      ],
+      "receipts": [
+        {
+          "tool": "get_product_details",
+          "arguments": {
+            "target_ref": "WyJwcm9kdWN0IiwibGl0ZW1hbGxfZGVtb18xMDA1MDAwXzBfZzEwODQwMDEiXQ"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "applied_conditions": {
+                "specs": [],
+                "target_ref": "WyJwcm9kdWN0IiwibGl0ZW1hbGxfZGVtb18xMDA1MDAwXzBfZzEwODQwMDEiXQ"
+              },
+              "has_more": false,
+              "items": [
+                {
+                  "cancel_allowed": true,
+                  "created_at": "2026-10-24T13:48:25.923602Z",
+                  "currency": "CNY",
+                  "inventory": {
+                    "available_qty": 95,
+                    "updated_at": "2026-10-24T13:48:25.923602Z"
+                  },
+                  "list_price": "249.00",
+                  "merchant_id": "litemall_demo_1005000_0",
+                  "product_id": "litemall_demo_1005000_0_g1084001",
+                  "product_name": "纯棉简欧条纹针织盖毯",
+                  "sku_code": "LT-1005000-0-100",
+                  "sku_id": "litemall_demo_1005000_0_s100",
+                  "spec_values": {
+                    "规格": "标准"
+                  },
+                  "status": "active",
+                  "subject_ref": "WyJza3UiLCJsaXRlbWFsbF9kZW1vXzEwMDUwMDBfMF9zMTAwIl0",
+                  "updated_at": "2026-10-24T13:48:25.923602Z"
+                }
+              ],
+              "product": {
+                "category": "床品件套",
+                "description": "模拟店铺；商品资料来自 litemall 示例，规格未经品牌核实，价格与库存为测试数据。 居家 / 床品件套。纯棉针织，柔软亲肤",
+                "merchant_id": "litemall_demo_1005000_0",
+                "name": "纯棉简欧条纹针织盖毯",
+                "product_id": "litemall_demo_1005000_0_g1084001",
+                "product_ref": "WyJwcm9kdWN0IiwibGl0ZW1hbGxfZGVtb18xMDA1MDAwXzBfZzEwODQwMDEiXQ",
+                "specs": {
+                  "catalog_model_key": "litemall-example-1084001",
+                  "gallery": [
+                    "http://yanxuan.nosdn.127.net/8e316090dd262ca0a4fe8f37bdc1f1aa.jpg",
+                    "http://yanxuan.nosdn.127.net/3eb572eef0f47c125cbe99514e021d8f.jpg",
+                    "http://yanxuan.nosdn.127.net/cf87ca367a793e250f27a831da7e142e.jpg",
+                    "http://yanxuan.nosdn.127.net/0e6431e884c7afbe4c648f0317a368eb.jpg"
+                  ],
+                  "image_url": "http://yanxuan.nosdn.127.net/07f682d405c1d2ed343c210ac8f8862a.png",
+                  "is_demo": true,
+                  "specification_verification": "source_example_unverified",
+                  "单位": "件",
+                  "参数": {
+                    "产品标准": "FZ/T 61001-2006",
+                    "安全技术": "GB18401-2010 B类",
+                    "尺寸": "150*200cm",
+                    "材质": "100%纯棉",
+                    "温馨提示": "1.纯棉毯采取传统针织工艺，纯天然织造的，使用前建议清洗一遍去除少量浮尘。\n2.商品为纯棉织造而成，若有少量气味请通风2-3天去除。\n3.纯棉针织盖毯清洗数次之后，可能存在微量变形，建议干洗。",
+                    "重量": "1280g"
+                  },
+                  "款式名称": "纯棉简欧条纹针织盖毯",
+                  "源资料制造商标签": "Ralph Lauren制造商",
+                  "类目路径": [
+                    "居家",
+                    "床品件套"
+                  ]
+                }
+              },
+              "total": 1,
+              "unapplied_conditions": []
+            },
+            "data_as_of": null,
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [],
+            "next_cursor": null,
+            "observed_at": "2026-10-28T02:19:42.400647Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "product_skus",
+                  "products",
+                  "sku_inventory"
+                ]
+              }
+            ],
+            "status": "ok",
+            "success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "blanket-care",
+      "source": "archived",
+      "source_event": "94b055dd-bc1e-575e-bcc4-b54cb175f83e",
+      "user": "绞花那条毯子是啥面料，重量多少",
+      "must": [
+        "100%棉",
+        "1115g"
+      ],
+      "receipts": [
+        {
+          "tool": "get_product_details",
+          "arguments": {
+            "target_ref": "WyJwcm9kdWN0IiwibGl0ZW1hbGxfZGVtb18xMDA1MDAwXzBfZzEwODQwMDMiXQ"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "applied_conditions": {
+                "specs": [],
+                "target_ref": "WyJwcm9kdWN0IiwibGl0ZW1hbGxfZGVtb18xMDA1MDAwXzBfZzEwODQwMDMiXQ"
+              },
+              "has_more": false,
+              "items": [
+                {
+                  "cancel_allowed": true,
+                  "created_at": "2026-10-24T13:48:25.923602Z",
+                  "currency": "CNY",
+                  "inventory": {
+                    "available_qty": 102,
+                    "updated_at": "2026-10-24T13:48:25.923602Z"
+                  },
+                  "list_price": "199.00",
+                  "merchant_id": "litemall_demo_1005000_0",
+                  "product_id": "litemall_demo_1005000_0_g1084003",
+                  "product_name": "纯棉美式绞花针织盖毯",
+                  "sku_code": "LT-1005000-0-101",
+                  "sku_id": "litemall_demo_1005000_0_s101",
+                  "spec_values": {
+                    "规格": "标准"
+                  },
+                  "status": "active",
+                  "subject_ref": "WyJza3UiLCJsaXRlbWFsbF9kZW1vXzEwMDUwMDBfMF9zMTAxIl0",
+                  "updated_at": "2026-10-24T13:48:25.923602Z"
+                }
+              ],
+              "product": {
+                "category": "床品件套",
+                "description": "模拟店铺；商品资料来自 litemall 示例，规格未经品牌核实，价格与库存为测试数据。 居家 / 床品件套。美式提花，温暖舒适",
+                "merchant_id": "litemall_demo_1005000_0",
+                "name": "纯棉美式绞花针织盖毯",
+                "product_id": "litemall_demo_1005000_0_g1084003",
+                "product_ref": "WyJwcm9kdWN0IiwibGl0ZW1hbGxfZGVtb18xMDA1MDAwXzBfZzEwODQwMDMiXQ",
+                "specs": {
+                  "catalog_model_key": "litemall-example-1084003",
+                  "gallery": [
+                    "http://yanxuan.nosdn.127.net/400d5759394edc78db8006bbd459e911.jpg",
+                    "http://yanxuan.nosdn.127.net/f63ac83618c3bfb00b6d27336be0485c.jpg",
+                    "http://yanxuan.nosdn.127.net/f5566e6a2b7e3e90472beda8e057d78a.jpg",
+                    "http://yanxuan.nosdn.127.net/74817e867e569dbd06133b3eead467b4.jpg"
+                  ],
+                  "image_url": "http://yanxuan.nosdn.127.net/cf40c167e7054fe184d49f19121f63c7.png",
+                  "is_demo": true,
+                  "specification_verification": "source_example_unverified",
+                  "单位": "件",
+                  "参数": {
+                    "产品标准": "FZ/T 61001-2006",
+                    "安全技术": "GB18401-2010 B类",
+                    "尺寸": "150*200cm",
+                    "材质": "100%棉",
+                    "温馨提示": "1.纯棉毯采取传统针织工艺，纯天然织造的，使用前建议清洗一遍去除少量浮尘。\n2.商品为纯棉织造而成，若有少量气味请通风2-3天去除。\n3.纯棉针织盖毯清洗数次之后，可能存在微量变形，建议干洗。",
+                    "重量": "1115g"
+                  },
+                  "款式名称": "纯棉美式绞花针织盖毯",
+                  "源资料制造商标签": "Ralph Lauren制造商",
+                  "类目路径": [
+                    "居家",
+                    "床品件套"
+                  ]
+                }
+              },
+              "total": 1,
+              "unapplied_conditions": []
+            },
+            "data_as_of": null,
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [],
+            "next_cursor": null,
+            "observed_at": "2026-10-28T02:19:42.943301Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "product_skus",
+                  "products",
+                  "sku_inventory"
+                ]
+              }
+            ],
+            "status": "ok",
+            "success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "coupon-detail",
+      "source": "archived",
+      "source_event": "8fe5f4bf-e46c-565b-a8f7-8b9abb1e99ec",
+      "user": "那张数码满减券过期了没，能减多少",
+      "must": [
+        "1000.00元",
+        "100.00元",
+        "已过期",
+        "2026-10-27"
+      ],
+      "receipts": [
+        {
+          "tool": "get_coupon",
+          "arguments": {
+            "coupon_ref": "WyJjb3Vwb25faW5zdGFuY2UiLCIzNmMxNTgzMWEwMGM0OTIyOTdmYzFkMTk5Y2Y0MzA3YiJd"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "applied_conditions": {
+                "coupon_ref": "WyJjb3Vwb25faW5zdGFuY2UiLCIzNmMxNTgzMWEwMGM0OTIyOTdmYzFkMTk5Y2Y0MzA3YiJd"
+              },
+              "has_more": true,
+              "instance": {
+                "claimed_at": "2026-10-24T15:39:01.565888Z",
+                "coupon_id": "rag_coupon_digital_category",
+                "coupon_ref": "WyJjb3Vwb25faW5zdGFuY2UiLCIzNmMxNTgzMWEwMGM0OTIyOTdmYzFkMTk5Y2Y0MzA3YiJd",
+                "expires_at": "2026-10-27T15:39:01.565888Z",
+                "is_expired": true,
+                "source_status": "available",
+                "status": "expired",
+                "used_at": null,
+                "user_coupon_id": "36c15831a00c492297fc1d199cf4307b",
+                "version": 1
+              },
+              "items": [
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_brand_2_p44",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_brand_21_p45",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_brand_3_p26",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_brand_3_p42",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_brand_51_p29",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_brand_51_p37",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_brand_51_p38",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_brand_6_p27",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_brand_6_p28",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_brand_6_p39",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_brand_6_p40",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_brand_6_p41",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_digital_a_p26",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_digital_a_p27",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_digital_a_p28",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_digital_a_p29",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_digital_a_p37",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_digital_a_p38",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_digital_a_p39",
+                  "scope_type": "product"
+                },
+                {
+                  "record_type": "scope",
+                  "scope_id": "mall_demo_digital_a_p40",
+                  "scope_type": "product"
+                }
+              ],
+              "rules_basis": "claim_snapshot",
+              "template": {
+                "cap_amount": null,
+                "claim_ends_at": "2026-11-23T15:38:59.166374Z",
+                "claim_starts_at": "2026-10-24T15:38:59.166374Z",
+                "coupon_id": "rag_coupon_digital_category",
+                "coupon_type": "category",
+                "currency": "CNY",
+                "discount_amount": "100.00",
+                "discount_bps": null,
+                "fixed_expires_at": null,
+                "kind": "amount_off",
+                "merchant_id": null,
+                "name": "数码品类满1000减100（模拟）",
+                "per_user_limit": 1,
+                "platform_code": "mall_demo",
+                "status": "active",
+                "threshold_amount": "1000.00",
+                "total_limit": 100,
+                "valid_days": 3
+              },
+              "total": 36
+            },
+            "data_as_of": null,
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [
+              "template.cap_amount",
+              "template.merchant_id",
+              "template.discount_bps",
+              "template.fixed_expires_at",
+              "instance.used_at"
+            ],
+            "next_cursor": "eyJiaW5kaW5nIjoiZjJiOTA0OTExZGI0ZDExMTM4NjYxN2ExOWFkZjQ1ZTRjNmU2NWU5YjRhMzIyODdhZTZhYTY5ODUzNWI3M2E4MiIsImV4cGlyZXMiOjE3OTMxNTU0MTUsIm9mZnNldCI6MjAsInNuYXBzaG90IjoiNmUyOGUxYzcwZmMzZjdiMTQ2NTJjZjBmNmE5OGVmZWVkMzZhYzA3MjQwYWZhNGNjODJjNDFjMGM3MTQ5MzllMSJ9.b6712aa3ae0fddb87b011c07797b9d495dea66a296698ed37ee1281e44988f57",
+            "observed_at": "2026-10-28T02:28:35.749101Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "coupon_claim_rules",
+                  "coupon_redemptions",
+                  "coupon_scopes",
+                  "coupon_templates",
+                  "user_coupons"
+                ]
+              }
+            ],
+            "status": "ok",
+            "success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "coupon-search",
+      "source": "archived",
+      "source_event": "a271765e-abe5-557e-b310-ee0517e30b23",
+      "user": "满一千减一百那个券还在吗",
+      "must": [
+        "1000.00元",
+        "100.00元",
+        "已过期"
+      ],
+      "receipts": [
+        {
+          "tool": "find_my_coupons",
+          "arguments": {
+            "query": "满1000减100",
+            "status": "all"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "applied_conditions": {
+                "query": "满1000减100",
+                "status": "all",
+                "subject_ref": null
+              },
+              "has_more": false,
+              "items": [
+                {
+                  "claimed_at": "2026-10-24T15:39:01.565888Z",
+                  "coupon_id": "rag_coupon_digital_category",
+                  "coupon_ref": "WyJjb3Vwb25faW5zdGFuY2UiLCIzNmMxNTgzMWEwMGM0OTIyOTdmYzFkMTk5Y2Y0MzA3YiJd",
+                  "expires_at": "2026-10-27T15:39:01.565888Z",
+                  "is_expired": true,
+                  "rules_basis": "claim_snapshot",
+                  "source_status": "available",
+                  "status": "expired",
+                  "template": {
+                    "cap_amount": null,
+                    "claim_ends_at": "2026-11-23T15:38:59.166374Z",
+                    "claim_starts_at": "2026-10-24T15:38:59.166374Z",
+                    "coupon_id": "rag_coupon_digital_category",
+                    "coupon_type": "category",
+                    "currency": "CNY",
+                    "discount_amount": "100.00",
+                    "discount_bps": null,
+                    "fixed_expires_at": null,
+                    "kind": "amount_off",
+                    "merchant_id": null,
+                    "name": "数码品类满1000减100（模拟）",
+                    "per_user_limit": 1,
+                    "platform_code": "mall_demo",
+                    "status": "active",
+                    "threshold_amount": "1000.00",
+                    "total_limit": 100,
+                    "valid_days": 3
+                  },
+                  "used_at": null,
+                  "user_coupon_id": "36c15831a00c492297fc1d199cf4307b",
+                  "version": 1
+                }
+              ],
+              "total": 1
+            },
+            "data_as_of": null,
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [
+              "items[0].used_at",
+              "items[0].template.cap_amount",
+              "items[0].template.merchant_id",
+              "items[0].template.discount_bps",
+              "items[0].template.fixed_expires_at",
+              "applied_conditions.subject_ref"
+            ],
+            "next_cursor": null,
+            "observed_at": "2026-10-28T02:28:33.817219Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "coupon_claim_rules",
+                  "coupon_scopes",
+                  "coupon_templates",
+                  "merchants",
+                  "user_coupons"
+                ]
+              }
+            ],
+            "status": "ok",
+            "success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "membership",
+      "source": "archived",
+      "source_event": "c4199995-20cf-5f44-8515-07d6bb9a0cfb",
+      "user": "我啥等级啊，付费会员啥时候到期，多少积分",
+      "must": [
+        "铂金",
+        "100分",
+        "2027-10-24"
+      ],
+      "receipts": [
+        {
+          "tool": "get_membership",
+          "arguments": {},
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "benefit_definitions": [
+                {
+                  "benefit_family": "monthly_growth_coupon",
+                  "benefit_id": "growth_platinum",
+                  "membership_active": true,
+                  "membership_check": "claim_only",
+                  "period_type": "month",
+                  "program_id": "mall_growth",
+                  "quota": 2,
+                  "rules": {
+                    "automatic_claim_enabled": true,
+                    "coupon_template_id": "demo26_coupon_member_growth_platinum",
+                    "currency": "CNY",
+                    "discount_amount": 25,
+                    "issuance_mode": "self_claim",
+                    "threshold_amount": 200
+                  },
+                  "status": "active",
+                  "version": 1
+                },
+                {
+                  "benefit_family": "monthly_vip_200",
+                  "benefit_id": "vip_200",
+                  "membership_active": true,
+                  "membership_check": "claim_and_use",
+                  "period_type": "month",
+                  "program_id": "mall_vip",
+                  "quota": 2,
+                  "rules": {
+                    "automatic_claim_enabled": true,
+                    "coupon_template_id": "demo26_coupon_member_vip_200",
+                    "currency": "CNY",
+                    "discount_amount": 50,
+                    "issuance_mode": "self_claim",
+                    "threshold_amount": 200
+                  },
+                  "status": "active",
+                  "version": 1
+                },
+                {
+                  "benefit_family": "monthly_vip_500",
+                  "benefit_id": "vip_500",
+                  "membership_active": true,
+                  "membership_check": "claim_and_use",
+                  "period_type": "month",
+                  "program_id": "mall_vip",
+                  "quota": 1,
+                  "rules": {
+                    "automatic_claim_enabled": true,
+                    "coupon_template_id": "demo26_coupon_member_vip_500",
+                    "currency": "CNY",
+                    "discount_amount": 100,
+                    "issuance_mode": "self_claim",
+                    "threshold_amount": 500
+                  },
+                  "status": "active",
+                  "version": 1
+                }
+              ],
+              "benefit_entitlements": [
+                {
+                  "benefit_family": "monthly_growth_coupon",
+                  "benefit_id": "growth_platinum",
+                  "benefit_version": 1,
+                  "claimed_count": 1,
+                  "effective_status": "active",
+                  "entitlement_id": "demo26_ent_user_1_growth_platinum",
+                  "expires_at": "2026-10-31T16:00:00Z",
+                  "period_key": "2026-10",
+                  "program_id": "mall_growth",
+                  "quota": 2,
+                  "remaining_count": 1,
+                  "starts_at": "2026-10-24T16:24:27.920619Z",
+                  "status": "active"
+                },
+                {
+                  "benefit_family": "monthly_vip_200",
+                  "benefit_id": "vip_200",
+                  "benefit_version": 1,
+                  "claimed_count": 1,
+                  "effective_status": "active",
+                  "entitlement_id": "demo26_ent_user_1_vip_200",
+                  "expires_at": "2026-10-31T16:00:00Z",
+                  "period_key": "2026-10",
+                  "program_id": "mall_vip",
+                  "quota": 2,
+                  "remaining_count": 1,
+                  "starts_at": "2026-10-24T16:24:27.920619Z",
+                  "status": "active"
+                },
+                {
+                  "benefit_family": "monthly_vip_500",
+                  "benefit_id": "vip_500",
+                  "benefit_version": 1,
+                  "claimed_count": 1,
+                  "effective_status": "active",
+                  "entitlement_id": "demo26_ent_user_1_vip_500",
+                  "expires_at": "2026-10-31T16:00:00Z",
+                  "period_key": "2026-10",
+                  "program_id": "mall_vip",
+                  "quota": 1,
+                  "remaining_count": 0,
+                  "starts_at": "2026-10-24T16:24:27.920619Z",
+                  "status": "active"
+                }
+              ],
+              "growth_membership": {
+                "assignment_source": "demo_assignment",
+                "benefits": {
+                  "coupon_benefits_status": "active"
+                },
+                "effective_status": "active",
+                "evaluated_at": "2026-10-24T16:00:00Z",
+                "expires_at": "2026-12-31T16:00:00Z",
+                "growth_threshold": 8000,
+                "growth_value": 8000,
+                "is_expired": false,
+                "level_code": "platinum",
+                "level_version": 1,
+                "membership_id": "demo_user_1_mall_growth",
+                "merchant_id": null,
+                "name": "铂金",
+                "next_evaluate_at": "2026-12-31T16:00:00Z",
+                "platform_code": "mall_demo",
+                "program_id": "mall_growth",
+                "program_name": "平台成长会员",
+                "program_status": "active",
+                "program_type": "growth",
+                "rank_value": 3,
+                "registration_default": 1,
+                "source": "local_demo:membership_v1",
+                "starts_at": "2026-10-24T16:00:00Z",
+                "status": "active",
+                "updated_at": "2026-10-24T16:06:13.597448Z",
+                "version": 0
+              },
+              "ledger_balance": 100,
+              "membership": {
+                "assignment_source": "demo_assignment",
+                "benefits": {
+                  "coupon_benefits_status": "active"
+                },
+                "effective_status": "active",
+                "evaluated_at": "2026-10-24T16:00:00Z",
+                "expires_at": "2026-12-31T16:00:00Z",
+                "growth_threshold": 8000,
+                "growth_value": 8000,
+                "is_expired": false,
+                "level_code": "platinum",
+                "level_version": 1,
+                "membership_id": "demo_user_1_mall_growth",
+                "merchant_id": null,
+                "name": "铂金",
+                "next_evaluate_at": "2026-12-31T16:00:00Z",
+                "platform_code": "mall_demo",
+                "program_id": "mall_growth",
+                "program_name": "平台成长会员",
+                "program_status": "active",
+                "program_type": "growth",
+                "rank_value": 3,
+                "registration_default": 1,
+                "source": "local_demo:membership_v1",
+                "starts_at": "2026-10-24T16:00:00Z",
+                "status": "active",
+                "updated_at": "2026-10-24T16:06:13.597448Z",
+                "version": 0
+              },
+              "platform_code": "mall_demo",
+              "store_memberships": [
+                {
+                  "assignment_source": "demo_assignment",
+                  "benefits": {},
+                  "effective_status": "active",
+                  "evaluated_at": null,
+                  "expires_at": "2027-10-24T16:00:00Z",
+                  "growth_threshold": 0,
+                  "growth_value": 0,
+                  "is_expired": false,
+                  "level_code": "regular",
+                  "level_version": 1,
+                  "membership_id": "demo_user_1_mall_store_digital",
+                  "merchant_id": "mall_demo_digital_a",
+                  "name": "普通店铺会员",
+                  "next_evaluate_at": null,
+                  "platform_code": "mall_demo",
+                  "program_id": "mall_store_digital",
+                  "program_name": "优选数码店会员",
+                  "program_status": "active",
+                  "program_type": "store",
+                  "rank_value": 0,
+                  "registration_default": 0,
+                  "source": "local_demo:membership_v1",
+                  "starts_at": "2026-10-24T16:00:00Z",
+                  "status": "active",
+                  "updated_at": "2026-10-24T16:06:13.597448Z",
+                  "version": 0
+                },
+                {
+                  "assignment_source": "demo_assignment",
+                  "benefits": {},
+                  "effective_status": "active",
+                  "evaluated_at": null,
+                  "expires_at": "2027-10-24T16:00:00Z",
+                  "growth_threshold": 0,
+                  "growth_value": 0,
+                  "is_expired": false,
+                  "level_code": "advanced",
+                  "level_version": 1,
+                  "membership_id": "demo_user_1_mall_store_fashion",
+                  "merchant_id": "mall_demo_fashion_a",
+                  "name": "高级店铺会员",
+                  "next_evaluate_at": null,
+                  "platform_code": "mall_demo",
+                  "program_id": "mall_store_fashion",
+                  "program_name": "优选服饰店会员",
+                  "program_status": "active",
+                  "program_type": "store",
+                  "rank_value": 1,
+                  "registration_default": 0,
+                  "source": "local_demo:membership_v1",
+                  "starts_at": "2026-10-24T16:00:00Z",
+                  "status": "active",
+                  "updated_at": "2026-10-24T16:06:13.597448Z",
+                  "version": 0
+                }
+              ],
+              "vip": {
+                "history_total": 1,
+                "is_vip": true,
+                "records": [
+                  {
+                    "assignment_source": "demo_assignment",
+                    "benefits": {
+                      "coupon_benefits_status": "active"
+                    },
+                    "effective_status": "active",
+                    "evaluated_at": null,
+                    "expires_at": "2027-10-24T16:00:00Z",
+                    "growth_threshold": 0,
+                    "growth_value": 0,
+                    "is_expired": false,
+                    "level_code": "vip",
+                    "level_version": 1,
+                    "membership_id": "demo_user_1_mall_vip",
+                    "merchant_id": null,
+                    "name": "VIP会员",
+                    "next_evaluate_at": null,
+                    "platform_code": "mall_demo",
+                    "program_id": "mall_vip",
+                    "program_name": "平台VIP",
+                    "program_status": "active",
+                    "program_type": "paid",
+                    "rank_value": 0,
+                    "registration_default": 0,
+                    "source": "local_demo:membership_v1",
+                    "starts_at": "2026-10-24T16:00:00Z",
+                    "status": "active",
+                    "updated_at": "2026-10-24T16:06:13.597448Z",
+                    "version": 0
+                  }
+                ],
+                "status": "active",
+                "subscription": {
+                  "activation_mode": "demo_grant",
+                  "created_at": "2026-10-24T16:06:13.597448Z",
+                  "effective_status": "active",
+                  "ends_at": "2027-10-24T16:00:00Z",
+                  "membership_expires_at": "2027-10-24T16:00:00Z",
+                  "membership_id": "demo_user_1_mall_vip",
+                  "membership_starts_at": "2026-10-24T16:00:00Z",
+                  "membership_status": "active",
+                  "plan_code": "annual",
+                  "plan_snapshot": {
+                    "auto_renew": false,
+                    "charged": false,
+                    "is_demo": true,
+                    "schema_version": 1
+                  },
+                  "program_id": "mall_vip",
+                  "program_status": "active",
+                  "starts_at": "2026-10-24T16:00:00Z",
+                  "status": "active",
+                  "subscription_id": "demo_sub_user_1"
+                },
+                "subscription_history": [
+                  {
+                    "activation_mode": "demo_grant",
+                    "created_at": "2026-10-24T16:06:13.597448Z",
+                    "effective_status": "active",
+                    "ends_at": "2027-10-24T16:00:00Z",
+                    "membership_expires_at": "2027-10-24T16:00:00Z",
+                    "membership_id": "demo_user_1_mall_vip",
+                    "membership_starts_at": "2026-10-24T16:00:00Z",
+                    "membership_status": "active",
+                    "plan_code": "annual",
+                    "plan_snapshot": {
+                      "auto_renew": false,
+                      "charged": false,
+                      "is_demo": true,
+                      "schema_version": 1
+                    },
+                    "program_id": "mall_vip",
+                    "program_status": "active",
+                    "starts_at": "2026-10-24T16:00:00Z",
+                    "status": "active",
+                    "subscription_id": "demo_sub_user_1"
+                  }
+                ]
+              }
+            },
+            "data_as_of": null,
+            "limitations": [
+              "会员券配置为planned时尚未开放领取，不能视为已持有或可使用的优惠券",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [
+              "membership.merchant_id",
+              "growth_membership.merchant_id",
+              "vip.records[0].evaluated_at",
+              "vip.records[0].next_evaluate_at",
+              "vip.records[0].merchant_id",
+              "store_memberships[0].evaluated_at",
+              "store_memberships[0].next_evaluate_at",
+              "store_memberships[1].evaluated_at",
+              "store_memberships[1].next_evaluate_at"
+            ],
+            "next_cursor": null,
+            "observed_at": "2026-10-28T02:21:01.890569Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "benefit_entitlements",
+                  "membership_benefits",
+                  "membership_levels",
+                  "membership_programs",
+                  "membership_subscriptions",
+                  "memberships",
+                  "orders",
+                  "points_ledger",
+                  "user_platform_accounts",
+                  "users"
+                ]
+              }
+            ],
+            "status": "ok",
+            "success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "points",
+      "source": "archived",
+      "source_event": "62c8b2e3-6599-53f7-a071-f87b38f4bf83",
+      "user": "我积分怎么扣了又加回来，现在剩多少",
+      "must": [
+        "100分",
+        "-20分",
+        "20分"
+      ],
+      "receipts": [
+        {
+          "tool": "list_points",
+          "arguments": {},
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "applied_conditions": {},
+              "has_more": false,
+              "items": [
+                {
+                  "created_at": "2026-10-22T17:36:14.659516Z",
+                  "delta": 100,
+                  "entry_id": "demo_gaps_20261025_points_user_1",
+                  "expires_at": null,
+                  "kind": "adjustment",
+                  "platform_code": "mall_demo",
+                  "reverses_entry_id": null,
+                  "source": "demo_gaps_20261025:demo_grant"
+                },
+                {
+                  "created_at": "2026-10-23T17:36:14.659516Z",
+                  "delta": -20,
+                  "entry_id": "demo_gaps_20261025_points_user_1_minus",
+                  "expires_at": null,
+                  "kind": "adjustment",
+                  "platform_code": "mall_demo",
+                  "reverses_entry_id": null,
+                  "source": "demo_gaps_20261025:demo_deduction"
+                },
+                {
+                  "created_at": "2026-10-24T17:36:14.659516Z",
+                  "delta": 20,
+                  "entry_id": "demo_gaps_20261025_points_user_1_reversal",
+                  "expires_at": null,
+                  "kind": "reversal",
+                  "platform_code": "mall_demo",
+                  "reverses_entry_id": "demo_gaps_20261025_points_user_1_minus",
+                  "source": "demo_gaps_20261025:demo_reversal"
+                }
+              ],
+              "ledger_balance": 100,
+              "platform_code": "mall_demo",
+              "total": 3
+            },
+            "data_as_of": null,
+            "limitations": [
+              "余额按已入账流水汇总；过期扣减由积分账务系统入账",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [
+              "items[0].reverses_entry_id",
+              "items[0].expires_at",
+              "items[1].reverses_entry_id",
+              "items[1].expires_at",
+              "items[2].expires_at"
+            ],
+            "next_cursor": null,
+            "observed_at": "2026-10-28T02:29:41.419213Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "memberships",
+                  "orders",
+                  "points_ledger",
+                  "user_platform_accounts"
+                ]
+              }
+            ],
+            "status": "ok",
+            "success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "payment",
+      "source": "archived",
+      "source_event": "219c31ec-adbc-57fd-98aa-dd0cb4292a3d",
+      "user": "那件关掉的单有没有扣我钱",
+      "must": [
+        "0.00元",
+        "不能据此确认银行卡"
+      ],
+      "receipts": [
+        {
+          "tool": "get_payments",
+          "arguments": {
+            "order_ref": "WyJvcmRlciIsIm1hbGxfZGVtbyIsIkRFTU8tUkVDRU5ULTEtY2xvc2VkIl0"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "applied_conditions": {
+                "order_ref": "WyJvcmRlciIsIm1hbGxfZGVtbyIsIkRFTU8tUkVDRU5ULTEtY2xvc2VkIl0"
+              },
+              "has_more": false,
+              "items": [],
+              "order_currency": "CNY",
+              "order_paid_amount": "0.00",
+              "recorded_difference": "0.00",
+              "recorded_success_amounts": {},
+              "total": 0
+            },
+            "data_as_of": null,
+            "limitations": [
+              "仅已记录渠道流水，不推断银行卡余额或未同步扣款",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [],
+            "next_cursor": null,
+            "observed_at": "2026-10-28T02:35:08.084617Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "orders",
+                  "payment_transactions"
+                ]
+              }
+            ],
+            "status": "no_match",
+            "success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "order-items",
+      "source": "archived",
+      "source_event": "3e3089db-abf9-5b48-8839-e52f9a07cdf5",
+      "user": "那件蓝色短袖我买了几件多少钱",
+      "must": [
+        "蓝色",
+        "购买数量1件",
+        "88.00（币种未核实）"
+      ],
+      "receipts": [
+        {
+          "tool": "get_order_items",
+          "arguments": {
+            "order_ref": "WyJvcmRlciIsIm1hbGxfZGVtbyIsIkRFTU8tUkVDRU5ULTEtcGFpZCJd"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "applied_conditions": {
+                "order_ref": "WyJvcmRlciIsIm1hbGxfZGVtbyIsIkRFTU8tUkVDRU5ULTEtcGFpZCJd"
+              },
+              "has_more": false,
+              "items": [
+                {
+                  "after_sale_occupied": 0,
+                  "after_sale_status": "none",
+                  "after_sales": [],
+                  "discount_amount": "0.00",
+                  "fulfillment_status": "paid",
+                  "order_id": "DEMO-RECENT-1-paid",
+                  "order_item_id": "item_DEMO-RECENT-1-paid",
+                  "payable_amount": "88.00",
+                  "platform_code": "mall_demo",
+                  "product_id": "mall_demo_brand_50_p30",
+                  "quantity": 1,
+                  "recorded_delivered": 0,
+                  "recorded_replacement_shipped": 0,
+                  "recorded_shipped": 0,
+                  "sku_id": "mall_demo_brand_50_s181",
+                  "spec_snapshot": {
+                    "尺寸": "M",
+                    "颜色": "蓝色"
+                  },
+                  "title_snapshot": "HLA海澜之家简约动物印花短袖T恤（T恤）",
+                  "unit_price": "88.00",
+                  "unshipped_quantity": 1
+                }
+              ],
+              "total": 1
+            },
+            "data_as_of": null,
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [],
+            "next_cursor": null,
+            "observed_at": "2026-10-28T01:50:34.188101Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "after_sale_requests",
+                  "order_items",
+                  "orders",
+                  "service_work_orders",
+                  "shipments"
+                ]
+              }
+            ],
+            "status": "ok",
+            "success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "restock-empty",
+      "source": "archived",
+      "source_event": "91d6c10f-60a9-583d-9fbb-b047f90e99db",
+      "user": "那双鞋补货时间有了吗",
+      "must": [
+        "暂未查到补货计划",
+        "不能据此认定不会补货"
+      ],
+      "receipts": [
+        {
+          "tool": "get_restock_plan",
+          "arguments": {
+            "sku_id": "mall_demo_brand_50_s181"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "items": [],
+              "total": 0,
+              "truncated": false
+            },
+            "data_as_of": null,
+            "limitations": [
+              "补货计划时间不是承诺送达时间",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [],
+            "next_cursor": null,
+            "observed_at": "2026-10-28T01:49:07.722973Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "product_skus",
+                  "products",
+                  "restock_plans",
+                  "sku_inventory"
+                ]
+              }
+            ],
+            "status": "no_match",
+            "success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "refund-empty",
+      "source": "archived",
+      "source_event": "87d391a3-adaa-52cb-b233-22f443dbc5aa",
+      "user": "那双鞋退款到了没",
+      "must": [
+        "暂未查到退款流水",
+        "不等于已核实银行卡到账"
+      ],
+      "receipts": [
+        {
+          "tool": "get_refunds",
+          "arguments": {
+            "target_ref": "WyJhZnRlcl9zYWxlIiwic2FsZV9ERU1PLVJFQ0VOVC0xLXNlcnZpY2UiXQ"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "amounts_by_currency_and_status": {},
+              "applied_conditions": {
+                "target_ref": "WyJhZnRlcl9zYWxlIiwic2FsZV9ERU1PLVJFQ0VOVC0xLXNlcnZpY2UiXQ"
+              },
+              "has_more": false,
+              "items": [],
+              "recorded_success_amount": "0.00",
+              "total": 0
+            },
+            "data_as_of": null,
+            "limitations": [
+              "渠道成功不代表已核实银行卡入账",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [],
+            "next_cursor": null,
+            "observed_at": "2026-10-28T02:09:56.598003Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "after_sale_requests",
+                  "orders",
+                  "payment_transactions",
+                  "refund_transactions"
+                ]
+              }
+            ],
+            "status": "no_match",
+            "success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "shipping",
+      "source": "contract_fixture",
+      "user": "这个箱子寄我家运费多少多久能到",
+      "must": [
+        "12.00元",
+        "2至4天",
+        "不代表送达承诺"
+      ],
+      "receipts": [
+        {
+          "tool": "quote_delivery",
+          "arguments": {},
+          "result": {
+            "success": true,
+            "data": {
+              "currency": "CNY",
+              "shipping_amount": "12",
+              "delivery_days": {
+                "min": 2,
+                "max": 4
+              },
+              "packages": [
+                {
+                  "warehouse_id": "INTERNAL_WAREHOUSE"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "return",
+      "source": "contract_fixture",
+      "user": "那件外套退哪儿，快递有要求没",
+      "must": [
+        "杭州退货仓",
+        "顺丰",
+        "2026-11-02",
+        "必须带上赠品，否则不能验收。"
+      ],
+      "receipts": [
+        {
+          "tool": "get_return_instructions",
+          "arguments": {},
+          "result": {
+            "success": true,
+            "data": {
+              "address": {
+                "detail": "杭州退货仓"
+              },
+              "deadline": "2026-11-02",
+              "carriers": [
+                {
+                  "code": "SF",
+                  "name": "顺丰"
+                }
+              ],
+              "requirements": [
+                "必须带上赠品，否则不能验收。"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "invoice",
+      "source": "contract_fixture",
+      "user": "杯子的票能下载了吗",
+      "must": [
+        "正式发票文件已就绪"
+      ],
+      "receipts": [
+        {
+          "tool": "get_invoice_document",
+          "arguments": {},
+          "result": {
+            "success": true,
+            "data": {
+              "invoice_number": "INTERNAL_INVOICE",
+              "download_url": "/api/commerce/invoices/private/document",
+              "sha256": "INTERNAL_HASH"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "quote",
+      "source": "contract_fixture",
+      "user": "两件衣服算上优惠一共多少",
+      "must": [
+        "200.00元",
+        "180.00元",
+        "运费尚未核实",
+        "尚未下单或付款"
+      ],
+      "receipts": [
+        {
+          "tool": "quote_checkout",
+          "arguments": {},
+          "result": {
+            "success": true,
+            "data": {
+              "currency": "CNY",
+              "goods_amount": "200",
+              "goods_after_discount": "180",
+              "shipping_amount": null,
+              "payable_amount": null,
+              "quote_ref": "INTERNAL_QUOTE"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "refund-mixed",
+      "source": "contract_fixture",
+      "user": "我的退款咋分成几笔了",
+      "must": [
+        "88.00元",
+        "12.00元",
+        "6.00美元",
+        "处理中",
+        "失败",
+        "不能单独证明已经全额退款"
+      ],
+      "receipts": [
+        {
+          "tool": "get_refunds",
+          "arguments": {
+            "after_sale_id": "held-out-refund"
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "amounts_by_currency_and_status": {
+                "CNY": {
+                  "succeeded": "88",
+                  "processing": "12"
+                },
+                "USD": {
+                  "failed": "6"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "assessment",
+      "source": "contract_fixture",
+      "user": "耳机退一件大概退多少，先看看别申请",
+      "must": [
+        "129.00元",
+        "核验数量为1件",
+        "尚未提交"
+      ],
+      "receipts": [
+        {
+          "tool": "assess_after_sale",
+          "arguments": {},
+          "result": {
+            "success": true,
+            "data": {
+              "eligibility": "eligible",
+              "amount": "129",
+              "quantity": 1,
+              "currency": "CNY"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
