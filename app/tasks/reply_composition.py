@@ -40,16 +40,16 @@ def snapshot(coordinator, tx, control, pieces, received):
     matters, notices, fallbacks = [], [], []
     for piece in pieces:
         fixed = any(piece.get(k) for k in ("question_id", "clarification_id", "operation_id"))
-        if fixed:
+        if fixed or not piece.get("claims"):
             notices.append(piece["content"])
         for tid in piece["task_versions"]:
             record = coordinator.runs.repo._record(coordinator.runs.repo._row(tx, tid))
             matters.append(dict(task_id=tid, goal=record.goal, status=record.status,
                                 order_id=record.details.get("order_id"),
                                 execution_state=piece.get("execution_state"),
-                                verified_facts="" if fixed else piece["content"],
+                                claims=[] if fixed else piece.get("claims", []),
                                 evidence_ids=piece.get("evidence_ids", [])))
-        if not fixed:
+        if not fixed and piece.get("claims"):
             fallbacks.append(piece.get("fallback", piece["content"]))
     selected = {tid for piece in pieces for tid in piece["task_versions"]}
     task_field = "j.payload::jsonb->>'task_id'" if tx.postgres else "json_extract(j.payload,'$.task_id')"

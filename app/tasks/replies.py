@@ -165,7 +165,7 @@ class ReplyCoordinator:
         return "task" if has_task_question else None
 
     def publish(self, sid):
-        from app.agents.reply_composition import validate_reply
+        from app.tasks.reply_claims import render_plan
         from app.config.settings import settings
         from app.harness.bounded_call import bounded_calls
         from app.observability.interactions import bind, record, span
@@ -175,13 +175,14 @@ class ReplyCoordinator:
             if not isinstance(draft, ReplyDraft):
                 return draft
             # Fixed questions/options and confirmation notices remain code-owned.
-            if not any(m["verified_facts"] for m in draft.context["matters"]):
+            if not any(m.get("claims") for m in draft.context["matters"]):
                 text = draft.fallback
             else:
                 try:
                     with span("reply.composition", context=draft.context) as observation:
-                        text = validate_reply(bounded_calls.run(
-                            lambda: self.composer(deepcopy(draft.context)), settings.reply_composition_timeout_seconds))
+                        plan = bounded_calls.run(
+                            lambda: self.composer(deepcopy(draft.context)), settings.reply_composition_timeout_seconds)
+                        text = render_plan(plan, draft.context)
                         text = "\n\n".join([text, *draft.context["required_notices"]])
                         observation["output"] = text
                 except Exception as exc:
@@ -328,7 +329,9 @@ class ReplyCoordinator:
                     if receipts is None:
                         self._mark(tx, sid, key, disposition="deferred")
                         continue
-                    text = facts(record, receipts)
+                    from app.tasks.reply_claims import build_claims, fallback_text
+                    metadata["claims"] = build_claims(record, receipts)
+                    text = fallback_text(metadata["claims"])
                     if any(r['tool'] in {'search_knowledge','search_policies'} for r in receipts):
                         from app.memory.source_policy import POLICY_REFRESH
                         metadata['context_content'] = '\n'.join(filter(None, (
@@ -337,11 +340,7 @@ class ReplyCoordinator:
                     if not text:
                         subject = "订单 " + label(record.details["order_id"]) if record.details.get("order_id") else label(record.goal)
                         text = subject + "：暂时没有可核实的查询结果，可补充信息后重试，或转人工客服核实。"
-                    subject = "订单 " + label(record.details["order_id"]) if record.details.get("order_id") else label(record.goal)
-                    metadata["fallback"] = (subject + "：暂时无法整理查询结果，请稍后重试。"
-                                            if receipts else text)
-                    if record.status == "waiting_external":
-                        text += "\n后续结果仍需核实，有新进展可以继续咨询。"
+                    metadata["fallback"] = text
                 metadata["content"] = text
                 pieces.append(metadata)
             if not pieces:

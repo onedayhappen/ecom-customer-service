@@ -451,8 +451,10 @@ class AssociationService:
         rejections = []
         for attempt in range(self.max_attempts):
             self.intake.renew(batch, 60)
-            snapshot = self.snapshot(batch, check_orders=attempt > 0,
-                                     dialogue=dialogue, rewritten_query=rewritten)
+            # A rejected proposal or provider timeout does not require order
+            # retrieval. Refresh task versions/control without adding IO.
+            snapshot = self.snapshot(batch, dialogue=dialogue, rewritten_query=rewritten)
+            snapshot.context.retry_feedback = rejections[-2:]
             record("association.candidates", attempt=attempt + 1, output=snapshot.context.data())
             try:
                 proposal = AssociationProposal.model_validate(engine.associate(snapshot.context))

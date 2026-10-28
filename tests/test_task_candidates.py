@@ -222,17 +222,17 @@ def test_read_only_lookup_uses_identity_and_restores_previous_context(store):
     seen = []
     def lookup(**kwargs):
         seen.append((get_current_user_id(), kwargs))
-        return {"success": True, "orders": [
-            {"order_id": "ORD-A", "items_summary": "耳机", "status": "待发货"},
-            {"order_id": "ORD-B", "items_summary": "耳机", "status": "已签收"},
-        ]}
+        return {"success": True, "data": {"items": [
+            {"order_id": "ORD-A", "platform_code": "pdd", "purchase_summary": [{"name": "耳机"}]},
+            {"order_id": "ORD-B", "platform_code": "pdd", "purchase_summary": [{"name": "耳机"}]},
+        ]}}
     source = message(store, "s", "alice", "那件耳机")
     service = CandidateService(store, "alice", order_lookup=lookup)
     outer = set_current_user_id("bob")
     try:
         context = service.build("s", [source["sequence"]], check_orders=True)
         assert get_current_user_id() == "bob"
-        assert seen == [("alice", {"platform_code": "pdd"})]
+        assert seen == [("bob", {"user": "alice", "scope": BusinessScope()})]
         assert {o["order_id"] for o in context.orders} == {"ORD-A", "ORD-B"}
         assert context.candidates == []  # No invented task for a real order.
         service.order_lookup = lambda **kwargs: {"success": False, "error": "backend details"}

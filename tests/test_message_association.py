@@ -51,9 +51,8 @@ def proposal(*decisions):
 
 
 def service(store):
-    value = AssociationService(store, "alice")
-    value.candidates.order_lookup = lambda **kwargs: {"success": True, "orders": []}
-    return value
+    # Exercise production wiring, not a successful legacy order stub.
+    return AssociationService(store, "alice")
 
 
 def test_one_message_two_tasks_and_exact_retry(store):

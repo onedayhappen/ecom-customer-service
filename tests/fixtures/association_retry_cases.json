@@ -1,0 +1,140 @@
+{
+  "source": "youyou_20261026_863134; exact recorded messages/proposals; IDs remapped into isolated test store",
+  "cases": [
+    {
+      "session": 3,
+      "round": 2,
+      "job_id": "2933c014-1b62-418c-b953-7def8bd2fc26",
+      "user": "名字我总搞混，红米K50跟小米12是不是两个呀？我要问的是红米，不是带Pro那台。",
+      "historical_reply": "您说的是哪一件：1. 查询月初购买的红米黑色128G手机的订单/物流情况，用户表示至今还没收到；2. 咨询夏天那双红色鞋（近期订单里的耐克 ROSHE RUN 511881，38码 红色 夏季）穿着挤不挤、是否偏窄；用户平时上下班走路穿，要求推荐好看且走路不脚疼的鞋，不要推荐好看但走一会儿脚疼的款式；；3. 记住用户自己的休闲鞋一般穿38码，脚背偏高、脚偏宽，最怕夹脚；以后帮用户选鞋时按这些情况来选；用户强调鞋子偏好与短袖偏好是两回事，不要弄混；用户要求简单说明衣服和鞋子偏好的区别，不用念编号；4. 咨询这款蓝色带小动物图案短袖的版型偏紧还是偏松，用户不喜欢贴身勒着，平时买T恤预算一百块以内；用户指出此前被告知买的是M码、现在又说只有X和XL，担心会发错码，希望核实尺码与发货码数是否一致；5. 查询上礼拜购买的红色耐克鞋（夏天透气款，不是秋款那双）的物流/到货情况；用户确认是夏款、红色38码、一双；用户已确认家人拿到的鞋盒是姐姐的，与这双无关；这双鞋先继续等待，不要因为提到鞋盒就确认收货；用；6. 用户希望以后帮忙看短袖时，按蓝色、M码、宽松、一百元以内这几个条件来找；并希望用“蓝色动物图案那件”来指代，不要总念编号；用户强调短袖偏好说的是自己穿的，不要和鞋子偏好弄混；用户要求简单说明衣服和鞋子；7. 用户尚未收到海澜之家蓝色短袖（M码，订单 DEMO-RECENT-1-paid，实付88元），明确表示应属于退款而非退货，询问退款是否需要自己再寄回商品；要求不要按“退货”理解。用户进一步质疑：既然已；8. 查询海澜之家蓝色短袖（M码，订单 DEMO-RECENT-1-paid）的物流/到货情况，确认是否尚未发货；收货地区为深圳，地址先不要修改；用户希望本周六能穿出去玩，请帮忙催发货，并明确不要取消该订单？",
+      "attempts": [
+        {
+          "proposal": {
+            "decisions": [
+              {
+                "sequences": [
+                  12
+                ],
+                "action": "update",
+                "task_id": "0ac58555-8bda-456c-b675-1d94ff0f6670",
+                "task_version": 1,
+                "effect": "supplement",
+                "goal": "查询月初购买的红米黑色128G手机的订单/物流情况，用户表示至今还没收到；用户要问的是红米K50（不是小米12，也不是带Pro的那台），并希望先厘清红米K50与小米12是两款不同机型",
+                "details": [
+                  {
+                    "field": "item_name",
+                    "value": "红米K50",
+                    "evidence": {
+                      "session_id": "9d6dd18e-a0e3-4014-a75d-597485b2471a",
+                      "sequence": 12,
+                      "quote": "我要问的是红米，不是带Pro那台。"
+                    }
+                  }
+                ],
+                "evidence": [
+                  {
+                    "session_id": "9d6dd18e-a0e3-4014-a75d-597485b2471a",
+                    "sequence": 12,
+                    "quote": "名字我总搞混，红米K50跟小米12是不是两个呀？我要问的是红米，不是带Pro那台。"
+                  }
+                ],
+                "question_id": null,
+                "clarification_id": null,
+                "clarification": null,
+                "candidate_task_ids": []
+              }
+            ]
+          },
+          "error": "ungrounded_field",
+          "event_id": "a9513d7f-b33f-4d6f-862e-ed01edbd53d5"
+        },
+        {
+          "proposal": {
+            "decisions": [
+              {
+                "sequences": [
+                  12
+                ],
+                "action": "update",
+                "task_id": "0ac58555-8bda-456c-b675-1d94ff0f6670",
+                "task_version": 1,
+                "effect": "supplement",
+                "goal": "查询月初购买的红米黑色128G手机的订单/物流情况，用户表示至今还没收到；用户澄清要问的是红米K50（不是小米12，也不是带Pro的那台），只是名字容易搞混",
+                "details": [],
+                "evidence": [
+                  {
+                    "session_id": "9d6dd18e-a0e3-4014-a75d-597485b2471a",
+                    "sequence": 12,
+                    "quote": "名字我总搞混，红米K50跟小米12是不是两个呀？我要问的是红米，不是带Pro那台。"
+                  }
+                ],
+                "question_id": null,
+                "clarification_id": null,
+                "clarification": null,
+                "candidate_task_ids": []
+              }
+            ]
+          },
+          "error": "incomplete_candidate_context",
+          "event_id": "d0d8187c-59ad-435e-8ed1-e3478bd80494"
+        }
+      ],
+      "target": {
+        "task_id": "0ac58555-8bda-456c-b675-1d94ff0f6670",
+        "goal": "查询月初购买的红米黑色128G手机的订单/物流情况，用户表示至今还没收到",
+        "details": {
+          "item_name": "红米那个手机"
+        },
+        "status": "in_progress"
+      }
+    },
+    {
+      "session": 7,
+      "round": 2,
+      "job_id": "371e1bea-ced1-4ff1-a2c6-a441b6a7b2f5",
+      "user": "我现在穿M有点紧了，以后买衣服常穿L码，这个按新的记。",
+      "historical_reply": "您说的是哪一件：1. 用户想再看一件短袖，并询问客服是否还记得此前说过的颜色和尺码偏好；2. 记住用户买锅的偏好：看重好清洗、不太沉，家里三个人吃饭；以后帮用户挑锅时先按这些条件来选。用户说明这只是留下挑选习惯，并没有让客服现在就替其买新的锅。用户明确表示没有说过买锅的预算，不要把手机的250；3. 查询此前购买的Carat（中文可能说成克拉）28厘米煎锅的退款进度，重点是退款款项是否真正到账，区分“审批通过”与“实际退到账”；该退款已申请过，不要新建事项；按锅的名字查找，不要查成衣服；不排人工，；4. 咨询夏天那双红色鞋（近期订单里的耐克 ROSHE RUN 511881，38码 红色 夏季）穿着挤不挤、是否偏窄；用户平时上下班走路穿，要求推荐好看且走路不脚疼的鞋，不要推荐好看但走一会儿脚疼的款式；；5. 咨询这款蓝色带小动物图案短袖的版型偏紧还是偏松，用户不喜欢贴身勒着，平时买T恤预算一百块以内；用户指出此前被告知买的是M码、现在又说只有X和XL，担心会发错码，希望核实尺码与发货码数是否一致？",
+      "attempts": [
+        {
+          "proposal": null,
+          "error": {
+            "code": "model_unavailable",
+            "type": "TimeoutError"
+          },
+          "event_id": "4999e6e3-7711-40e0-b409-db058ebab9d8"
+        },
+        {
+          "proposal": {
+            "decisions": [
+              {
+                "sequences": [
+                  9
+                ],
+                "action": "create",
+                "task_id": null,
+                "task_version": null,
+                "effect": "new",
+                "goal": "记住用户买衣服的尺码偏好：现在穿M码有点紧，以后买衣服常穿L码，按新的L码记录",
+                "details": [],
+                "evidence": [
+                  {
+                    "session_id": "31f6903f-ecfb-4a43-8ed2-27c3e2ec21ad",
+                    "sequence": 9,
+                    "quote": "我现在穿M有点紧了，以后买衣服常穿L码，这个按新的记。"
+                  }
+                ],
+                "question_id": null,
+                "clarification_id": null,
+                "clarification": null,
+                "candidate_task_ids": []
+              }
+            ]
+          },
+          "error": "incomplete_candidate_context",
+          "event_id": "b580119e-fd59-4f57-a6bb-2a54b0f43c8d"
+        }
+      ],
+      "target": null
+    }
+  ]
+}

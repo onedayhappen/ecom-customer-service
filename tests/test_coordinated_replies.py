@@ -254,7 +254,7 @@ def test_reconcile_recovers_association_commit_gap_and_reuses_progress_version(s
     svc = service(store)
     svc.commit(batch, svc.snapshot(batch), proposal(new(batch, goal="查物流", details={"order_id": "ORD-A"})))
     agent = engine(QueryClient())
-    agent.compose_reply = lambda context: '\n'.join(m['verified_facts'] for m in context['matters'])
+    agent.compose_reply = lambda context: json.dumps({'claim_ids': [m['claims'][0]['claim_id'] for m in context['matters'] if m['claims']]})
     worker = ConversationWorker(store, agent, tools=query_result)
     try:
         worker.reconcile()
@@ -340,7 +340,7 @@ def test_clarification_takes_priority_over_previously_sent_task_question(store):
 
 def test_complete_worker_from_multiple_intake_messages_to_replies(store):
     agent = engine(QueryClient())
-    agent.compose_reply = lambda context: '\n'.join(m['verified_facts'] for m in context['matters'])
+    agent.compose_reply = lambda context: json.dumps({'claim_ids': [m['claims'][0]['claim_id'] for m in context['matters'] if m['claims']]})
     def associate(context):
         batch = SimpleNamespace(session_id=context.session_id, messages=context.current_messages)
         return proposal(*(new(batch, index=i, goal="查询订单", details={"order_id": m["content"].split()[0]})
