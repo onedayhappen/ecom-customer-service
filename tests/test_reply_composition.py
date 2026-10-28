@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 
 from app.agents.reply_composition import compose
+from app.tasks.reply_claims import render_plan
 from app.config.settings import settings
 from app.tasks.intake import MessageIntake
 from app.tasks.replies import ReplyCoordinator
@@ -18,6 +19,10 @@ from tests.test_task_candidates import store, task, ask
 from tests.test_task_execution import Client, response, request
 from tests.test_task_storage import empty_store, message
 from app.tasks.scheduling import TaskSchedule
+
+
+def selection(context):
+    return json.dumps({'claim_ids': [m['claims'][0]['claim_id'] for m in context['matters'] if m['claims']]})
 
 
 def test_combines_verified_results_with_latest_raw_dialogue(store):
@@ -31,9 +36,11 @@ def test_combines_verified_results_with_latest_raw_dialogue(store):
         # Acquiring a write transaction here proves composition owns no DB lock.
         with store.transaction() as tx:
             tx.execute("UPDATE task_reply_sessions SET checked_at=0 WHERE session_id='s'")
-        return '耳机和键盘订单都已发货。暂时没有预计送达时间，无法确认键盘今天能否送到。'
+        return selection(context)
     result = ReplyCoordinator(store, 'alice', composer=model).publish('s')
-    assert result['content'].startswith('耳机和键盘') and len(result['result_ids']) == 2
+    assert 'ORD-A' in result['content'] and 'ORD-B' in result['content']
+    assert len(result['result_ids']) == 2
+    assert result['content'] == render_plan(selection(seen[0]), seen[0])
     assert [m['content'] for m in seen[0]['current_messages']] == ['查耳机物流', '键盘今天能到吗']
     assert len(seen[0]['matters']) == 2
     assert '退款999' not in json.dumps(seen, ensure_ascii=False)  # ReAct draft isn't evidence.
@@ -79,9 +86,9 @@ def test_competing_composers_publish_only_once(store):
     a, source = task(store, 's')
     ready(store, a, source)
     barrier = threading.Barrier(2)
-    def model(_):
+    def model(context):
         barrier.wait(5)
-        return '耳机订单已发货。'
+        return selection(context)
     with ThreadPoolExecutor(2) as pool:
         futures = [pool.submit(ReplyCoordinator(store, 'alice', composer=model).publish, 's') for _ in range(2)]
         results = [f.result(10) for f in futures]
@@ -90,7 +97,7 @@ def test_competing_composers_publish_only_once(store):
 
 
 @pytest.mark.parametrize('output', ['', '{"reply":"hello"}', RuntimeError('unavailable')])
-def test_model_failure_uses_short_fallback_without_field_dump(store, output):
+def test_model_failure_uses_qualified_evidence_fallback(store, output):
     a, source = task(store, 's')
     ready(store, a, source)
     def model(_):
@@ -98,8 +105,8 @@ def test_model_failure_uses_short_fallback_without_field_dump(store, output):
             raise output
         return output
     result = ReplyCoordinator(store, 'alice', composer=model).publish('s')
-    assert 'ORD-A' in result['content'] and '稍后重试' in result['content']
-    assert '订单金额' not in result['content']
+    assert 'ORD-A' in result['content'] and '已发货' in result['content']
+    assert '数据同步时间未记录' in result['content']
 
 
 def test_timed_out_model_cannot_publish_late(store, monkeypatch):
@@ -127,9 +134,9 @@ def test_question_options_remain_code_owned_when_combined_with_facts(store):
     seen = []
     def model(context):
         seen.append(context)
-        return '耳机订单已发货。'
+        return selection(context)
     result = ReplyCoordinator(store, 'alice', composer=model).publish('s')
-    assert result['content'].startswith('耳机订单已发货。')
+    assert 'ORD-A' in result['content'] and '已发货' in result['content']
     assert seen[0]['required_notices'][0] in result['content']
     assert result['question_id'] == b.waiting_for['question_id']
 
@@ -145,12 +152,12 @@ def test_composition_model_receives_no_tools_and_uses_separate_scene():
             return SimpleNamespace(completions=SimpleNamespace(create=self.create))
         def create(self, **params):
             captured.update(params)
-            return response('目前无法确认今天送到。')
+            return response('{"claim_ids":["c1"]}')
     context = dict(current_messages=[{'role': 'user', 'content': '今天能到吗'}], recent_messages=[],
                    matters=[], required_notices=[], other_matters=[])
-    assert compose(Model(), 'test', context) == '目前无法确认今天送到。'
+    assert compose(Model(), 'test', context) == '{"claim_ids":["c1"]}'
     assert captured['scene'] == 'reply_composition'
-    assert 'tools' not in captured and 'response_format' not in captured
+    assert 'tools' not in captured and captured['response_format'] == {'type': 'json_object'}
 
 
 def test_worker_does_not_block_on_reply_model_and_journals_result(store, monkeypatch):
@@ -160,10 +167,10 @@ def test_worker_does_not_block_on_reply_model_and_journals_result(store, monkeyp
     with store.transaction() as tx:
         tx.execute("INSERT INTO task_reply_sessions(session_id) VALUES ('s') ON CONFLICT DO NOTHING")
     started, release = threading.Event(), threading.Event()
-    def model(_):
+    def model(context):
         started.set()
         assert release.wait(5)
-        return '耳机已发货。'
+        return selection(context)
     worker = ConversationWorker(store, SimpleNamespace(compose_reply=model), concurrency=2)
     monkeypatch.setattr(worker, 'reconcile', lambda: None)
     monkeypatch.setattr(worker.executions, 'tick', lambda: None)
@@ -178,7 +185,7 @@ def test_worker_does_not_block_on_reply_model_and_journals_result(store, monkeyp
         deadline = time.monotonic() + 5
         while not replies(store) and time.monotonic() < deadline:
             worker.tick(); time.sleep(.02)
-        assert replies(store)[0]['content'] == '耳机已发货。'
+        assert 'ORD-A' in replies(store)[0]['content'] and '已发货' in replies(store)[0]['content']
     finally:
         release.set(); worker.close()
     with store.transaction(read_only=True) as tx:
@@ -207,6 +214,16 @@ def test_already_answered_matters_are_not_described_as_still_running(store):
     seen = []
     def model(context):
         seen.append(context)
-        return '键盘订单已发货。'
+        return selection(context)
     assert ReplyCoordinator(store, 'alice', composer=model).publish('s')
     assert not seen[0]['other_matters']
+
+
+def test_missing_evidence_notice_is_preserved_beside_a_verified_matter(store):
+    a, sa = task(store, 's')
+    b, sb = task(store, 's', details={'order_id': 'ORD-B'})
+    ready(store, a, sa)
+    ready(store, b, sb, result={'success': True, 'order': {'order_id': 'wrong-order'}})
+    result = ReplyCoordinator(store, 'alice', composer=selection).publish('s')
+    assert 'ORD-A' in result['content'] and '已发货' in result['content']
+    assert '订单 ORD-B：暂时没有可核实的查询结果' in result['content']
