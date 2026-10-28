@@ -47,7 +47,9 @@ def snapshot(coordinator, tx, control, pieces, received):
             matters.append(dict(task_id=tid, goal=record.goal, status=record.status,
                                 order_id=record.details.get("order_id"),
                                 execution_state=piece.get("execution_state"),
-                                verified_facts="" if fixed else piece["content"],
+                                verified_facts="" if fixed or piece.get("grounding") or piece.get("has_verified_facts") is False else piece["content"],
+                                grounding=piece.get("grounding", []),
+                                fallback=piece.get("fallback", piece["content"]) if not fixed else "",
                                 evidence_ids=piece.get("evidence_ids", [])))
         if not fixed:
             fallbacks.append(piece.get("fallback", piece["content"]))
@@ -80,4 +82,6 @@ def snapshot(coordinator, tx, control, pieces, received):
                  received=received, inputs=inputs, control_version=control["control_version"],
                  revision=revision(tx, user))
     fingerprint = sha256(json.dumps(fence, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-    return ReplyDraft(context, fingerprint, "\n\n".join(fallbacks + notices))
+    from app.tasks.reply_grounding import response
+    grounded = response(context)
+    return ReplyDraft(context, fingerprint, "\n\n".join(([grounded] if grounded else fallbacks) + notices))

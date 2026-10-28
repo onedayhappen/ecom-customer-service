@@ -12,6 +12,7 @@ from app.agents.reply_composition import compose
 from app.config.settings import settings
 from app.tasks.intake import MessageIntake
 from app.tasks.replies import ReplyCoordinator
+from app.tasks.reply_grounding import response as grounded_response
 from app.tasks.repository import TaskRepository
 from tests.test_coordinated_replies import ready, replies
 from tests.test_task_candidates import store, task, ask
@@ -31,9 +32,9 @@ def test_combines_verified_results_with_latest_raw_dialogue(store):
         # Acquiring a write transaction here proves composition owns no DB lock.
         with store.transaction() as tx:
             tx.execute("UPDATE task_reply_sessions SET checked_at=0 WHERE session_id='s'")
-        return '耳机和键盘订单都已发货。暂时没有预计送达时间，无法确认键盘今天能否送到。'
+        return grounded_response(context)
     result = ReplyCoordinator(store, 'alice', composer=model).publish('s')
-    assert result['content'].startswith('耳机和键盘') and len(result['result_ids']) == 2
+    assert result['content'] == grounded_response(seen[0]) and len(result['result_ids']) == 2
     assert [m['content'] for m in seen[0]['current_messages']] == ['查耳机物流', '键盘今天能到吗']
     assert len(seen[0]['matters']) == 2
     assert '退款999' not in json.dumps(seen, ensure_ascii=False)  # ReAct draft isn't evidence.
@@ -98,8 +99,8 @@ def test_model_failure_uses_short_fallback_without_field_dump(store, output):
             raise output
         return output
     result = ReplyCoordinator(store, 'alice', composer=model).publish('s')
-    assert 'ORD-A' in result['content'] and '稍后重试' in result['content']
-    assert '订单金额' not in result['content']
+    assert 'ORD-A' in result['content'] and '系统记录' in result['content']
+    assert '当前状态：' not in result['content']  # No raw field-path dump.
 
 
 def test_timed_out_model_cannot_publish_late(store, monkeypatch):
@@ -127,9 +128,9 @@ def test_question_options_remain_code_owned_when_combined_with_facts(store):
     seen = []
     def model(context):
         seen.append(context)
-        return '耳机订单已发货。'
+        return grounded_response(context)
     result = ReplyCoordinator(store, 'alice', composer=model).publish('s')
-    assert result['content'].startswith('耳机订单已发货。')
+    assert result['content'].startswith(grounded_response(seen[0]))
     assert seen[0]['required_notices'][0] in result['content']
     assert result['question_id'] == b.waiting_for['question_id']
 
@@ -178,7 +179,7 @@ def test_worker_does_not_block_on_reply_model_and_journals_result(store, monkeyp
         deadline = time.monotonic() + 5
         while not replies(store) and time.monotonic() < deadline:
             worker.tick(); time.sleep(.02)
-        assert replies(store)[0]['content'] == '耳机已发货。'
+        assert '系统记录的订单状态为“已发货”' in replies(store)[0]['content']
     finally:
         release.set(); worker.close()
     with store.transaction(read_only=True) as tx:

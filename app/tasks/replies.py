@@ -175,17 +175,19 @@ class ReplyCoordinator:
             if not isinstance(draft, ReplyDraft):
                 return draft
             # Fixed questions/options and confirmation notices remain code-owned.
-            if not any(m["verified_facts"] for m in draft.context["matters"]):
+            if not any(m["verified_facts"] or m.get("grounding") for m in draft.context["matters"]):
                 text = draft.fallback
             else:
                 try:
                     with span("reply.composition", context=draft.context) as observation:
                         text = validate_reply(bounded_calls.run(
-                            lambda: self.composer(deepcopy(draft.context)), settings.reply_composition_timeout_seconds))
+                            lambda: self.composer(deepcopy(draft.context)), settings.reply_composition_timeout_seconds),
+                            context=draft.context)
                         text = "\n\n".join([text, *draft.context["required_notices"]])
                         observation["output"] = text
                 except Exception as exc:
-                    record("reply.composition.fallback", status="fallback", reason=type(exc).__name__)
+                    record("reply.composition.fallback", status="fallback",
+                           reason="ungrounded_composed_reply" if str(exc) == "ungrounded_composed_reply" else type(exc).__name__)
                     text = draft.fallback
             return self._prepare(sid, self._check_policy_results(sid), draft=draft, composed=text)
 
@@ -329,6 +331,9 @@ class ReplyCoordinator:
                         self._mark(tx, sid, key, disposition="deferred")
                         continue
                     text = facts(record, receipts)
+                    metadata["has_verified_facts"] = bool(text)
+                    from app.tasks.reply_grounding import project
+                    metadata["grounding"] = project(record, receipts)
                     if any(r['tool'] in {'search_knowledge','search_policies'} for r in receipts):
                         from app.memory.source_policy import POLICY_REFRESH
                         metadata['context_content'] = '\n'.join(filter(None, (
