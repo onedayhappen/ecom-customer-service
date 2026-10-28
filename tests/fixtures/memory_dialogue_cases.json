@@ -1,0 +1,649 @@
+[
+  {
+    "session": 3,
+    "messages": [
+      {
+        "role": "user",
+        "content": "帮我看下红米那个手机，黑的，一百二十八G，我记得月初买的，还没见着。",
+        "sequence": 1,
+        "created_at": "2026-10-26T16:01:36.596876+00:00"
+      },
+      {
+        "role": "user",
+        "content": "名字我总搞混，红米K50跟小米12是不是两个呀？我要问的是红米，不是带Pro那台。",
+        "sequence": 12,
+        "created_at": "2026-10-26T16:01:55.536843+00:00"
+      },
+      {
+        "role": "user",
+        "content": "时间大概是十一那几天，也可能八号，你按红米那台帮我看看，现在送到哪一步了。",
+        "sequence": 17,
+        "created_at": "2026-10-26T16:02:03.214171+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我问的是第一个，红米手机没收到，鞋和短袖先不说了。编号我没记，你就按红米K50墨羽128G找找。",
+        "sequence": 26,
+        "created_at": "2026-10-26T16:04:33.444219+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我不是要再买一台，就是查我已有那台。查不到你直说就好，别帮我下单哈。",
+        "sequence": 38,
+        "created_at": "2026-10-26T16:07:03.530508+00:00"
+      },
+      {
+        "role": "user",
+        "content": "你这边好像卡住了，红米这件事先不查了，结束这个查询吧，不是取消订单。",
+        "sequence": 47,
+        "created_at": "2026-10-26T16:08:44.085002+00:00"
+      },
+      {
+        "role": "user",
+        "content": "另外说一下，我自己平时用安卓手机，喜欢黑色，换手机预算2500元以内，你记一下。",
+        "sequence": 52,
+        "created_at": "2026-10-26T16:08:53.408710+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我主要用手机拍照、导航和微信，游戏倒是不怎么玩。以后推荐就看续航好点、别太重的。",
+        "sequence": 59,
+        "created_at": "2026-10-26T16:09:06.167633+00:00"
+      },
+      {
+        "role": "user",
+        "content": "前面那个列表我说的是第一个，红米手机的物流查询先结束，订单本身别动。",
+        "sequence": 66,
+        "created_at": "2026-10-26T16:09:27.384618+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我顺便问问，红米和小米手机都算安卓的吧？我习惯安卓，苹果先不考虑。",
+        "sequence": 71,
+        "created_at": "2026-10-26T16:11:57.719868+00:00"
+      },
+      {
+        "role": "user",
+        "content": "要推荐的话，先看看黑色、2500元以内有没有合适的，缺具体资料就说缺，别直接替我买。",
+        "sequence": 78,
+        "created_at": "2026-10-26T16:12:11.979026+00:00"
+      },
+      {
+        "role": "user",
+        "content": "那先不买，颜色不合适就算了，别硬给我凑紫色的。",
+        "sequence": 88,
+        "created_at": "2026-10-26T16:12:55.043315+00:00"
+      },
+      {
+        "role": "user",
+        "content": "手机预算先按2500元以内记，跟我买短袖的一百块预算分开哈，不是所有东西都能花2500。",
+        "sequence": 94,
+        "created_at": "2026-10-26T16:13:04.928778+00:00"
+      },
+      {
+        "role": "user",
+        "content": "以后跟我说话简短点就行，别一口气给我八个选项，我看着头都大了。",
+        "sequence": 100,
+        "created_at": "2026-10-26T16:13:14.569933+00:00"
+      },
+      {
+        "role": "user",
+        "content": "好，今天收尾吧。手机物流先不继续查，订单别动；你记的手机喜好用一句话说一下。",
+        "sequence": 104,
+        "created_at": "2026-10-26T16:15:45.014796+00:00"
+      }
+    ],
+    "response": {
+      "schema_version": 2,
+      "facts": [
+        {
+          "predicate": "prefers_color",
+          "value": "black",
+          "qualifiers": {
+            "product_category": "phone"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 6,
+          "source_quote": "喜欢黑色",
+          "confidence": 0.95
+        },
+        {
+          "predicate": "budget_range",
+          "value": {
+            "min": null,
+            "max": 2500,
+            "currency": "CNY"
+          },
+          "qualifiers": {},
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 6,
+          "source_quote": "换手机预算2500元以内",
+          "confidence": 0.95
+        },
+        {
+          "predicate": "prefers_category",
+          "value": "phone",
+          "qualifiers": {},
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 6,
+          "source_quote": "我自己平时用安卓手机",
+          "confidence": 0.6
+        },
+        {
+          "predicate": "response_detail",
+          "value": "concise",
+          "qualifiers": {},
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 13,
+          "source_quote": "以后跟我说话简短点就行",
+          "confidence": 0.95
+        }
+      ]
+    }
+  },
+  {
+    "session": 4,
+    "messages": [
+      {
+        "role": "user",
+        "content": "优优，我前阵子那几件海澜之家衣服，蓝的灰的那次，售后弄到哪了？不是后来单买的蓝色M码。",
+        "sequence": 1,
+        "created_at": "2026-10-26T16:16:38.638820+00:00"
+      },
+      {
+        "role": "user",
+        "content": "大概十七八号买的，我记不太准，里面有蓝色灰色还有黑色，都是大一点的码。",
+        "sequence": 6,
+        "created_at": "2026-10-26T16:16:43.086372+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我先问灰色那件印花T恤，蓝色的暂时别动，能按颜色分开看吗？",
+        "sequence": 10,
+        "created_at": "2026-10-26T16:17:28.287533+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我怕你又查到后买那件了，我要查的是之前好几件一起买的灰色印花衣服，已经有售后的那件。",
+        "sequence": 14,
+        "created_at": "2026-10-26T16:18:13.497753+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我刚才把时间说早了，也可能是十八号。你要区分的话问颜色或件数就行，编号我真记不住。",
+        "sequence": 18,
+        "created_at": "2026-10-26T16:18:58.565925+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我先问清楚，这个售后是退货退款，还是换货呀？我不想同一件重复申请。",
+        "sequence": 22,
+        "created_at": "2026-10-26T16:19:43.799131+00:00"
+      },
+      {
+        "role": "user",
+        "content": "你刚列的那两个都不是，是另外买的灰色印花衣服。我是查已经办过的售后进度，不是查快递，也不是新申请。",
+        "sequence": 26,
+        "created_at": "2026-10-26T16:20:29.149781+00:00"
+      },
+      {
+        "role": "user",
+        "content": "灰色那件我还在家里放着呢，吊牌也没剪。如果要寄回，是不是得先等售后同意？",
+        "sequence": 30,
+        "created_at": "2026-10-26T16:21:14.270018+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我先不寄，也不点确认，你这边能查到啥就说啥，不能确定的别说已经办好了。",
+        "sequence": 34,
+        "created_at": "2026-10-26T16:21:59.412002+00:00"
+      },
+      {
+        "role": "user",
+        "content": "灰色这件就单独查售后进度吧，跟前面蓝色那件没关系。要是还是查不出来，今天先放着。",
+        "sequence": 38,
+        "created_at": "2026-10-26T16:22:44.507248+00:00"
+      },
+      {
+        "role": "user",
+        "content": "买衣服这事我再说一遍，我自己喜欢蓝色，常穿M，宽松些舒服，平常衣服预算100元以内。",
+        "sequence": 43,
+        "created_at": "2026-10-26T16:22:53.042451+00:00"
+      },
+      {
+        "role": "user",
+        "content": "先到这吧，灰衣服现在有没有查到结论？没有就说没有，也别替我把原来的售后取消了。",
+        "sequence": 48,
+        "created_at": "2026-10-26T16:23:01.415045+00:00"
+      }
+    ],
+    "response": {
+      "schema_version": 2,
+      "facts": [
+        {
+          "predicate": "prefers_color",
+          "value": "blue",
+          "qualifiers": {
+            "product_category": "clothing"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 10,
+          "source_quote": "我自己喜欢蓝色",
+          "confidence": 0.95
+        },
+        {
+          "predicate": "wears_size",
+          "value": "M",
+          "qualifiers": {
+            "product_category": "clothing",
+            "size_system": "INT"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 10,
+          "source_quote": "常穿M",
+          "confidence": 0.9
+        },
+        {
+          "predicate": "budget_range",
+          "value": {
+            "min": null,
+            "max": 100,
+            "currency": "CNY"
+          },
+          "qualifiers": {},
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 10,
+          "source_quote": "平常衣服预算100元以内",
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "session": 11,
+    "messages": [
+      {
+        "role": "user",
+        "content": "优优，今天先不查旧订单，你还记得我自己买衣服喜欢啥颜色、多大码、多少钱以内吗？",
+        "sequence": 1,
+        "created_at": "2026-10-27T02:40:33.976231+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我问的是我自己的，不是我姐，她是S码白色那个。",
+        "sequence": 7,
+        "created_at": "2026-10-27T02:41:04.098412+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我自己的衣服现在是黑色、L码，预算100元以内，宽松舒服些。",
+        "sequence": 13,
+        "created_at": "2026-10-27T02:41:41.116013+00:00"
+      },
+      {
+        "role": "user",
+        "content": "那我自己换手机的预算你记得多少？我后来调过，跟衣服的一百块不是一回事。",
+        "sequence": 19,
+        "created_at": "2026-10-27T02:42:11.305475+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我自己的手机预算现在是3000元以内，安卓、黑色，主要拍照导航和微信，不是只花一百块。",
+        "sequence": 24,
+        "created_at": "2026-10-27T02:43:47.967877+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我爸习惯苹果，那是他的事，我只是帮他问过，没说我自己想换苹果。",
+        "sequence": 29,
+        "created_at": "2026-10-27T02:44:03.001296+00:00"
+      },
+      {
+        "role": "user",
+        "content": "那鞋子呢，休闲和跑步我说过不一样，你能分清吗？",
+        "sequence": 34,
+        "created_at": "2026-10-27T02:44:05.968544+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我自己休闲鞋38，跑鞋39，脚宽脚背高；我姐的36跟我没关系。",
+        "sequence": 39,
+        "created_at": "2026-10-27T02:44:10.294964+00:00"
+      },
+      {
+        "role": "user",
+        "content": "毯子我自己怕热，喜欢透气不扎的；我妈喜欢厚实暖和，那是她，别算到我身上。",
+        "sequence": 45,
+        "created_at": "2026-10-27T02:44:40.566581+00:00"
+      },
+      {
+        "role": "user",
+        "content": "锅的话我家平时三个人吃饭，想要好清洗、不太沉。这个是用锅习惯，不是买手机的要求。",
+        "sequence": 50,
+        "created_at": "2026-10-27T02:44:45.629817+00:00"
+      },
+      {
+        "role": "user",
+        "content": "这些你能留到我下次来吗？能记住哪些就说哪些，没记下来的也直说，别光答应我。",
+        "sequence": 55,
+        "created_at": "2026-10-27T02:44:50.275408+00:00"
+      },
+      {
+        "role": "user",
+        "content": "今天就核对喜好，不新买东西、不改旧订单。你先告诉我现在最确定记住的三条就行。",
+        "sequence": 59,
+        "created_at": "2026-10-27T02:45:35.641052+00:00"
+      }
+    ],
+    "response": {
+      "schema_version": 2,
+      "facts": [
+        {
+          "predicate": "prefers_color",
+          "value": "black",
+          "qualifiers": {
+            "product_category": "clothing"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 2,
+          "source_quote": "我自己的衣服现在是黑色、L码",
+          "confidence": 0.95
+        },
+        {
+          "predicate": "wears_size",
+          "value": "L",
+          "qualifiers": {
+            "product_category": "clothing",
+            "size_system": "INT"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 2,
+          "source_quote": "我自己的衣服现在是黑色、L码",
+          "confidence": 0.9
+        },
+        {
+          "predicate": "budget_range",
+          "value": {
+            "min": null,
+            "max": 100,
+            "currency": "CNY"
+          },
+          "qualifiers": {},
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 2,
+          "source_quote": "预算100元以内",
+          "confidence": 0.9
+        },
+        {
+          "predicate": "budget_range",
+          "value": {
+            "min": null,
+            "max": 3000,
+            "currency": "CNY"
+          },
+          "qualifiers": {},
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 4,
+          "source_quote": "我自己的手机预算现在是3000元以内",
+          "confidence": 0.95
+        },
+        {
+          "predicate": "prefers_color",
+          "value": "black",
+          "qualifiers": {
+            "product_category": "phone"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 4,
+          "source_quote": "安卓、黑色",
+          "confidence": 0.9
+        },
+        {
+          "predicate": "wears_size",
+          "value": "38",
+          "qualifiers": {
+            "product_category": "shoes",
+            "size_system": "EU"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 7,
+          "source_quote": "我自己休闲鞋38",
+          "confidence": 0.9
+        },
+        {
+          "predicate": "wears_size",
+          "value": "39",
+          "qualifiers": {
+            "product_category": "shoes",
+            "size_system": "EU"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 7,
+          "source_quote": "跑鞋39",
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "session": 12,
+    "messages": [
+      {
+        "role": "user",
+        "content": "优优，我现在买衣服的颜色和尺码，你这回记住没？别给我历史任务列表，就说我的喜好。",
+        "sequence": 1,
+        "created_at": "2026-10-27T02:48:34.053641+00:00"
+      },
+      {
+        "role": "user",
+        "content": "把我以前衣服喜欢蓝色那条忘掉吧，以后不用它给我推荐衣服。",
+        "sequence": 6,
+        "created_at": "2026-10-27T02:49:04.283638+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我说忘掉的是旧的推荐喜好，不是删订单，也不是取消已经买的那件蓝色短袖。",
+        "sequence": 12,
+        "created_at": "2026-10-27T02:49:34.576545+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我现在买衣服喜欢黑色，常穿L码，要宽松舒服的。",
+        "sequence": 18,
+        "created_at": "2026-10-27T02:50:04.723660+00:00"
+      },
+      {
+        "role": "user",
+        "content": "衣服预算还是100元以内，别因为我手机能花3000，就推荐我3000元的衣服。",
+        "sequence": 23,
+        "created_at": "2026-10-27T02:50:21.660581+00:00"
+      },
+      {
+        "role": "user",
+        "content": "手机我自己仍选安卓、黑色，预算3000元以内；我爸用苹果是他自己的喜好。",
+        "sequence": 28,
+        "created_at": "2026-10-27T02:50:24.953477+00:00"
+      },
+      {
+        "role": "user",
+        "content": "休闲鞋我喜欢白色，平常38；跑鞋39。刚才说衣服黑色，没说所有商品都要黑色。",
+        "sequence": 33,
+        "created_at": "2026-10-27T02:50:28.144678+00:00"
+      },
+      {
+        "role": "user",
+        "content": "顺便看一眼最开始那件蓝色动物图案短袖，现在是什么状态？我只是查查，别因为前面说忘掉蓝色就把它取消。",
+        "sequence": 38,
+        "created_at": "2026-10-27T02:50:32.758091+00:00"
+      },
+      {
+        "role": "user",
+        "content": "如果还没有新的发货信息就说没更新，别跟我保证这周六肯定能到。",
+        "sequence": 43,
+        "created_at": "2026-10-27T02:51:40.007977+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我还没决定退款，今天先等着，不用帮我取消，也不用申请售后。",
+        "sequence": 48,
+        "created_at": "2026-10-27T02:51:50.759527+00:00"
+      },
+      {
+        "role": "user",
+        "content": "我现在衣服、手机、鞋子的喜好，你能分别用一句话说一下吗？别把手机预算放到衣服上。",
+        "sequence": 53,
+        "created_at": "2026-10-27T02:51:55.628901+00:00"
+      },
+      {
+        "role": "user",
+        "content": "最后确认一下，今天只是查信息和更新喜好，没有替我买新东西，也没有改掉原来的订单，对吧？",
+        "sequence": 58,
+        "created_at": "2026-10-27T02:52:01.700285+00:00"
+      }
+    ],
+    "response": {
+      "schema_version": 2,
+      "facts": [
+        {
+          "predicate": "prefers_color",
+          "value": "blue",
+          "qualifiers": {
+            "product_category": "clothing"
+          },
+          "polarity": "positive",
+          "operation": "RETRACT",
+          "source_index": 1,
+          "source_quote": "把我以前衣服喜欢蓝色那条忘掉吧，以后不用它给我推荐衣服。",
+          "confidence": 0.95
+        },
+        {
+          "predicate": "prefers_color",
+          "value": "black",
+          "qualifiers": {
+            "product_category": "clothing"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 3,
+          "source_quote": "我现在买衣服喜欢黑色",
+          "confidence": 0.95
+        },
+        {
+          "predicate": "wears_size",
+          "value": "L",
+          "qualifiers": {
+            "product_category": "clothing",
+            "size_system": "INT"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 3,
+          "source_quote": "常穿L码",
+          "confidence": 0.95
+        },
+        {
+          "predicate": "budget_range",
+          "value": {
+            "min": null,
+            "max": 100,
+            "currency": "CNY"
+          },
+          "qualifiers": {},
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 4,
+          "source_quote": "衣服预算还是100元以内",
+          "confidence": 0.95
+        },
+        {
+          "predicate": "prefers_category",
+          "value": "android",
+          "qualifiers": {},
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 5,
+          "source_quote": "手机我自己仍选安卓",
+          "confidence": 0.9
+        },
+        {
+          "predicate": "prefers_color",
+          "value": "black",
+          "qualifiers": {
+            "product_category": "phone"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 5,
+          "source_quote": "手机我自己仍选安卓、黑色",
+          "confidence": 0.95
+        },
+        {
+          "predicate": "budget_range",
+          "value": {
+            "min": null,
+            "max": 3000,
+            "currency": "CNY"
+          },
+          "qualifiers": {},
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 5,
+          "source_quote": "预算3000元以内",
+          "confidence": 0.95
+        },
+        {
+          "predicate": "prefers_color",
+          "value": "white",
+          "qualifiers": {
+            "product_category": "shoes"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 6,
+          "source_quote": "休闲鞋我喜欢白色",
+          "confidence": 0.95
+        },
+        {
+          "predicate": "wears_size",
+          "value": "38",
+          "qualifiers": {
+            "product_category": "shoes",
+            "size_system": "EU"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 6,
+          "source_quote": "平常38",
+          "confidence": 0.9
+        },
+        {
+          "predicate": "wears_size",
+          "value": "39",
+          "qualifiers": {
+            "product_category": "shoes",
+            "size_system": "EU"
+          },
+          "polarity": "positive",
+          "operation": "ASSERT",
+          "source_index": 6,
+          "source_quote": "跑鞋39",
+          "confidence": 0.9
+        }
+      ]
+    }
+  }
+]

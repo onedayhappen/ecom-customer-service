@@ -9,7 +9,7 @@ import pytest
 
 from app.config.settings import settings
 from app.observability import interactions as traces
-from app.support.store import SupportStore
+from app.support.store import SCHEMA_VERSION, SupportStore
 from app.tasks.replies import ReplyCoordinator
 from tests.test_task_storage import empty_store
 
@@ -225,14 +225,15 @@ def test_schema_22_upgrade_preserves_business_events(store):
     with store.transaction() as tx:
         tx.execute("DROP TABLE interaction_trace_events")
         tx.execute("DROP TABLE interaction_trace_sessions")
-        tx.execute("DELETE FROM support_schema_versions WHERE version=23")
+        # Simulate version 22 even when the application has newer migrations.
+        tx.execute("DELETE FROM support_schema_versions WHERE version>22")
         tx.execute("INSERT INTO support_schema_versions VALUES (22,'2026-10-25') ON CONFLICT DO NOTHING")
     restarted = SupportStore(store.dsn)
     restarted.initialize()
     with restarted.transaction(read_only=True) as tx:
         assert tx.one("SELECT payload FROM support_events WHERE session_id='s' AND sequence=?", (sequence,))
         assert tx.one("SELECT COUNT(*) AS n FROM interaction_trace_events")["n"] == 0
-        assert tx.one("SELECT MAX(version) AS v FROM support_schema_versions")["v"] == 23
+        assert tx.one("SELECT MAX(version) AS v FROM support_schema_versions")["v"] == SCHEMA_VERSION
     send(restarted, "升级后消息")
     assert rows()[0]["user_messages"][0]["content"] == "升级后消息"
 
