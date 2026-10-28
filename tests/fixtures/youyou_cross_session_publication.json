@@ -1,0 +1,469 @@
+{
+  "source": "youyou_20261026_863134",
+  "projection": "Actual user text, candidate versions, goal and cited business receipts; read_task_context restricted to handoffs as in facts(). final_reply is a deterministic test composer, not a new live model response.",
+  "cases": [
+    {
+      "session": 8,
+      "round": 1,
+      "user": "优优，我想看个黑色安卓手机，之前我说的预算你还记得吗？",
+      "new_task_version": 7,
+      "old_task_version": 6,
+      "goal": "记住用户换手机的需求：平时用安卓手机（红米、小米都算安卓），苹果先不考虑；喜欢黑色，手机预算2500元以内；主要用手机拍照、导航和微信，不怎么玩游戏；以后推荐手机时按续航好一点、别太重来选；推荐时先看黑色、2500元以内有没有合适的，缺具体资料就直接说明缺什么，不要直接替用户购买；用户表示颜色不合适就先不买，不要硬凑紫色的机型；手机2500元预算与买短袖的一百元预算分开记，不是所有东西都能花2500元",
+      "old_user": "今天到这，你就用一句话复述我现在买衣服的要求，已经买过那件蓝色短袖保持原样。",
+      "receipts": [
+        {
+          "event_id": "4d5c41b9-fc19-5c12-9edb-ce823411a6c3",
+          "tool": "read_task_context",
+          "arguments": {},
+          "result": {
+            "success": true,
+            "data": {
+              "handoffs": []
+            },
+            "limitations": []
+          }
+        },
+        {
+          "event_id": "ecd2682b-4799-5334-a0ef-3d0a9a690179",
+          "tool": "search_products",
+          "arguments": {
+            "max_price": {
+              "amount": "2500",
+              "currency": "CNY"
+            },
+            "query": "安卓手机 黑色",
+            "specs": [
+              {
+                "name": "****",
+                "value": "黑色"
+              }
+            ]
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "applied_conditions": {
+                "max_price": {
+                  "amount": "2500",
+                  "currency": "CNY"
+                },
+                "query": "安卓手机 黑色",
+                "specs": [
+                  {
+                    "name": "颜色",
+                    "value": "黑色"
+                  }
+                ]
+              },
+              "has_more": false,
+              "items": [],
+              "total": 0
+            },
+            "limitations": [
+              "实时分页：各页独立读取，数据变更后可从第一页重新查询",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ]
+          }
+        },
+        {
+          "event_id": "0cbbdbad-4ccc-5b3d-b413-46054f213670",
+          "tool": "search_products",
+          "arguments": {
+            "max_price": {
+              "amount": "2500",
+              "currency": "CNY"
+            },
+            "query": "安卓手机"
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "applied_conditions": {
+                "max_price": {
+                  "amount": "2500",
+                  "currency": "CNY"
+                },
+                "query": "安卓手机",
+                "specs": []
+              },
+              "has_more": false,
+              "items": [],
+              "total": 0
+            },
+            "limitations": [
+              "实时分页：各页独立读取，数据变更后可从第一页重新查询",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ]
+          }
+        },
+        {
+          "event_id": "5c8a8d51-2661-5b87-a910-0b8c1e7877bb",
+          "tool": "search_products",
+          "arguments": {
+            "max_price": {
+              "amount": "2500",
+              "currency": "CNY"
+            },
+            "query": "红米 小米 手机"
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "applied_conditions": {
+                "max_price": {
+                  "amount": "2500",
+                  "currency": "CNY"
+                },
+                "query": "红米 小米 手机",
+                "specs": []
+              },
+              "has_more": false,
+              "items": [
+                {
+                  "category": "手机通讯",
+                  "description": "模拟店铺测试商品；规格沿用 mall 示例，未经品牌核实，报价和库存为模拟值。",
+                  "matched_fields": [
+                    "name",
+                    "category",
+                    "merchant_name"
+                  ],
+                  "merchant_id": "mall_demo_brand_6",
+                  "merchant_name": "小米旗舰店（模拟）",
+                  "name": "小米 红米5A",
+                  "product_id": "mall_demo_brand_6_p28",
+                  "product_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2JyYW5kXzZfcDI4Il0",
+                  "sku_count": 4,
+                  "sku_summary": [
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 86,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "649.00",
+                      "merchant_id": "mall_demo_brand_6",
+                      "product_id": "mall_demo_brand_6_p28",
+                      "product_name": "小米 红米5A",
+                      "sku_code": "DEMO-brand_6-201808270028001",
+                      "sku_id": "mall_demo_brand_6_s102",
+                      "spec_values": {
+                        "容量": "16G",
+                        "颜色": "金色"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNl9zMTAyIl0",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 93,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "699.00",
+                      "merchant_id": "mall_demo_brand_6",
+                      "product_id": "mall_demo_brand_6_p28",
+                      "product_name": "小米 红米5A",
+                      "sku_code": "DEMO-brand_6-201808270028002",
+                      "sku_id": "mall_demo_brand_6_s103",
+                      "spec_values": {
+                        "容量": "32G",
+                        "颜色": "金色"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNl9zMTAzIl0",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 100,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "649.00",
+                      "merchant_id": "mall_demo_brand_6",
+                      "product_id": "mall_demo_brand_6_p28",
+                      "product_name": "小米 红米5A",
+                      "sku_code": "DEMO-brand_6-201808270028003",
+                      "sku_id": "mall_demo_brand_6_s104",
+                      "spec_values": {
+                        "容量": "16G",
+                        "颜色": "银色"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNl9zMTA0Il0",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 26,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "699.00",
+                      "merchant_id": "mall_demo_brand_6",
+                      "product_id": "mall_demo_brand_6_p28",
+                      "product_name": "小米 红米5A",
+                      "sku_code": "DEMO-brand_6-201808270028004",
+                      "sku_id": "mall_demo_brand_6_s105",
+                      "spec_values": {
+                        "容量": "32G",
+                        "颜色": "银色"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNl9zMTA1Il0",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    }
+                  ],
+                  "skus_truncated": false,
+                  "subject_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2JyYW5kXzZfcDI4Il0",
+                  "unapplied_conditions": []
+                },
+                {
+                  "category": "手机通讯",
+                  "description": "模拟店铺测试商品；规格沿用 mall 示例，未经品牌核实，报价和库存为模拟值。",
+                  "matched_fields": [
+                    "name",
+                    "category"
+                  ],
+                  "merchant_id": "mall_demo_digital_a",
+                  "merchant_name": "优选数码专营店（模拟）",
+                  "name": "小米 红米5A",
+                  "product_id": "mall_demo_digital_a_p28",
+                  "product_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2RpZ2l0YWxfYV9wMjgiXQ",
+                  "sku_count": 4,
+                  "sku_summary": [
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 99,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "629.53",
+                      "merchant_id": "mall_demo_digital_a",
+                      "product_id": "mall_demo_digital_a_p28",
+                      "product_name": "小米 红米5A",
+                      "sku_code": "DEMO-digital_a-201808270028001",
+                      "sku_id": "mall_demo_digital_a_s102",
+                      "spec_values": {
+                        "容量": "16G",
+                        "颜色": "金色"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9hX3MxMDIiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 25,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "678.03",
+                      "merchant_id": "mall_demo_digital_a",
+                      "product_id": "mall_demo_digital_a_p28",
+                      "product_name": "小米 红米5A",
+                      "sku_code": "DEMO-digital_a-201808270028002",
+                      "sku_id": "mall_demo_digital_a_s103",
+                      "spec_values": {
+                        "容量": "32G",
+                        "颜色": "金色"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9hX3MxMDMiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 32,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "629.53",
+                      "merchant_id": "mall_demo_digital_a",
+                      "product_id": "mall_demo_digital_a_p28",
+                      "product_name": "小米 红米5A",
+                      "sku_code": "DEMO-digital_a-201808270028003",
+                      "sku_id": "mall_demo_digital_a_s104",
+                      "spec_values": {
+                        "容量": "16G",
+                        "颜色": "银色"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9hX3MxMDQiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 39,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "678.03",
+                      "merchant_id": "mall_demo_digital_a",
+                      "product_id": "mall_demo_digital_a_p28",
+                      "product_name": "小米 红米5A",
+                      "sku_code": "DEMO-digital_a-201808270028004",
+                      "sku_id": "mall_demo_digital_a_s105",
+                      "spec_values": {
+                        "容量": "32G",
+                        "颜色": "银色"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9hX3MxMDUiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    }
+                  ],
+                  "skus_truncated": false,
+                  "subject_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2RpZ2l0YWxfYV9wMjgiXQ",
+                  "unapplied_conditions": []
+                },
+                {
+                  "category": "手机通讯",
+                  "description": "模拟店铺测试商品；规格沿用 mall 示例，未经品牌核实，报价和库存为模拟值。",
+                  "matched_fields": [
+                    "name",
+                    "category"
+                  ],
+                  "merchant_id": "mall_demo_digital_b",
+                  "merchant_name": "惠购数码专营店（模拟）",
+                  "name": "小米 红米5A",
+                  "product_id": "mall_demo_digital_b_p28",
+                  "product_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2RpZ2l0YWxfYl9wMjgiXQ",
+                  "sku_count": 4,
+                  "sku_summary": [
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 31,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "616.55",
+                      "merchant_id": "mall_demo_digital_b",
+                      "product_id": "mall_demo_digital_b_p28",
+                      "product_name": "小米 红米5A",
+                      "sku_code": "DEMO-digital_b-201808270028001",
+                      "sku_id": "mall_demo_digital_b_s102",
+                      "spec_values": {
+                        "容量": "16G",
+                        "颜色": "金色"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9iX3MxMDIiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 38,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "664.05",
+                      "merchant_id": "mall_demo_digital_b",
+                      "product_id": "mall_demo_digital_b_p28",
+                      "product_name": "小米 红米5A",
+                      "sku_code": "DEMO-digital_b-201808270028002",
+                      "sku_id": "mall_demo_digital_b_s103",
+                      "spec_values": {
+                        "容量": "32G",
+                        "颜色": "金色"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9iX3MxMDMiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 45,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "616.55",
+                      "merchant_id": "mall_demo_digital_b",
+                      "product_id": "mall_demo_digital_b_p28",
+                      "product_name": "小米 红米5A",
+                      "sku_code": "DEMO-digital_b-201808270028003",
+                      "sku_id": "mall_demo_digital_b_s104",
+                      "spec_values": {
+                        "容量": "16G",
+                        "颜色": "银色"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9iX3MxMDQiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 52,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "664.05",
+                      "merchant_id": "mall_demo_digital_b",
+                      "product_id": "mall_demo_digital_b_p28",
+                      "product_name": "小米 红米5A",
+                      "sku_code": "DEMO-digital_b-201808270028004",
+                      "sku_id": "mall_demo_digital_b_s105",
+                      "spec_values": {
+                        "容量": "32G",
+                        "颜色": "银色"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9iX3MxMDUiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    }
+                  ],
+                  "skus_truncated": false,
+                  "subject_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2RpZ2l0YWxfYl9wMjgiXQ",
+                  "unapplied_conditions": []
+                }
+              ],
+              "total": 3
+            },
+            "limitations": [
+              "实时分页：各页独立读取，数据变更后可从第一页重新查询",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ]
+          }
+        }
+      ],
+      "final_reply": "您之前说手机预算2500元以内，想看黑色安卓手机；这次查询没有匹配的黑色款。"
+    },
+    {
+      "session": 10,
+      "round": 1,
+      "user": "优优，我穿鞋一般多大你还记得不？上回说过脚宽脚背高那个。",
+      "new_task_version": 4,
+      "old_task_version": 3,
+      "goal": "记住用户自己的休闲鞋一般穿38码，脚背偏高、脚偏宽，最怕夹脚；以后帮用户选鞋时按这些情况来选；用户强调鞋子偏好与短袖偏好是两回事，不要弄混；用户要求简单说明衣服和鞋子偏好的区别，不用念编号",
+      "old_user": "今天先这样，旧箱子那次到底有没有付钱、有没有发货，你就说这两个结论，别再列别的商品了。",
+      "receipts": [
+        {
+          "event_id": "2a56180a-5c69-53ea-b958-c7589de1488a",
+          "tool": "read_task_context",
+          "arguments": {},
+          "result": {
+            "success": true,
+            "data": {
+              "handoffs": []
+            },
+            "limitations": []
+          }
+        }
+      ],
+      "final_reply": "您之前说休闲鞋一般穿38码，脚偏宽、脚背偏高，怕夹脚。"
+    }
+  ]
+}

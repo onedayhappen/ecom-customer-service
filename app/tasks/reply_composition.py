@@ -15,6 +15,7 @@ class ReplyDraft:
     context: dict
     fingerprint: str
     fallback: str
+    evidence: tuple
 
 
 def snapshot(coordinator, tx, control, pieces, received):
@@ -80,4 +81,5 @@ def snapshot(coordinator, tx, control, pieces, received):
                  received=received, inputs=inputs, control_version=control["control_version"],
                  revision=revision(tx, user))
     fingerprint = sha256(json.dumps(fence, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-    return ReplyDraft(context, fingerprint, "\n\n".join(fallbacks + notices))
+    return ReplyDraft(context, fingerprint, "\n\n".join(fallbacks + notices),
+                      tuple(p.get("grounding", []) for p in pieces))

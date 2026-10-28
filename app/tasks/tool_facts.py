@@ -101,7 +101,22 @@ def render(name,result):
             text='未知／未记录' if value is None else '是' if value is True else '否' if value is False else label(value,220)
             if field in {'status','source_status','eligibility','invoice_type','kind'}: text=STATES.get(str(value),text)
             lines.append(path+'：'+text)
-    walk(data)
+    if name == 'search_products' and isinstance(data.get('applied_conditions'), dict):
+        # Scope must survive the bounded projection even when a result page has
+        # enough SKU fields to consume the entire fact budget.
+        conditions = data['applied_conditions']
+        lines.append('按「' + label(conditions.get('query'), 200) + '」查询')
+        cap = conditions.get('max_price')
+        if isinstance(cap, dict):
+            lines.append('价格上限：' + label(cap.get('amount'), 64) + ' ' + label(cap.get('currency'), 8))
+        if conditions.get('specs'):
+            walk(conditions['specs'], '规格条件')
+        if data.get('total') == 0 and data.get('items') == []:
+            lines.append('本次条件下：0条匹配记录。')
+        else:
+            walk({key: value for key, value in data.items() if key != 'applied_conditions'})
+    else:
+        walk(data)
     if name=='claim_coupon' and data.get('status')=='available' and data.get('coupon_ref'):
         lines.insert(0,'已领取指定优惠券。')
     lines.extend('说明：'+label(v,300) for v in result.get('limitations',[])[:5])

@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from app.runtime.outbox import clock
 from app.support.store import SupportError, now
 from app.tasks.association import _id
+from app.tasks.clarifications import PUBLICATION_FIELDS, assess, publication, published_event, replace_invalid
 from app.tasks.execution_store import TaskRuns, object_key
 from app.tasks.provenance import invalid, lock_input_user, revision
 from app.tasks.reply_facts import facts, label, question_text
@@ -142,20 +143,17 @@ class ReplyCoordinator:
             return True
         except Exception: return False
 
-    def _open_question(self, tx, sid):
+    def _open_question(self, tx, sid, active_clarifications):
         # Only questions actually sent and still at their original version count.
+        if active_clarifications:
+            return "clarification"
         q = "payload::jsonb->>'question_id'" if tx.postgres else "json_extract(payload,'$.question_id')"
-        c = "payload::jsonb->>'clarification_id'" if tx.postgres else "json_extract(payload,'$.clarification_id')"
         rows = tx.all(f"""SELECT payload FROM support_events WHERE session_id=? AND kind='message'
-            AND visibility='public' AND ({q} IS NOT NULL OR {c} IS NOT NULL)
+            AND visibility='public' AND {q} IS NOT NULL
             ORDER BY sequence DESC LIMIT 100""", (sid,))
         has_task_question = False
         for row in rows:
             p = json.loads(row["payload"])
-            if p.get("clarification_id"):
-                if tx.one("""SELECT clarification_id FROM association_clarifications
-                    WHERE clarification_id=? AND status='open'""", (p["clarification_id"],)):
-                    return "clarification"
             if p.get("question_id") and p.get("task_id"):
                 record = self.runs.repo._record(self.runs.repo._row(tx, p["task_id"]))
                 if (record.version == p.get("task_version") and record.status == "waiting_user"
@@ -170,6 +168,7 @@ class ReplyCoordinator:
         from app.harness.bounded_call import bounded_calls
         from app.observability.interactions import bind, record, span
         from app.tasks.reply_composition import ReplyDraft
+        from app.tasks.reply_grounding import check_reply
         with bind(self.store, sid):
             draft = self._prepare(sid, self._check_policy_results(sid))
             if not isinstance(draft, ReplyDraft):
@@ -182,6 +181,11 @@ class ReplyCoordinator:
                     with span("reply.composition", context=draft.context) as observation:
                         text = validate_reply(bounded_calls.run(
                             lambda: self.composer(deepcopy(draft.context)), settings.reply_composition_timeout_seconds))
+                        text, violations = check_reply(text, draft.evidence)
+                        text = validate_reply(text)
+                        if violations:
+                            # Reuse the existing completion trace; no extra DB round trip.
+                            observation["grounding"] = {"status": "corrected", "reasons": violations}
                         text = "\n\n".join([text, *draft.context["required_notices"]])
                         observation["output"] = text
                 except Exception as exc:
@@ -228,29 +232,61 @@ class ReplyCoordinator:
                 event_id = _id(sid, "receiving:" + str(received))
                 return self._publish(tx, control, [], "消息已收到，正在核对补充内容。", received, event_id)
             tx.execute("UPDATE task_reply_sessions SET pending_notice=0 WHERE session_id=?", (sid,))
-            pieces, blocked, question = [], set(), self._open_question(tx, sid)
             clarifications = tx.all("""SELECT * FROM association_clarifications
                 WHERE user_id=? AND status='open' ORDER BY created_at LIMIT 100""", (self.user,))
+            # Read distinct candidates in batches; only this session's menus need
+            # locks through publication. Other sessions must not add lock contention.
+            records = {}
+            task_ids = sorted({o["task_id"] for row in clarifications for o in json.loads(row["candidates"])})
+            for start in range(0, len(task_ids), 200):
+                ids = task_ids[start:start + 200]
+                placeholders = ",".join("?" for _ in ids)
+                rows = self.runs.candidates._rows(tx, [f"t.task_id IN ({placeholders})"], ids, limit=len(ids))
+                records.update((r["task_id"], self.runs.repo._record(r)) for r in rows)
+            local_ids = {o["task_id"] for row in clarifications if row["session_id"] == sid
+                         for o in json.loads(row["candidates"])}
+            for tid in sorted(local_ids & records.keys()):
+                record = self.runs.repo._record(self.runs.repo._row(tx, tid, lock=True))
+                if all(v is None or record.details.get(k) == v for k, v in vars(self.runs.candidates.scope).items()):
+                    records[tid] = record
+                else:
+                    records.pop(tid)
+            versions = {tid: r.version for tid, r in records.items()}
+            pending, active, blocked = [], set(), set()
             block_all = False
             for row in clarifications:
+                state = assess(row, versions, published_event(tx, row))
+                if state.status == "invalid" and row["session_id"] == sid:
+                    row = replace_invalid(tx, row, records)
+                    if row is None:
+                        continue
+                    state = assess(row, versions, None)
+                if not state.valid and not (row["session_id"] == sid and state.status == "pending"):
+                    continue
                 options = json.loads(row["candidates"])
                 blocked.update(o["task_id"] for o in options)
-                block_all |= not options
+                block_all |= not options and row["session_id"] == sid
+                if row["session_id"] == sid:
+                    if state.valid:
+                        active.add(row["clarification_id"])
+                    else:
+                        pending.append(row)
+            pieces, question = [], self._open_question(tx, sid, active)
+            for row in pending:
                 key = "clarification:" + row["clarification_id"]
-                if row["session_id"] != sid or question == "clarification" or self._covered(tx, key):
+                if question == "clarification" or self._covered(tx, key):
                     continue
+                options = json.loads(row["candidates"])
                 labels, versions = [], {}
                 for option in options:
-                    self.runs._scope(tx, option["task_id"])
-                    record = self.runs.repo._record(self.runs.repo._row(tx, option["task_id"], lock=True))
-                    if record.version == option["version"]:
-                        versions[record.task_id] = record.version
-                        labels.append(label(record.details.get("order_id") or record.goal))
+                    record = records[option["task_id"]]
+                    versions[record.task_id] = record.version
+                    labels.append(label(record.details.get("order_id") or record.goal))
                 text = "请说明这次要处理的订单号，以及希望如何处理。"
                 # Keep option numbering identical to the validated association contract.
                 if labels and len(labels) == len(options):
                     text = "您说的是哪一件：" + "；".join(f"{i + 1}. {v}" for i, v in enumerate(labels)) + "？"
-                pieces.append(dict(key=key, content=text, task_versions=versions, clarification_id=row["clarification_id"]))
+                pieces.append(dict(key=key, content=text, task_versions=versions, **publication(row)))
                 question = "clarification"
             jobs = tx.all("""SELECT j.* FROM runtime_jobs j LEFT JOIN task_reply_items r
                 ON r.user_id=j.user_id AND r.item_key='job:' || j.job_id
@@ -334,6 +370,9 @@ class ReplyCoordinator:
                         metadata['context_content'] = '\n'.join(filter(None, (
                             facts(record, [r for r in receipts if r['tool'] not in {'search_knowledge','search_policies'}]), POLICY_REFRESH)))
                     metadata["evidence_ids"] = [r["event_id"] for r in receipts]
+                    if self.composer is not None:
+                        from app.tasks.reply_grounding import evidence_index
+                        metadata["grounding"] = evidence_index(receipts, record.details)
                     if not text:
                         subject = "订单 " + label(record.details["order_id"]) if record.details.get("order_id") else label(record.goal)
                         text = subject + "：暂时没有可核实的查询结果，可补充信息后重试，或转人工客服核实。"
@@ -373,7 +412,7 @@ class ReplyCoordinator:
         if operations:
             payload["operation_ids"] = operations
         for p in pieces:
-            for key in ("question_id", "task_id", "task_version", "clarification_id"):
+            for key in ("question_id", "task_id", "task_version", *PUBLICATION_FIELDS):
                 if key in p:
                     payload[key] = p[key]
         if any('context_content' in p for p in pieces):

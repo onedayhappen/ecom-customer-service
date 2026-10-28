@@ -10,6 +10,7 @@ from app.agents.association import AssociationProposal
 from app.session.request_budget import ContextBudgetExceeded
 from app.support.store import SupportError, now
 from app.tasks.candidates import CandidateService
+from app.tasks.clarifications import assess, published_event
 from app.tasks.intake import MessageIntake
 from app.tasks.repository import TaskRepository, VersionConflict
 from app.observability.interactions import observed_association, record
@@ -89,14 +90,8 @@ class AssociationService:
                         context.candidates.append(candidate)
                         available[task.task_id] = candidate
             visible = [o for o in options if o["task_id"] in available]
-            field = "e.payload::jsonb->>'clarification_id'" if tx.postgres else "json_extract(e.payload,'$.clarification_id')"
-            event = tx.one(f"""SELECT e.payload,e.sequence,e.created_at FROM support_events e WHERE e.session_id=?
-                AND e.kind='message' AND e.visibility='public' AND {field}=?
-                AND e.sequence<? ORDER BY e.sequence DESC LIMIT 1""",
-                (sid, row["clarification_id"], min(m["sequence"] for m in context.current_messages)))
-            data = json.loads(event["payload"]) if event else {}
-            published = (data.get("role") in {"assistant", "agent"}
-                         and data.get("clarification_version") == row["version"])
+            event = published_event(tx, row, before_sequence=min(m["sequence"] for m in context.current_messages))
+            state = assess(row, {tid: c["version"] for tid, c in available.items()}, event)
             sources = []
             for sequence in json.loads(row["sources"]):
                 message = tx.one("""SELECT payload FROM support_events WHERE session_id=? AND sequence=?
@@ -105,10 +100,9 @@ class AssociationService:
                     sources.append(dict(session_id=sid, sequence=sequence, content=json.loads(message["payload"])["content"]))
             context.clarifications.append({
                 "clarification_id": row["clarification_id"], "version": row["version"], "question": row["question"],
-                "options": visible, "sources": sources, "published": published,
+                "options": visible, "sources": sources, "published": state.published,
                 "published_at": event["created_at"] if event else None,
-                "valid": published and len(visible) == len(options)
-                         and all(available[o["task_id"]]["version"] == o["version"] for o in visible),
+                "valid": state.valid,
             })
 
     def snapshot(self, batch, *, check_orders=False, dialogue=None, rewritten_query=""):
@@ -156,7 +150,15 @@ class AssociationService:
         # Lock existing tasks in a deterministic order. Different sessions can
         # modify shared matters without acquiring each other's conversation locks.
         locked = {}
-        for task_id in sorted({d.task_id for d in proposal.decisions if d.task_id}):
+        task_ids = {d.task_id for d in proposal.decisions if d.task_id}
+        for decision in proposal.decisions:
+            # The whole published option list is part of an answer's contract,
+            # including candidates the user did not select.
+            if decision.clarification_id in clarifications:
+                task_ids.update(o["task_id"] for o in clarifications[decision.clarification_id]["options"])
+            if decision.action == "clarify":
+                task_ids.update(decision.candidate_task_ids)
+        for task_id in sorted(task_ids):
             if task_id not in available:
                 raise AssociationRejected("unknown_or_out_of_scope_task")
             if not self.candidates._rows(tx, ["t.task_id=?"], [task_id]):
@@ -182,9 +184,11 @@ class AssociationService:
             if sources - (current.keys() | extra):
                 raise AssociationRejected("source_outside_range")
             if clarification:
-                row = tx.one("SELECT status,version FROM association_clarifications WHERE clarification_id=? AND user_id=?",
+                row = tx.one("SELECT * FROM association_clarifications WHERE clarification_id=? AND user_id=?",
                              (decision.clarification_id, self.user))
-                if not row or row["status"] != "open" or row["version"] != clarification["version"] or not clarification["valid"]:
+                if (not row or row["version"] != clarification["version"] or not clarification["valid"]
+                        or not assess(row, {tid: r.version for tid, r in locked.items()},
+                                      published_event(tx, row, before_sequence=min(current))).valid):
                     raise AssociationRejected("expired_clarification")
                 if not extra <= sources or (decision.action == "update" and decision.task_id not in {o["task_id"] for o in clarification["options"]}):
                     raise AssociationRejected("clarification_target")
@@ -375,8 +379,7 @@ class AssociationService:
                     for seq in decision.sequences:
                         tx.execute("INSERT INTO support_task_messages VALUES (?,?,?) ON CONFLICT DO NOTHING", (tid, batch.session_id, seq))
                 elif decision.action == "clarify":
-                    candidates = {c["task_id"]: c for c in snapshot.context.candidates}
-                    options = [dict(task_id=t, version=candidates[t]["version"], label=candidates[t]["goal"])
+                    options = [dict(task_id=t, version=current_records[t].version, label=current_records[t].goal)
                                for t in dict.fromkeys(decision.candidate_task_ids)]
                     clarification_id = _id(did, "clarification")
                     tx.execute("""INSERT INTO association_clarifications

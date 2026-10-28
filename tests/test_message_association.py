@@ -10,6 +10,7 @@ from app.support.store import SupportError, SupportStore
 from app.tasks.association import AssociationRejected, AssociationService
 from app.tasks.intake import MessageIntake
 from app.tasks.repository import TaskRepository, VersionConflict
+from app.tasks.replies import ReplyCoordinator
 from tests.test_task_storage import empty_store
 from tests.test_task_candidates import task, ask
 
@@ -111,10 +112,9 @@ def test_clarification_answer_relinks_original_and_answer(store):
                             candidate_task_ids=[first.task_id, second.task_id]))
     initial = engine.commit(batch, engine.snapshot(batch), unclear)
     question = initial["clarification"]
-    with store.transaction() as tx:
-        c = store._control(tx, "s", "alice")
-        store._event(tx, c, "message", "bot", {"role": "assistant", "content": question["prompt"],
-                     "clarification_id": question["clarification_id"], "clarification_version": question["version"]})
+    published = ReplyCoordinator(store, "alice").publish("s")
+    assert published["clarification_id"] == question["clarification_id"]
+    assert published["clarification_version"] == question["version"]
     answer = batch_for(store, "第二个")
     decision = update(answer, second, effect="answer")
     decision.update(clarification_id=question["clarification_id"],
@@ -127,7 +127,7 @@ def test_clarification_answer_relinks_original_and_answer(store):
     assert engine.repo.get(second.task_id).details["reason"] == "左耳没声音"
     with store.transaction(read_only=True) as tx:
         assert tx.one("SELECT status FROM association_clarifications")["status"] == "answered"
-        assert tx.one("SELECT COUNT(*) AS n FROM support_task_messages WHERE task_id=?", (second.task_id,))["n"] == 3
+        assert tx.one("SELECT COUNT(*) AS n FROM support_task_messages WHERE task_id=?", (second.task_id,))["n"] == 4
 
 
 def test_cross_session_continuation_and_new_goal_are_distinct(store):
