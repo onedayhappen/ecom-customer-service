@@ -49,6 +49,31 @@ def assess(row, versions, event):
     return ClarificationState(published, current, status)
 
 
+def refresh_needed(tx, row, records, event, received):
+    """Do not revive an idle chat's menu for changes made in another chat.
+
+    Keep unresolved sources and reject the stale choice as before. When the
+    customer returns, the new input permits one replacement with current versions.
+    Legacy publication repairs and changes in this conversation still recover.
+    """
+    if event is None or received > event["sequence"]:
+        return True
+    changed = [o for o in json.loads(row["candidates"])
+               if o["task_id"] not in records or records[o["task_id"]].version != o["version"]]
+    if not changed:
+        return True  # Repair missing/mismatched publication metadata.
+    for option in changed:
+        record = records.get(option["task_id"])
+        if record is None:
+            return True
+        change = tx.one("""SELECT session_id FROM task_changes
+            WHERE user_id=? AND task_id=? AND version=?""",
+            (row["user_id"], record.task_id, record.version))
+        if change is None or change["session_id"] == row["session_id"]:
+            return True
+    return False
+
+
 def replace_invalid(tx, row, records):
     """Retire an unusable menu without discarding its unresolved user input.
 

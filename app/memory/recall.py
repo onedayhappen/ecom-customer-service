@@ -70,4 +70,7 @@ def recall_user_memory(query: str) -> dict:
         "already_in_context": sorted(manager.injected_ids),
         "context_note": "上下文已有的用户原话或长期事实不重复返回，请参照已保留的上下文。" if manager.injected_ids else "",
         "long_term_facts": [manager.fact_record(fact) for fact in facts],
+        **({'processing': manager.processing_state(),
+            'processing_note': '如有待处理更正，以当前用户原话为准；不能宣称旧记录已完成更新。'}
+           if hasattr(manager, 'processing_state') else {}),
     }

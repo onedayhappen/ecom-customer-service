@@ -23,6 +23,7 @@ from tests.test_task_execution import Client, engine, request, response, local_b
 
 @pytest.fixture
 def memory_env(store, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, 'memory_engine', 'legacy')  # Legacy import/cleanup compatibility contract.
     monkeypatch.setattr(settings, 'memory_enabled', True)
     monkeypatch.setattr(settings, 'memory_storage_backend', 'json')
     monkeypatch.setattr(settings, 'memory_dir', str(tmp_path / 'memory'))

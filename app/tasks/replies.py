@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from app.runtime.outbox import clock
 from app.support.store import SupportError, now
 from app.tasks.association import _id
-from app.tasks.clarifications import PUBLICATION_FIELDS, assess, publication, published_event, replace_invalid
+from app.tasks.clarifications import PUBLICATION_FIELDS, assess, publication, published_event, refresh_needed, replace_invalid
 from app.tasks.execution_store import TaskRuns, object_key
 from app.tasks.provenance import invalid, lock_input_user, revision
 from app.tasks.reply_facts import facts, label, question_text
@@ -228,10 +228,13 @@ class ReplyCoordinator:
                 event_id = _id(sid, "receiving:" + str(received))
                 return self._publish(tx, control, [], "消息已收到，正在核对补充内容。", received, event_id)
             tx.execute("UPDATE task_reply_sessions SET pending_notice=0 WHERE session_id=?", (sid,))
+            # Association consumes questions within a conversation. A menu in
+            # another chat cannot be answered here and must not veto this reply.
+            # The global pending-input/provenance fences above remain in force.
             clarifications = tx.all("""SELECT * FROM association_clarifications
-                WHERE user_id=? AND status='open' ORDER BY created_at LIMIT 100""", (self.user,))
-            # Read distinct candidates in batches; only this session's menus need
-            # locks through publication. Other sessions must not add lock contention.
+                WHERE user_id=? AND session_id=? AND status='open'
+                ORDER BY created_at LIMIT 100""", (self.user, sid))
+            # Read distinct candidates in batches and lock them through publication.
             records = {}
             task_ids = sorted({o["task_id"] for row in clarifications for o in json.loads(row["candidates"])})
             for start in range(0, len(task_ids), 200):
@@ -239,9 +242,7 @@ class ReplyCoordinator:
                 placeholders = ",".join("?" for _ in ids)
                 rows = self.runs.candidates._rows(tx, [f"t.task_id IN ({placeholders})"], ids, limit=len(ids))
                 records.update((r["task_id"], self.runs.repo._record(r)) for r in rows)
-            local_ids = {o["task_id"] for row in clarifications if row["session_id"] == sid
-                         for o in json.loads(row["candidates"])}
-            for tid in sorted(local_ids & records.keys()):
+            for tid in sorted(records):
                 record = self.runs.repo._record(self.runs.repo._row(tx, tid, lock=True))
                 if all(v is None or record.details.get(k) == v for k, v in vars(self.runs.candidates.scope).items()):
                     records[tid] = record
@@ -251,22 +252,24 @@ class ReplyCoordinator:
             pending, active, blocked = [], set(), set()
             block_all = False
             for row in clarifications:
-                state = assess(row, versions, published_event(tx, row))
-                if state.status == "invalid" and row["session_id"] == sid:
+                event = published_event(tx, row)
+                state = assess(row, versions, event)
+                if state.status == "invalid":
+                    if not refresh_needed(tx, row, records, event, received):
+                        continue
                     row = replace_invalid(tx, row, records)
                     if row is None:
                         continue
                     state = assess(row, versions, None)
-                if not state.valid and not (row["session_id"] == sid and state.status == "pending"):
+                if not state.valid and state.status != "pending":
                     continue
                 options = json.loads(row["candidates"])
                 blocked.update(o["task_id"] for o in options)
-                block_all |= not options and row["session_id"] == sid
-                if row["session_id"] == sid:
-                    if state.valid:
-                        active.add(row["clarification_id"])
-                    else:
-                        pending.append(row)
+                block_all |= not options
+                if state.valid:
+                    active.add(row["clarification_id"])
+                else:
+                    pending.append(row)
             pieces, question = [], self._open_question(tx, sid, active)
             for row in pending:
                 key = "clarification:" + row["clarification_id"]

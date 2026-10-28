@@ -141,3 +141,18 @@ def test_task_execution_and_replay_respect_trusted_channel_scope(store):
     engine(Client(response("请补充具体需求。"))).execute_task(store, "alice", req, scope=BusinessScope(store_id="shop-a"))
     with pytest.raises(SupportError):
         engine(Client()).execute_task(store, "alice", req, scope=BusinessScope(store_id="shop-b"))
+
+
+def test_context_budget_failure_keeps_reason_and_publishes_fallback(store):
+    from app.session.request_budget import ContextBudgetExceeded
+    from app.tasks.replies import ReplyCoordinator
+    record, source = task(store, "s")
+    client = Client(ContextBudgetExceeded(25000, 24000, reason="task_context"))
+    req = request(record, source)
+    result = engine(client).execute_task(store, "alice", req)
+    assert len(client.requests) == 1
+    assert result["state"] == "deferred" and result["reason"] == "context_budget"
+    reply = ReplyCoordinator(store, "alice").publish("s")
+    assert reply["result_ids"] == ["job:" + req["job_id"]]
+    assert "暂时没有可核实" in reply["content"]
+    assert ReplyCoordinator(store, "alice").publish("s") is None

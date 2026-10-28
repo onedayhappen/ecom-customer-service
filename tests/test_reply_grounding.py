@@ -165,7 +165,8 @@ def test_captured_failures_are_corrected_at_actual_publication_boundary(store, c
     assert ReplyCoordinator(store, 'alice', composer=model).publish('s') is None
     assert len(calls) == len(replies(store)) == 1
     with store.transaction(read_only=True) as tx:
-        traces = tx.all("SELECT stage,payload FROM interaction_trace_events WHERE stage LIKE 'reply.composition.%'")
+        traces = tx.all("SELECT stage,payload FROM interaction_trace_events WHERE stage LIKE ?",
+                        ('reply.composition.%',))
         assert [t['stage'] for t in traces].count('reply.composition.finished') == 1
         assert any(t['stage'] == 'reply.composition.fallback' for t in traces)
         assert not any(t['stage'] == 'reply.composition.grounding' for t in traces)

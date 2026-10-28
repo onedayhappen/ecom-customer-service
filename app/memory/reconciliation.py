@@ -66,7 +66,8 @@ def _identity(user_id, fact):
 
 def _slot(fact):
     from app.memory.atomic import canonical_memory_key
-    key = canonical_memory_key(fact.predicate, fact.qualifiers)
+    qualifiers = {k: v for k, v in fact.qualifiers.items() if k != 'size_system'} if fact.schema_version >= 3 else fact.qualifiers
+    key = canonical_memory_key(fact.predicate, qualifiers)
     if fact.polarity == 'negative':
         key += ':exclude=' + _canonical(fact.value)
     return key
@@ -74,7 +75,7 @@ def _slot(fact):
 
 def _ends_assertion(change, assertion):
     """Slot replacement, value-specific negation, and whole-slot revocation."""
-    if change.predicate != assertion.predicate or change.qualifiers != assertion.qualifiers:
+    if _family(change) != _family(assertion):
         return False
     if change.operation == 'RETRACT':
         return change.value is None or _same_value(change, assertion)
@@ -85,7 +86,8 @@ def _ends_assertion(change, assertion):
 
 def _family(fact):
     # Opposite polarities and whole-slot retractions share this timeline.
-    return fact.predicate, _canonical(fact.qualifiers)
+    qualifiers = {k: v for k, v in fact.qualifiers.items() if k != 'size_system'} if fact.schema_version >= 3 else fact.qualifiers
+    return fact.predicate, _canonical(qualifiers)
 
 
 def _index(facts, order):
@@ -178,7 +180,7 @@ def reconcile(existing, incoming, *, user_id, now=None, hot_limit=20):
     now = now or datetime.now(timezone.utc)
     ledger = deepcopy(existing)
     operations = []
-    atomic = [f for f in ledger if f.schema_version >= 2 and not f.metadata.get('reset')
+    atomic = [f for f in ledger if f.schema_version >= 2 and not f.metadata.get('reset') and not f.metadata.get('forgotten')
               and not f.metadata.get('archived_legacy') and f.status != 'deleted']
     pending = deepcopy(incoming)
     for candidate in pending:

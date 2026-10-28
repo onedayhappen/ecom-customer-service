@@ -66,18 +66,16 @@ def process_memory_invalidations(store, *, limit=20, manager_factory=None):
             policy = SourcePolicy(store, job['user_id'])
             # Work on the authoritative ledger under its own user lock; model
             # and embedding generation are unnecessary for invalidation.
-            with manager.ltm.store.transaction(job['user_id']):
-                ledger = manager.ltm.history_facts()
-                obsolete = [f for f in ledger if not f.metadata.get('reset') and not policy.allows(f)]
-                manager.ltm.store.commit_versions(job['user_id'], [
-                    manager.ltm._fact_to_item(replace(f, status='retracted',
-                        metadata={**f.metadata, 'reset': True, 'source_invalidated': True})) for f in obsolete])
+            if hasattr(manager, 'invalidate_sources'):
+                invalidated = manager.invalidate_sources()
+            else:
+                invalidated = _invalidate_legacy(manager, policy, job['user_id'])
             with store.transaction() as tx:
                 saved = tx.execute("""UPDATE runtime_jobs SET status='completed',finished_at=?,
                     delivery_lease=0,response=? WHERE job_id=? AND status='pending' AND delivery_owner=?""",
-                    (clock(tx), json.dumps(dict(invalidated=len(obsolete))), job['job_id'], owner)).rowcount
+                    (clock(tx), json.dumps(dict(invalidated=invalidated)), job['job_id'], owner)).rowcount
             counts['processed'] += saved
-            counts['invalidated'] += len(obsolete) if saved else 0
+            counts['invalidated'] += invalidated if saved else 0
         except Exception as error:
             with store.transaction() as tx:
                 tx.execute("""UPDATE runtime_jobs SET delivery_lease=0,next_delivery=?,attempts=attempts+1,error=?
@@ -85,3 +83,13 @@ def process_memory_invalidations(store, *, limit=20, manager_factory=None):
                     (clock(tx) + 30, type(error).__name__, job['job_id'], owner))
             counts['failed'] += 1
     return counts
+
+
+def _invalidate_legacy(manager, policy, user):
+    with manager.ltm.store.transaction(user):
+        ledger = manager.ltm.history_facts()
+        obsolete = [f for f in ledger if not f.metadata.get('reset') and not policy.allows(f)]
+        manager.ltm.store.commit_versions(user, [
+            manager.ltm._fact_to_item(replace(f, status='retracted',
+                metadata={**f.metadata, 'reset': True, 'source_invalidated': True})) for f in obsolete])
+    return len(obsolete)
