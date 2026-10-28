@@ -173,6 +173,15 @@ def build_claims(record, receipts):
                     continue
                 summary, text = _parcel_text(row, data.get("items", []) if shipment else row.get("events", []))
                 add("parcel_record", _subject(row, scope), text, summary)
+        elif tool == "search_products":
+            from app.tasks.reply_search_grounding import observation, SearchGuard
+            search = observation(receipt)
+            if search is not None:
+                # Scope and uncertainty travel with each search, including
+                # empty results and a later successful rewording.
+                text = SearchGuard.correction([[search]])
+                projected = facts(record, [receipt])
+                add("product_search", scope, text + ("\n" + projected if projected else ""))
         else:
             # Existing typed projections cover policies, payments, refunds,
             # products and legacy tools. Preserve each receipt as a distinct

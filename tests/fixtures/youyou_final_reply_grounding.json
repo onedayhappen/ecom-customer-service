@@ -1,0 +1,715 @@
+{
+  "source": "youyou_20261026_863134",
+  "projection": "All cited receipts and objects; only typed grounding fields retained. Original replies and receipt hashes retained; personal/contact fields excluded.",
+  "cases": [
+    {
+      "session": 1,
+      "round": 2,
+      "user": "对，就是蓝色M码那件。我寄杭州的，日子记岔了可能是周四买的，你看现在是还没发货吗？",
+      "original_reply": "你问的这件蓝色M码短袖，对应的是10月22日下单、订单号 DEMO-RECENT-1-paid 的那笔，金额88元，状态为已支付。目前这笔订单没有包裹记录，已记录发出数量为0，也没有预计送达时间，所以可以判断它还没有发货，具体到货时间暂时无法确认。\n\n另外，这笔订单记录的收货地区是深圳，不是杭州。如果你要寄杭州，建议核对一下下单时填写的地址。",
+      "expected_reason": "unshipped",
+      "receipts": [
+        {
+          "event_id": "456eea26-e05d-52b6-aebf-858eebcde271",
+          "source_sha256": "8c54cc4a5283c5b7817714e8b8888dd2faf1e91fdcdab25f52a362e0db31afb7",
+          "tool": "get_order",
+          "arguments": {
+            "order_ref": "WyJvcmRlciIsIm1hbGxfZGVtbyIsIkRFTU8tUkVDRU5ULTEtcGFpZCJd"
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "currency": "CNY",
+              "goods_amount": "88.00",
+              "items": [
+                {
+                  "order_id": "DEMO-RECENT-1-paid",
+                  "order_item_id": "item_DEMO-RECENT-1-paid",
+                  "payable_amount": "88.00",
+                  "platform_code": "mall_demo",
+                  "recorded_shipped": 0,
+                  "title_snapshot": "HLA海澜之家简约动物印花短袖T恤（T恤）"
+                }
+              ],
+              "order_id": "DEMO-RECENT-1-paid",
+              "paid_amount": "88.00",
+              "payable_amount": "88.00",
+              "platform_code": "mall_demo",
+              "shipping_amount": "0.00",
+              "status": "paid"
+            },
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ]
+          }
+        },
+        {
+          "event_id": "5d927649-9e24-5dd4-8b6e-4268a8c8c137",
+          "source_sha256": "9992e901da4656c4d11db02a69328f2056d77fa1da7ceed7aa795aae6713f03a",
+          "tool": "find_orders",
+          "arguments": {
+            "query": "短袖"
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "items": [
+                {
+                  "currency": "CNY",
+                  "goods_amount": "170.72",
+                  "order_id": "9e2369bcb4a34f1f99e06dce04d8917b",
+                  "paid_amount": "0.00",
+                  "payable_amount": "170.72",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "HLA海澜之家简约动物印花短袖T恤"
+                    },
+                    {
+                      "name": "HLA海澜之家蓝灰花纹圆领针织布短袖T恤"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "closed"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "88.00",
+                  "order_id": "DEMO-RECENT-1-paid",
+                  "paid_amount": "88.00",
+                  "payable_amount": "88.00",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "HLA海澜之家简约动物印花短袖T恤（T恤）"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "paid"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "654.75",
+                  "order_id": "DEMO-WILLIAM-MULTI-1",
+                  "paid_amount": "654.75",
+                  "payable_amount": "654.75",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "HLA海澜之家简约动物印花短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "HLA海澜之家蓝灰花纹圆领针织布短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "HLA海澜之家短袖T恤男基础款（T恤）"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "after_sale"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "461.72",
+                  "order_id": "DEMO-WILLIAM-MULTI-2",
+                  "paid_amount": "461.72",
+                  "payable_amount": "461.72",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "HLA海澜之家简约动物印花短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "HLA海澜之家蓝灰花纹圆领针织布短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "耐克 NIKE ROSHE RUN 511881（男鞋）"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "after_sale"
+                }
+              ],
+              "total": 4
+            },
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ]
+          }
+        },
+        {
+          "event_id": "6e538a73-c366-5e0d-b44d-c54f3207df7b",
+          "source_sha256": "ff3aae888730d24b212508b4d169121717570f6c7cf8bbc228157a9af5a4e58e",
+          "tool": "find_orders",
+          "arguments": {
+            "query": "海澜之家"
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "items": [
+                {
+                  "currency": "CNY",
+                  "goods_amount": "170.72",
+                  "order_id": "9e2369bcb4a34f1f99e06dce04d8917b",
+                  "paid_amount": "0.00",
+                  "payable_amount": "170.72",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "HLA海澜之家简约动物印花短袖T恤"
+                    },
+                    {
+                      "name": "HLA海澜之家蓝灰花纹圆领针织布短袖T恤"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "closed"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "88.00",
+                  "order_id": "DEMO-RECENT-1-paid",
+                  "paid_amount": "88.00",
+                  "payable_amount": "88.00",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "HLA海澜之家简约动物印花短袖T恤（T恤）"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "paid"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "654.75",
+                  "order_id": "DEMO-WILLIAM-MULTI-1",
+                  "paid_amount": "654.75",
+                  "payable_amount": "654.75",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "HLA海澜之家简约动物印花短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "HLA海澜之家蓝灰花纹圆领针织布短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "HLA海澜之家短袖T恤男基础款（T恤）"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "after_sale"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "461.72",
+                  "order_id": "DEMO-WILLIAM-MULTI-2",
+                  "paid_amount": "461.72",
+                  "payable_amount": "461.72",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "HLA海澜之家简约动物印花短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "HLA海澜之家蓝灰花纹圆领针织布短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "耐克 NIKE ROSHE RUN 511881（男鞋）"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "after_sale"
+                }
+              ],
+              "total": 4
+            },
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ]
+          }
+        },
+        {
+          "event_id": "fb9181f4-f07d-50ee-a921-4e7bedb9a58d",
+          "source_sha256": "aad4da29d41bf1c8c86620ebce73dcdd480d80d4c8f1123c096b759dd900a291",
+          "tool": "get_logistics",
+          "arguments": {
+            "target_ref": "WyJvcmRlciIsIm1hbGxfZGVtbyIsIkRFTU8tUkVDRU5ULTEtcGFpZCJd"
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "items": [],
+              "quantities": [
+                {
+                  "order_item_id": "item_DEMO-RECENT-1-paid",
+                  "purchased": 1,
+                  "recorded_shipped": 0
+                }
+              ],
+              "total": 0
+            },
+            "limitations": [
+              "未记录预计送达时间；发出数量不代表签收数量",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ]
+          }
+        },
+        {
+          "event_id": "fcab04b2-fc90-52d7-a6fb-52ba798e953e",
+          "source_sha256": "57ea00d694774f788ba90a67ee878e226e83bc225eb7fbbd0724902aeed45a87",
+          "tool": "find_orders",
+          "arguments": {
+            "query": "海澜之家 短袖"
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "items": [],
+              "total": 0
+            },
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "session": 2,
+      "round": 3,
+      "user": "没签收就好，我家里人说好像拿过一个鞋盒，可能是别的。你能看出送到小区了没？",
+      "original_reply": "这双夏季款耐克 ROSHE RUN 511881 目前还在运输途中，最新记录是10月24日离开中转中心，之后没有新的物流更新，也没有签收记录。所以从现有信息看，还不能确认它已经送到小区。\n\n你家人拿到的鞋盒，从这双鞋的物流状态来看，应该不是它。这双目前没有预计送达时间，具体哪天到暂时无法确认。",
+      "expected_reason": "parcel_identity",
+      "receipts": [
+        {
+          "event_id": "21972942-1d90-57b9-8b12-f3e4d27d9fb6",
+          "source_sha256": "de361c99ec71488be9dd70b23140efb6864c82fbe9b9e0a3c6d3f38cb01a6ea0",
+          "tool": "find_orders",
+          "arguments": {
+            "query": "耐克",
+            "status": "all"
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "items": [
+                {
+                  "currency": "CNY",
+                  "goods_amount": "194.00",
+                  "order_id": "7d38cd6ddad04798b427f66d1c5f38f0",
+                  "paid_amount": "0.00",
+                  "payable_amount": "189.00",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "耐克 NIKE AIR MAX 90 ESSENTIAL AJ1285"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "closed"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "194.00",
+                  "order_id": "95b136d5e7f1466eae51c685ad88eb39",
+                  "paid_amount": "189.00",
+                  "payable_amount": "189.00",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "耐克 NIKE AIR MAX 90 ESSENTIAL AJ1285"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "paid"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "194.00",
+                  "order_id": "d38e410214234847bcfc65e63d492dde",
+                  "paid_amount": "0.00",
+                  "payable_amount": "189.00",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "耐克 NIKE AIR MAX 90 ESSENTIAL AJ1285"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "cancelled"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "200.00",
+                  "order_id": "DEMO-RECENT-1-shoes",
+                  "paid_amount": "200.00",
+                  "payable_amount": "200.00",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "耐克 NIKE ROSHE RUN 511881（男鞋）"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "pending_receipt"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "654.75",
+                  "order_id": "DEMO-WILLIAM-MULTI-1",
+                  "paid_amount": "654.75",
+                  "payable_amount": "654.75",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "HLA海澜之家简约动物印花短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "HLA海澜之家蓝灰花纹圆领针织布短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "HLA海澜之家短袖T恤男基础款（T恤）"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "after_sale"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "461.72",
+                  "order_id": "DEMO-WILLIAM-MULTI-2",
+                  "paid_amount": "461.72",
+                  "payable_amount": "461.72",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "HLA海澜之家简约动物印花短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "HLA海澜之家蓝灰花纹圆领针织布短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "耐克 NIKE ROSHE RUN 511881（男鞋）"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "after_sale"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "240.00",
+                  "order_id": "202002250100000004",
+                  "paid_amount": "240.00",
+                  "payable_amount": "240.00",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "耐克NIKE 男子 气垫 休闲鞋 AIR MAX 90 ESSENTIAL 运动鞋 AJ1285-101白色41码"
+                    }
+                  ],
+                  "shipping_amount": "20.00",
+                  "status": "received"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "540.00",
+                  "order_id": "202002250100000003",
+                  "paid_amount": "0.00",
+                  "payable_amount": "540.00",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "耐克NIKE 男子 气垫 休闲鞋 AIR MAX 90 ESSENTIAL 运动鞋 AJ1285-101白色41码"
+                    },
+                    {
+                      "name": "耐克NIKE 男子 气垫 休闲鞋 AIR MAX 90 ESSENTIAL 运动鞋 AJ1285-101白色41码"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "closed"
+                }
+              ],
+              "total": 8
+            },
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ]
+          }
+        },
+        {
+          "event_id": "2cd97d37-7c15-518c-8a77-a33ac862f9a7",
+          "source_sha256": "2bb259cb66e4b3e85e5f9287e941be48c30317139c41a3ef74d4a49aa62295d0",
+          "tool": "get_logistics",
+          "arguments": {
+            "target_ref": "WyJvcmRlciIsIm1hbGxfZGVtbyIsIkRFTU8tV0lMTElBTS1NVUxUSS0yIl0"
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "items": [
+                {
+                  "delivered_at": null,
+                  "estimated_delivery": null,
+                  "items": [
+                    {
+                      "order_item_id": "WM2-I3"
+                    }
+                  ],
+                  "order_id": "DEMO-WILLIAM-MULTI-2",
+                  "platform_code": "mall_demo",
+                  "status": "in_transit"
+                },
+                {
+                  "delivered_at": "2026-10-23T01:00:00Z",
+                  "estimated_delivery": null,
+                  "items": [
+                    {
+                      "order_item_id": "WM2-I4"
+                    }
+                  ],
+                  "order_id": "DEMO-WILLIAM-MULTI-2",
+                  "platform_code": "mall_demo",
+                  "status": "delivered"
+                },
+                {
+                  "delivered_at": "2026-10-19T02:00:00Z",
+                  "estimated_delivery": null,
+                  "items": [
+                    {
+                      "order_item_id": "WM2-I1"
+                    }
+                  ],
+                  "order_id": "DEMO-WILLIAM-MULTI-2",
+                  "platform_code": "mall_demo",
+                  "status": "delivered"
+                },
+                {
+                  "delivered_at": "2026-10-19T02:00:00Z",
+                  "estimated_delivery": null,
+                  "items": [
+                    {
+                      "order_item_id": "WM2-I2"
+                    }
+                  ],
+                  "order_id": "DEMO-WILLIAM-MULTI-2",
+                  "platform_code": "mall_demo",
+                  "status": "delivered"
+                },
+                {
+                  "delivered_at": "2026-10-19T02:00:00Z",
+                  "estimated_delivery": null,
+                  "items": [
+                    {
+                      "order_item_id": "WM2-I3"
+                    }
+                  ],
+                  "order_id": "DEMO-WILLIAM-MULTI-2",
+                  "platform_code": "mall_demo",
+                  "status": "delivered"
+                }
+              ],
+              "quantities": [
+                {
+                  "order_item_id": "WM2-I1",
+                  "purchased": 1,
+                  "recorded_shipped": 1
+                },
+                {
+                  "order_item_id": "WM2-I2",
+                  "purchased": 1,
+                  "recorded_shipped": 1
+                },
+                {
+                  "order_item_id": "WM2-I3",
+                  "purchased": 1,
+                  "recorded_shipped": 1
+                },
+                {
+                  "order_item_id": "WM2-I4",
+                  "purchased": 1,
+                  "recorded_shipped": 1
+                }
+              ],
+              "total": 6
+            },
+            "limitations": [
+              "未记录预计送达时间；发出数量不代表签收数量",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ]
+          }
+        },
+        {
+          "event_id": "a30d16b2-a179-5eb0-8450-17f4c32e3cbd",
+          "source_sha256": "ff9cc8997bc1ebae0a79b080646c12c149747d5069c3b6b122114d3925fe8fbe",
+          "tool": "find_orders",
+          "arguments": {
+            "query": "鞋",
+            "status": "all"
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "items": [
+                {
+                  "currency": "CNY",
+                  "goods_amount": "200.00",
+                  "order_id": "DEMO-RECENT-1-shoes",
+                  "paid_amount": "200.00",
+                  "payable_amount": "200.00",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "耐克 NIKE ROSHE RUN 511881（男鞋）"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "pending_receipt"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "654.75",
+                  "order_id": "DEMO-WILLIAM-MULTI-1",
+                  "paid_amount": "654.75",
+                  "payable_amount": "654.75",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "HLA海澜之家简约动物印花短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "HLA海澜之家蓝灰花纹圆领针织布短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "HLA海澜之家短袖T恤男基础款（T恤）"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "after_sale"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "461.72",
+                  "order_id": "DEMO-WILLIAM-MULTI-2",
+                  "paid_amount": "461.72",
+                  "payable_amount": "461.72",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "HLA海澜之家简约动物印花短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "HLA海澜之家蓝灰花纹圆领针织布短袖T恤（T恤）"
+                    },
+                    {
+                      "name": "耐克 NIKE ROSHE RUN 511881（男鞋）"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "after_sale"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "240.00",
+                  "order_id": "202002250100000004",
+                  "paid_amount": "240.00",
+                  "payable_amount": "240.00",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "耐克NIKE 男子 气垫 休闲鞋 AIR MAX 90 ESSENTIAL 运动鞋 AJ1285-101白色41码"
+                    }
+                  ],
+                  "shipping_amount": "20.00",
+                  "status": "received"
+                },
+                {
+                  "currency": "CNY",
+                  "goods_amount": "540.00",
+                  "order_id": "202002250100000003",
+                  "paid_amount": "0.00",
+                  "payable_amount": "540.00",
+                  "platform_code": "mall_demo",
+                  "purchase_summary": [
+                    {
+                      "name": "耐克NIKE 男子 气垫 休闲鞋 AIR MAX 90 ESSENTIAL 运动鞋 AJ1285-101白色41码"
+                    },
+                    {
+                      "name": "耐克NIKE 男子 气垫 休闲鞋 AIR MAX 90 ESSENTIAL 运动鞋 AJ1285-101白色41码"
+                    }
+                  ],
+                  "shipping_amount": "0.00",
+                  "status": "closed"
+                }
+              ],
+              "total": 5
+            },
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ]
+          }
+        },
+        {
+          "event_id": "b936b7b6-d23f-5628-a540-be18813a6718",
+          "source_sha256": "9e2f2f0073c69c6236bc90f7ed6968848861aa03acee72a5fec4dcb0e1fbffbe",
+          "tool": "find_orders",
+          "arguments": {
+            "query": "耐克鞋",
+            "status": "all"
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "items": [],
+              "total": 0
+            },
+            "limitations": [
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ]
+          }
+        },
+        {
+          "event_id": "f8c0b028-1c82-5592-953c-c304832043c0",
+          "source_sha256": "d80eb4d8f715c1eceb8511346de414947bab607095d8ffa711672d9f643024f5",
+          "tool": "get_logistics",
+          "arguments": {
+            "target_ref": "WyJvcmRlciIsIm1hbGxfZGVtbyIsIkRFTU8tUkVDRU5ULTEtc2hvZXMiXQ"
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "items": [
+                {
+                  "delivered_at": null,
+                  "estimated_delivery": null,
+                  "items": [
+                    {
+                      "order_item_id": "item_DEMO-RECENT-1-shoes"
+                    }
+                  ],
+                  "order_id": "DEMO-RECENT-1-shoes",
+                  "platform_code": "mall_demo",
+                  "status": "in_transit"
+                }
+              ],
+              "quantities": [
+                {
+                  "order_item_id": "item_DEMO-RECENT-1-shoes",
+                  "purchased": 1,
+                  "recorded_shipped": 1
+                }
+              ],
+              "total": 1
+            },
+            "limitations": [
+              "未记录预计送达时间；发出数量不代表签收数量",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

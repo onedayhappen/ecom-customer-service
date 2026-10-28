@@ -1,0 +1,682 @@
+{
+  "source": "youyou_20261026_863134",
+  "method": "Unmodified archived search tool results. injected_reply is a regression fault injection, NOT an observed historical reply. captured_public_replies preserve the actual historical replies.",
+  "cases": [
+    {
+      "session": 8,
+      "round": 9,
+      "session_id": "0c4f63ef-edb9-4d68-8aae-347f87a6717a",
+      "user": "会员价就先看红米K50吧，是我自己看手机，不是我爸那个苹果。",
+      "subject": "红米K50",
+      "captured_public_replies": [
+        "给爸爸看的这台苹果手机，您希望优先按哪个方向筛选？（可自由补充预算、容量、颜色等要求）\n1. 预算优先，先看价格较低的机型；2. 容量优先，需要较大存储（如 256G 及以上）；3. 机型优先，倾向较新的 iPhone 14 系列；4. 先不定，把两款机型的完整规格都列出来对比"
+      ],
+      "injected_reply": "没有搜到红米K50，所以这个商品不存在。",
+      "receipts": [
+        {
+          "event_id": "81e87961-5b00-508a-870a-99e4d13a0138",
+          "tool": "search_products",
+          "arguments": {
+            "query": "红米K50"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "applied_conditions": {
+                "max_price": null,
+                "query": "红米K50",
+                "specs": []
+              },
+              "has_more": false,
+              "items": [],
+              "total": 0
+            },
+            "data_as_of": null,
+            "limitations": [
+              "实时分页：各页独立读取，数据变更后可从第一页重新查询",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [
+              "applied_conditions.max_price"
+            ],
+            "next_cursor": null,
+            "observed_at": "2026-10-27T02:18:46.292920Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "merchants",
+                  "product_skus",
+                  "products"
+                ]
+              }
+            ],
+            "status": "no_match",
+            "success": true
+          },
+          "source_sha256": "0138c5e8e9c4679caa4e667723314361993ed0355000e2d30f32dcdf3e409d79"
+        },
+        {
+          "event_id": "a549050c-6f34-57d3-b053-38566b8ec61c",
+          "tool": "search_products",
+          "arguments": {
+            "query": "红米 K50 手机"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "applied_conditions": {
+                "max_price": null,
+                "query": "红米 K50 手机",
+                "specs": []
+              },
+              "has_more": false,
+              "items": [],
+              "total": 0
+            },
+            "data_as_of": null,
+            "limitations": [
+              "实时分页：各页独立读取，数据变更后可从第一页重新查询",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [
+              "applied_conditions.max_price"
+            ],
+            "next_cursor": null,
+            "observed_at": "2026-10-27T02:18:53.249294Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "merchants",
+                  "product_skus",
+                  "products"
+                ]
+              }
+            ],
+            "status": "no_match",
+            "success": true
+          },
+          "source_sha256": "1e85d85e6932d613b386786964558b8725c2cd818132df44f185564fdbe93ca3"
+        },
+        {
+          "event_id": "d05f3115-7f7e-56a3-8e31-96913394759e",
+          "tool": "search_products",
+          "arguments": {
+            "query": "Redmi K50"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "applied_conditions": {
+                "max_price": null,
+                "query": "Redmi K50",
+                "specs": []
+              },
+              "has_more": false,
+              "items": [
+                {
+                  "category": "手机通讯",
+                  "description": "模拟店铺测试商品；规格沿用 mall 示例，未经品牌核实，报价和库存为模拟值。",
+                  "matched_fields": [
+                    "name"
+                  ],
+                  "merchant_id": "mall_demo_brand_6",
+                  "merchant_name": "小米旗舰店（模拟）",
+                  "name": "Redmi K50",
+                  "product_id": "mall_demo_brand_6_p41",
+                  "product_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2JyYW5kXzZfcDQxIl0",
+                  "sku_count": 4,
+                  "sku_summary": [
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 56,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "2099.00",
+                      "merchant_id": "mall_demo_brand_6",
+                      "product_id": "mall_demo_brand_6_p41",
+                      "product_name": "Redmi K50",
+                      "sku_code": "DEMO-brand_6-202211040041001",
+                      "sku_id": "mall_demo_brand_6_s225",
+                      "spec_values": {
+                        "容量": "128G",
+                        "颜色": "墨羽"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNl9zMjI1Il0",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 63,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "2299.00",
+                      "merchant_id": "mall_demo_brand_6",
+                      "product_id": "mall_demo_brand_6_p41",
+                      "product_name": "Redmi K50",
+                      "sku_code": "DEMO-brand_6-202211040041002",
+                      "sku_id": "mall_demo_brand_6_s226",
+                      "spec_values": {
+                        "容量": "256G",
+                        "颜色": "墨羽"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNl9zMjI2Il0",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 70,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "2099.00",
+                      "merchant_id": "mall_demo_brand_6",
+                      "product_id": "mall_demo_brand_6_p41",
+                      "product_name": "Redmi K50",
+                      "sku_code": "DEMO-brand_6-202211040041003",
+                      "sku_id": "mall_demo_brand_6_s227",
+                      "spec_values": {
+                        "容量": "128G",
+                        "颜色": "银迹"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNl9zMjI3Il0",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 77,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "2299.00",
+                      "merchant_id": "mall_demo_brand_6",
+                      "product_id": "mall_demo_brand_6_p41",
+                      "product_name": "Redmi K50",
+                      "sku_code": "DEMO-brand_6-202211040041004",
+                      "sku_id": "mall_demo_brand_6_s228",
+                      "spec_values": {
+                        "容量": "256G",
+                        "颜色": "银迹"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fYnJhbmRfNl9zMjI4Il0",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    }
+                  ],
+                  "skus_truncated": false,
+                  "subject_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2JyYW5kXzZfcDQxIl0",
+                  "unapplied_conditions": []
+                },
+                {
+                  "category": "手机通讯",
+                  "description": "模拟店铺测试商品；规格沿用 mall 示例，未经品牌核实，报价和库存为模拟值。",
+                  "matched_fields": [
+                    "name"
+                  ],
+                  "merchant_id": "mall_demo_digital_a",
+                  "merchant_name": "优选数码专营店（模拟）",
+                  "name": "Redmi K50",
+                  "product_id": "mall_demo_digital_a_p41",
+                  "product_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2RpZ2l0YWxfYV9wNDEiXQ",
+                  "sku_count": 4,
+                  "sku_summary": [
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 69,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "2036.03",
+                      "merchant_id": "mall_demo_digital_a",
+                      "product_id": "mall_demo_digital_a_p41",
+                      "product_name": "Redmi K50",
+                      "sku_code": "DEMO-digital_a-202211040041001",
+                      "sku_id": "mall_demo_digital_a_s225",
+                      "spec_values": {
+                        "容量": "128G",
+                        "颜色": "墨羽"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9hX3MyMjUiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 76,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "2230.03",
+                      "merchant_id": "mall_demo_digital_a",
+                      "product_id": "mall_demo_digital_a_p41",
+                      "product_name": "Redmi K50",
+                      "sku_code": "DEMO-digital_a-202211040041002",
+                      "sku_id": "mall_demo_digital_a_s226",
+                      "spec_values": {
+                        "容量": "256G",
+                        "颜色": "墨羽"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9hX3MyMjYiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 83,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "2036.03",
+                      "merchant_id": "mall_demo_digital_a",
+                      "product_id": "mall_demo_digital_a_p41",
+                      "product_name": "Redmi K50",
+                      "sku_code": "DEMO-digital_a-202211040041003",
+                      "sku_id": "mall_demo_digital_a_s227",
+                      "spec_values": {
+                        "容量": "128G",
+                        "颜色": "银迹"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9hX3MyMjciXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 90,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "2230.03",
+                      "merchant_id": "mall_demo_digital_a",
+                      "product_id": "mall_demo_digital_a_p41",
+                      "product_name": "Redmi K50",
+                      "sku_code": "DEMO-digital_a-202211040041004",
+                      "sku_id": "mall_demo_digital_a_s228",
+                      "spec_values": {
+                        "容量": "256G",
+                        "颜色": "银迹"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9hX3MyMjgiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    }
+                  ],
+                  "skus_truncated": false,
+                  "subject_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2RpZ2l0YWxfYV9wNDEiXQ",
+                  "unapplied_conditions": []
+                },
+                {
+                  "category": "手机通讯",
+                  "description": "模拟店铺测试商品；规格沿用 mall 示例，未经品牌核实，报价和库存为模拟值。",
+                  "matched_fields": [
+                    "name"
+                  ],
+                  "merchant_id": "mall_demo_digital_b",
+                  "merchant_name": "惠购数码专营店（模拟）",
+                  "name": "Redmi K50",
+                  "product_id": "mall_demo_digital_b_p41",
+                  "product_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2RpZ2l0YWxfYl9wNDEiXQ",
+                  "sku_count": 4,
+                  "sku_summary": [
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 82,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "1994.05",
+                      "merchant_id": "mall_demo_digital_b",
+                      "product_id": "mall_demo_digital_b_p41",
+                      "product_name": "Redmi K50",
+                      "sku_code": "DEMO-digital_b-202211040041001",
+                      "sku_id": "mall_demo_digital_b_s225",
+                      "spec_values": {
+                        "容量": "128G",
+                        "颜色": "墨羽"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9iX3MyMjUiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 89,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "2184.05",
+                      "merchant_id": "mall_demo_digital_b",
+                      "product_id": "mall_demo_digital_b_p41",
+                      "product_name": "Redmi K50",
+                      "sku_code": "DEMO-digital_b-202211040041002",
+                      "sku_id": "mall_demo_digital_b_s226",
+                      "spec_values": {
+                        "容量": "256G",
+                        "颜色": "墨羽"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9iX3MyMjYiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 96,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "1994.05",
+                      "merchant_id": "mall_demo_digital_b",
+                      "product_id": "mall_demo_digital_b_p41",
+                      "product_name": "Redmi K50",
+                      "sku_code": "DEMO-digital_b-202211040041003",
+                      "sku_id": "mall_demo_digital_b_s227",
+                      "spec_values": {
+                        "容量": "128G",
+                        "颜色": "银迹"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9iX3MyMjciXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    },
+                    {
+                      "created_at": "2026-10-24T13:36:07.691227Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 22,
+                        "updated_at": "2026-10-24T13:36:07.691227Z"
+                      },
+                      "list_price": "2184.05",
+                      "merchant_id": "mall_demo_digital_b",
+                      "product_id": "mall_demo_digital_b_p41",
+                      "product_name": "Redmi K50",
+                      "sku_code": "DEMO-digital_b-202211040041004",
+                      "sku_id": "mall_demo_digital_b_s228",
+                      "spec_values": {
+                        "容量": "256G",
+                        "颜色": "银迹"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJtYWxsX2RlbW9fZGlnaXRhbF9iX3MyMjgiXQ",
+                      "updated_at": "2026-10-24T13:36:07.691227Z"
+                    }
+                  ],
+                  "skus_truncated": false,
+                  "subject_ref": "WyJwcm9kdWN0IiwibWFsbF9kZW1vX2RpZ2l0YWxfYl9wNDEiXQ",
+                  "unapplied_conditions": []
+                }
+              ],
+              "total": 3
+            },
+            "data_as_of": null,
+            "limitations": [
+              "实时分页：各页独立读取，数据变更后可从第一页重新查询",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [
+              "applied_conditions.max_price"
+            ],
+            "next_cursor": null,
+            "observed_at": "2026-10-27T02:18:54.963704Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "merchants",
+                  "product_skus",
+                  "products",
+                  "sku_inventory"
+                ]
+              }
+            ],
+            "status": "ok",
+            "success": true
+          },
+          "source_sha256": "09900e1a5eaf929ff311c680b0c8008bf2b44d1b5407cc57941b200625ad8ba8"
+        }
+      ]
+    },
+    {
+      "session": 5,
+      "round": 10,
+      "session_id": "eac9ea1c-b794-406d-b5df-64ca78d9b11a",
+      "user": "顺便问下这口28厘米的锅大不大？我家平常三个人吃饭，想要轻一点、好洗点的。",
+      "subject": "28厘米锅",
+      "captured_public_replies": [
+        "好的，这口锅的售后我不动，今天不新增也不撤销，只按原来的记录核对：Carat钻石煎锅28cm（订单 DEMO-RECENT-1-service）买的是2口，申请的是其中1口，申请退款159元，目前售后状态是“待审核”，还没有审批通过，退款记录里也没有已退金额，所以钱还没有核实到账，到账时间也无法确认。\n\n关于28厘米这口锅：三个人日常吃饭用28cm煎锅一般够用，煎两三个菜、做早餐都比较合适。不过现有资料里没有这口锅的重量和具体材质说明，所以“轻不轻、好不好洗”我没法给你确切结论。一般来说，不粘涂层的锅清洗会省事一些，但具体还要看商品页标注的重量和涂层类型，你可以对照详情页确认一下。"
+      ],
+      "injected_reply": "没找到28厘米的锅，店里不卖这种锅。",
+      "receipts": [
+        {
+          "event_id": "219341be-ecfa-5b51-9a88-ef3c903b5dfb",
+          "tool": "search_products",
+          "arguments": {
+            "query": "28厘米 锅"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "applied_conditions": {
+                "max_price": null,
+                "query": "28厘米 锅",
+                "specs": []
+              },
+              "has_more": false,
+              "items": [],
+              "total": 0
+            },
+            "data_as_of": null,
+            "limitations": [
+              "实时分页：各页独立读取，数据变更后可从第一页重新查询",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [
+              "applied_conditions.max_price"
+            ],
+            "next_cursor": null,
+            "observed_at": "2026-10-27T01:47:39.921418Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "merchants",
+                  "product_skus",
+                  "products"
+                ]
+              }
+            ],
+            "status": "no_match",
+            "success": true
+          },
+          "source_sha256": "46aa155083d2d5201be4216bfbd5caed9e00babd14c0fc6f2a9d85379885c81f"
+        },
+        {
+          "event_id": "edfaf232-0ec5-5af7-a853-6c84339bb5b6",
+          "tool": "search_products",
+          "arguments": {
+            "query": "锅 28cm"
+          },
+          "result": {
+            "completeness": "partial",
+            "data": {
+              "applied_conditions": {
+                "max_price": null,
+                "query": "锅 28cm",
+                "specs": []
+              },
+              "has_more": false,
+              "items": [
+                {
+                  "category": "锅具",
+                  "description": "模拟店铺；商品资料来自 litemall 示例，规格未经品牌核实，价格与库存为测试数据。 餐厨 / 锅具。耐磨涂层，导热迅速",
+                  "matched_fields": [
+                    "name",
+                    "category",
+                    "description"
+                  ],
+                  "merchant_id": "litemall_demo_1005001_0",
+                  "merchant_name": "拾光餐厨专营店（模拟）",
+                  "name": "Carat钻石煎锅28cm",
+                  "product_id": "litemall_demo_1005001_0_g1051001",
+                  "product_ref": "WyJwcm9kdWN0IiwibGl0ZW1hbGxfZGVtb18xMDA1MDAxXzBfZzEwNTEwMDEiXQ",
+                  "sku_count": 1,
+                  "sku_summary": [
+                    {
+                      "created_at": "2026-10-24T13:48:25.923602Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 85,
+                        "updated_at": "2026-10-24T13:48:25.923602Z"
+                      },
+                      "list_price": "159.00",
+                      "merchant_id": "litemall_demo_1005001_0",
+                      "product_id": "litemall_demo_1005001_0_g1051001",
+                      "product_name": "Carat钻石煎锅28cm",
+                      "sku_code": "LT-1005001-0-64",
+                      "sku_id": "litemall_demo_1005001_0_s64",
+                      "spec_values": {
+                        "规格": "标准"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJsaXRlbWFsbF9kZW1vXzEwMDUwMDFfMF9zNjQiXQ",
+                      "updated_at": "2026-10-24T13:48:25.923602Z"
+                    }
+                  ],
+                  "skus_truncated": false,
+                  "subject_ref": "WyJwcm9kdWN0IiwibGl0ZW1hbGxfZGVtb18xMDA1MDAxXzBfZzEwNTEwMDEiXQ",
+                  "unapplied_conditions": []
+                },
+                {
+                  "category": "锅具",
+                  "description": "模拟店铺；商品资料来自 litemall 示例，规格未经品牌核实，价格与库存为测试数据。 餐厨 / 锅具。耐磨涂层，导热迅速",
+                  "matched_fields": [
+                    "name",
+                    "category",
+                    "description"
+                  ],
+                  "merchant_id": "litemall_demo_1005001_1",
+                  "merchant_name": "宜选餐厨专营店（模拟）",
+                  "name": "Carat钻石煎锅28cm",
+                  "product_id": "litemall_demo_1005001_1_g1051001",
+                  "product_ref": "WyJwcm9kdWN0IiwibGl0ZW1hbGxfZGVtb18xMDA1MDAxXzFfZzEwNTEwMDEiXQ",
+                  "sku_count": 1,
+                  "sku_summary": [
+                    {
+                      "created_at": "2026-10-24T13:48:25.923602Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 116,
+                        "updated_at": "2026-10-24T13:48:25.923602Z"
+                      },
+                      "list_price": "154.23",
+                      "merchant_id": "litemall_demo_1005001_1",
+                      "product_id": "litemall_demo_1005001_1_g1051001",
+                      "product_name": "Carat钻石煎锅28cm",
+                      "sku_code": "LT-1005001-1-64",
+                      "sku_id": "litemall_demo_1005001_1_s64",
+                      "spec_values": {
+                        "规格": "标准"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJsaXRlbWFsbF9kZW1vXzEwMDUwMDFfMV9zNjQiXQ",
+                      "updated_at": "2026-10-24T13:48:25.923602Z"
+                    }
+                  ],
+                  "skus_truncated": false,
+                  "subject_ref": "WyJwcm9kdWN0IiwibGl0ZW1hbGxfZGVtb18xMDA1MDAxXzFfZzEwNTEwMDEiXQ",
+                  "unapplied_conditions": []
+                },
+                {
+                  "category": "锅具",
+                  "description": "模拟店铺；商品资料来自 litemall 示例，规格未经品牌核实，价格与库存为测试数据。 餐厨 / 锅具。耐磨涂层，导热迅速",
+                  "matched_fields": [
+                    "name",
+                    "category",
+                    "description"
+                  ],
+                  "merchant_id": "litemall_demo_1005001_2",
+                  "merchant_name": "悦享餐厨专营店（模拟）",
+                  "name": "Carat钻石煎锅28cm",
+                  "product_id": "litemall_demo_1005001_2_g1051001",
+                  "product_ref": "WyJwcm9kdWN0IiwibGl0ZW1hbGxfZGVtb18xMDA1MDAxXzJfZzEwNTEwMDEiXQ",
+                  "sku_count": 1,
+                  "sku_summary": [
+                    {
+                      "created_at": "2026-10-24T13:48:25.923602Z",
+                      "currency": "CNY",
+                      "inventory": {
+                        "available_qty": 26,
+                        "updated_at": "2026-10-24T13:48:25.923602Z"
+                      },
+                      "list_price": "162.18",
+                      "merchant_id": "litemall_demo_1005001_2",
+                      "product_id": "litemall_demo_1005001_2_g1051001",
+                      "product_name": "Carat钻石煎锅28cm",
+                      "sku_code": "LT-1005001-2-64",
+                      "sku_id": "litemall_demo_1005001_2_s64",
+                      "spec_values": {
+                        "规格": "标准"
+                      },
+                      "status": "active",
+                      "subject_ref": "WyJza3UiLCJsaXRlbWFsbF9kZW1vXzEwMDUwMDFfMl9zNjQiXQ",
+                      "updated_at": "2026-10-24T13:48:25.923602Z"
+                    }
+                  ],
+                  "skus_truncated": false,
+                  "subject_ref": "WyJwcm9kdWN0IiwibGl0ZW1hbGxfZGVtb18xMDA1MDAxXzJfZzEwNTEwMDEiXQ",
+                  "unapplied_conditions": []
+                }
+              ],
+              "total": 3
+            },
+            "data_as_of": null,
+            "limitations": [
+              "实时分页：各页独立读取，数据变更后可从第一页重新查询",
+              "读取时刻不代表上游同步时刻；数据同步时间未记录"
+            ],
+            "missing_fields": [
+              "applied_conditions.max_price"
+            ],
+            "next_cursor": null,
+            "observed_at": "2026-10-27T01:47:45.031350Z",
+            "ok": true,
+            "sources": [
+              {
+                "kind": "mysql",
+                "tables": [
+                  "merchants",
+                  "product_skus",
+                  "products",
+                  "sku_inventory"
+                ]
+              }
+            ],
+            "status": "ok",
+            "success": true
+          },
+          "source_sha256": "5f0df1af1063ae8aa4e78c3ed4c75fcc9221f2c7a3fab4aa83e6d714f9b64979"
+        }
+      ]
+    }
+  ]
+}
