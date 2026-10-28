@@ -16,7 +16,7 @@ from app.harness.convergence import ConvergenceDetector
 from app.runtime.budgets import agent_partition
 from app.runtime.outbox import clock
 from app.session.context_budget import estimate_request_tokens
-from app.session.request_budget import request_input_limit
+from app.session.request_budget import ContextBudgetExceeded, request_input_limit
 from app.support.store import SupportError
 from app.tasks.execution_models import ProgressInput, ReadTaskContext, TASK_PROMPT, TaskExecutionInput
 from app.tasks.execution_store import TaskRuns
@@ -57,6 +57,8 @@ class _ModelClient:
             raise ExecutionStopped("model_timeout") from None
         except CallCapacityExceeded:
             raise ExecutionStopped("call_capacity") from None
+        except ContextBudgetExceeded:
+            raise ExecutionStopped("context_budget") from None
         except Exception:
             raise ExecutionStopped("model_unavailable") from None
         ctx.checkpoint()

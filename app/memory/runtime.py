@@ -50,6 +50,10 @@ def _now():
 
 def enqueue_memory_job(tx, control, payload):
     """Called by the public-event hook in the event's own transaction."""
+    from app.memory.v3.routing import enabled
+    if hasattr(settings, 'memory_engine') and enabled(control['user_id'], tx=tx):
+        from app.memory.v3.jobs import enqueue
+        return enqueue(tx, control, payload)
     if not settings.memory_enabled or payload.get('role') != 'user':
         return
     timestamp = _now()
@@ -65,6 +69,14 @@ def enqueue_memory_job(tx, control, payload):
 
 
 def build_memory_manager(user_id, *, store=None):
+    from app.memory.v3.routing import enabled
+    if store is not None and enabled(user_id, store=store):
+        from app.memory.v3.manager import build_manager
+        return build_manager(user_id, store)
+    return _build_legacy_memory_manager(user_id, store=store)
+
+
+def _build_legacy_memory_manager(user_id, *, store=None):
     """Create a fresh manager for the authenticated user, without a model call."""
     from app.memory.ltm_manager import LongTermMemoryManager
 
@@ -92,6 +104,9 @@ def build_memory_manager(user_id, *, store=None):
 def _claim(store, candidate):
     token, now = str(uuid4()), _now()
     with store.transaction() as tx:
+        migrated = tx.one('SELECT migrated FROM memory_v3_users WHERE user_id=?', (candidate['user_id'],))
+        if migrated and migrated['migrated']:
+            return None
         saved = tx.execute('''UPDATE support_memory_jobs SET lease_token=?,lease_until=?,version=version+1
             WHERE session_id=? AND version=? AND requested_sequence>through_sequence
             AND available_at<=? AND (lease_until IS NULL OR lease_until<=?)''',
@@ -346,6 +361,20 @@ def _save_candidate_outcomes(tx, job, batch_id, messages, issues):
 
 def process_memory_jobs(store, extract_fn=None, limit=20):
     """Run bounded jobs; extract_fn(messages, existing_facts) supports offline QA."""
+    if getattr(settings, 'memory_engine', 'legacy') == 'v3':
+        from app.memory.v3.jobs import process
+        return process(store, extract_fn=extract_fn, limit=limit)
+    counts = _process_legacy_memory_jobs(store, extract_fn, limit)
+    # Migrated users stay on v3, including when the global rollout is paused.
+    # Offline legacy extraction doubles intentionally retain their old contract.
+    if extract_fn is None and hasattr(settings, 'memory_engine'):
+        from app.memory.v3.jobs import process
+        for key, value in process(store, limit=limit).items():
+            counts[key] = counts.get(key, 0) + value
+    return counts
+
+
+def _process_legacy_memory_jobs(store, extract_fn=None, limit=20):
     counts = dict(processed=0, failed=0, stale=0, deferred=0, facts=0)
     if not settings.memory_enabled:
         return counts
@@ -358,6 +387,8 @@ def process_memory_jobs(store, extract_fn=None, limit=20):
     with store.transaction(read_only=True) as tx:
         candidates = tx.all('''SELECT * FROM support_memory_jobs
             WHERE requested_sequence>through_sequence AND available_at<=?
+            AND NOT EXISTS (SELECT 1 FROM memory_v3_users v
+                WHERE v.user_id=support_memory_jobs.user_id AND v.migrated=1)
             AND (lease_until IS NULL OR lease_until<=?) ORDER BY available_at,updated_at LIMIT ?''',
             (timestamp, timestamp, max(0, min(limit, 100))))
     for candidate in candidates:

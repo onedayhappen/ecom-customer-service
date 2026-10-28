@@ -167,6 +167,92 @@ def test_other_session_invalid_or_unscoped_menu_does_not_block_ready_result(stor
     assert question_row(store, question["clarification_id"])["status"] == "open"
 
 
+@pytest.mark.parametrize("state", ["ready", "deferred"])
+@pytest.mark.parametrize("composed", [False, True])
+def test_active_foreign_clarification_does_not_swallow_result_or_failure(store, state, composed):
+    record, source = task(store, "s")
+    original, question = clarify(store, [record], sid="old")
+    ReplyCoordinator(store, "alice").publish("old")
+    jid = ready(store, record, source)
+    if state == "deferred":
+        with store.transaction() as tx:
+            row = tx.one("SELECT response FROM runtime_jobs WHERE job_id=?", (jid,))
+            result = json.loads(row["response"])
+            result.update(state="deferred", reason="context_budget", evidence_ids=[])
+            tx.execute("UPDATE runtime_jobs SET response=? WHERE job_id=?", (json.dumps(result), jid))
+    def unavailable(_):
+        raise RuntimeError("composer unavailable")
+    coordinator = ReplyCoordinator(store, "alice", composer=unavailable if composed else None)
+    sent = coordinator.publish("s")
+    assert sent["result_ids"] == ["job:" + jid]
+    assert "clarification_id" not in sent
+    if state == "deferred":
+        assert "暂时没有可核实" in sent["content"]
+    else:
+        assert "ORD-A" in sent["content"]
+    assert coordinator.publish("s") is None
+    assert question_row(store, question["clarification_id"])["status"] == "open"
+    assert input_status(store, original) == "clarification"
+    with store.transaction(read_only=True) as tx:
+        assert tx.one("SELECT disposition FROM task_reply_items WHERE item_key=?", ("job:" + jid,))["disposition"] == "published"
+
+
+def test_cross_session_updates_do_not_revive_old_menus_and_returning_user_can_resume(store):
+    record, _ = task(store, "old")
+    second, _ = task(store, "old", details={"order_id": "ORD-B"})
+    old_questions = []
+    for sid in ["old", "old2"]:
+        original, question = clarify(store, [record, second], sid=sid)
+        ReplyCoordinator(store, "alice").publish(sid)
+        old_questions.append((sid, original, question))
+    svc = AssociationService(store, "alice")
+    for i in range(3):
+        previous_version = record.version
+        batch = batch_for(store, f"继续查耳机的物流，补充说明{i}")
+        svc.commit(batch, svc.snapshot(batch), proposal(update(batch, record, details={"conditions": f"补充说明{i}"})))
+        record = svc.repo.get(record.task_id)
+        assert record.version > previous_version
+        source = dict(kind="message", session_id="s", sequence=batch.messages[0]["sequence"])
+        jid = ready(store, record, source)
+        # Same order as the worker: poll old sessions before the current one.
+        for sid, original, question in old_questions:
+            assert ReplyCoordinator(store, "alice").publish(sid) is None
+            assert question_row(store, question["clarification_id"])["status"] == "open"
+            assert input_status(store, original) == "clarification"
+        assert ReplyCoordinator(store, "alice").publish("s")["result_ids"] == ["job:" + jid]
+    with store.transaction(read_only=True) as tx:
+        assert tx.one("SELECT COUNT(*) AS n FROM association_clarifications")["n"] == 2
+    # The obsolete menu cannot authorize a change when the user returns.
+    sid, original, question = old_questions[0]
+    answer = batch_for(store, "耳机继续查物流", sid=sid)
+    snapshot = svc.snapshot(answer)
+    with pytest.raises(AssociationRejected, match="expired_clarification"):
+        svc.commit(answer, snapshot, answer_plan(original, answer, record, question["clarification_id"]))
+    # A committed explicit supplement still leaves the original ambiguous request
+    # unresolved, so it must get one current menu, not be silently discarded.
+    svc.commit(answer, snapshot, proposal(update(answer, record)))
+    replacement = ReplyCoordinator(store, "alice").publish(sid)
+    assert replacement["clarification_id"] != question["clarification_id"]
+    assert input_status(store, original) == "clarification"
+    assert ReplyCoordinator(store, "alice").publish(sid) is None
+    current = svc.repo.get(record.task_id)
+    answer = batch_for(store, "第一个", sid=sid)
+    svc.commit(answer, svc.snapshot(answer), answer_plan(original, answer, current, replacement["clarification_id"]))
+    assert input_status(store, original) == "associated"
+
+
+def test_local_unanswered_clarification_still_blocks_ambiguous_result(store):
+    record, source = task(store, "s")
+    original, question = clarify(store, [record])
+    jid = ready(store, record, source)
+    coordinator = ReplyCoordinator(store, "alice")
+    sent = coordinator.publish("s")
+    assert sent["clarification_id"] == question["clarification_id"]
+    assert "job:" + jid not in sent["result_ids"]
+    assert coordinator.publish("s") is None
+    assert input_status(store, original) == "clarification"
+
+
 def test_answer_failure_rolls_back_task_question_and_original_intake_together(store, monkeypatch):
     record, _ = task(store, "s")
     original, question = clarify(store, [record])

@@ -9,6 +9,7 @@ from fastapi.responses import Response, JSONResponse
 from app.api.auth import router as auth_router, get_auth_store, use_mysql_auth
 from app.api.middleware import AuthMiddleware
 from app.api.support import router as support_router, identity
+from app.api.memory import router as memory_router
 from app.config.settings import settings
 from app.support.runtime import get_store
 from app.support.store import SupportError
@@ -58,6 +59,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Ecom Customer Service API", version="1.0.0", lifespan=lifespan)
+app.include_router(memory_router)
 # CORS must wrap auth so rejected/expired requests are readable by the UI.
 app.add_middleware(AuthMiddleware)
 app.add_middleware(

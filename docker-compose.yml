@@ -133,6 +133,24 @@ services:
       backend:
         condition: service_healthy
 
+  memory-worker:
+    image: ecom-customer-service-backend:latest
+    env_file: [.env]
+    environment:
+      API_SESSION_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/ecom_agent
+      MEMORY_STORAGE_BACKEND: postgres
+      MEMORY_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/ecom_agent
+      MEMORY_REDIS_URL: redis://redis:6379/0
+    command: ["python", "-m", "scripts.memory_worker"]
+    volumes:
+      - ./.docker-data/app:/app/data
+      - ./.docker-data/logs:/app/logs
+      - ${MODEL_DIR:-./model}:/app/model:ro
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+
   commerce-worker:
     image: ecom-customer-service-backend:latest
     env_file: [.env]

@@ -67,7 +67,7 @@ def main():
     import argparse
     import json
     from app.config.settings import settings
-    from app.memory.runtime import build_memory_manager
+    from app.memory.runtime import _build_legacy_memory_manager
     from app.support.store import SupportStore
 
     parser = argparse.ArgumentParser(description=__doc__)
@@ -78,7 +78,11 @@ def main():
     if not dsn:
         parser.error('A support database is required to authenticate original evidence')
     support = SupportStore(dsn)
-    manager = build_memory_manager(args.user, store=support)
+    with support.transaction(read_only=True) as tx:
+        migrated = tx.one('SELECT migrated FROM memory_v3_users WHERE user_id=?', (args.user,))
+    if migrated and migrated['migrated']:
+        parser.error('This legacy repair must run before v3 migration; v3 corrections require new authenticated evidence')
+    manager = _build_legacy_memory_manager(args.user, store=support)
     print(json.dumps(dict(applied=args.apply, changes=repair_budget_scopes(manager.ltm, support, apply=args.apply)),
                      ensure_ascii=False, indent=2))
 

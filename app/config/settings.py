@@ -94,6 +94,7 @@ class Settings(BaseSettings):
 
     # Memory 配置（第7期）
     memory_enabled: bool = True
+    memory_engine: str = Field(default='v3', pattern='^(v3|legacy)$')
     memory_dir: str = "data/sessions/memory"
     memory_user_id: str = "default"
     max_ltm_facts: int = 50

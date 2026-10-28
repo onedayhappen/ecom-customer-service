@@ -135,11 +135,31 @@ MySQL迁移按版本执行，包含旧结构清理，已有环境先核对[数�
 | --- | --- | --- |
 | API | `python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8010` | 认证、消息、事件流与操作确认 |
 | 事项 Worker | `python -m scripts.task_worker` | 消息归属、Agent执行与事项推进 |
+| 记忆 Worker | `python -m scripts.memory_worker` | v3 长期记忆提取、更新、遗忘和归档进度 |
 | 回复通知 | `python -m scripts.notification_worker` | 发布持久化会话通知 |
 | 后台维护 | `python -m scripts.platform_maintenance` | 维护、恢复和清理 |
 | 交易 Worker | `python -m scripts.commerce_worker` | 待付款超时、库存和券释放、外部回执 |
 
 交易 Worker 每10秒扫描一次，`python -m scripts.commerce_worker --once`执行单轮检查。已有后台进程时先确认运行状态，避免重复启动；普通本地进程在电脑重启后需要重新启动。
+
+长期记忆默认使用 `MEMORY_ENGINE=v3`，实现位于 `app/memory/v3`。每批经过一次模型规划，输出带逐字原话证据的 ADD / UPDATE / MERGE / FORGET 等变更；程序校验证据后，在 SupportStore 的同一事务内更新记忆版本、遗忘记录、处理回执和消息检查点。同一组修改共同接受或拒绝，独立组可以继续。读取只查询有索引的当前记录（最多 500 条），写入只重建受影响的偏好字段历史；本地向量在事务外生成，失败时仍可使用关键词检索。
+
+v3 区分商品品类、鞋子用途和尺码体系；未知体系不会猜成欧码。明确偏好没有固定 90 天有效期，更新顺序依据服务端原始消息时间。遗忘会阻止当前与历史记忆召回，也阻止旧消息重放恢复该值；用户明确要求重新记住后才能恢复。这是记忆访问层面的遗忘，原始会话和审计记录仍按各自的数据保留规则保存。
+
+首次访问一个用户时，模块从原存储导入可验证来源的结构化 v2 记录，不覆盖原存储。无法验证来源、未结构化或已经重置的记录不进入新画像；导入与跳过数量保存在 `memory_v3_receipts` 的 `migration:v2` 回执中。升级前保留原库备份，升级 API 与各 Worker 后启动记忆 Worker。`MEMORY_ENGINE=legacy` 可暂停尚未迁移用户的切换；已迁移用户继续使用 v3，防止回退读到遗忘前的旧快照。不要通过删掉迁移标记来回滚；需要恢复部署时应保留 v3 读取与遗忘屏障。
+
+客户端可调用以下接口等待一次会话的记忆处理完成（均要求登录且属于该用户）：
+
+| 接口 | 行为 |
+| --- | --- |
+| `POST /api/v1/sessions/{session_id}/memory-archive` | 固定当前消息截止点，返回 `archive_id`，HTTP 202 |
+| `GET /api/v1/memory-archives/{archive_id}` | 查询截止点、处理位置、逐组结果和错误类型 |
+
+归档状态 `completed` 表示截止点已处理，`completed_with_issues` 表示有歧义或校验拒绝，需要依据 `outcomes` 澄清；`pending` / `running` / `retrying` 仍在处理中。模型或存储失败不推进检查点，最多尝试 3 次后为 `failed`；排障后可再次请求该会话归档重试。归档接口只建立记忆处理屏障，不关闭业务事项。记忆 Worker 默认每秒检查到期任务，普通输入仍遵循 `MEMORY_EXTRACTION_DEBOUNCE_SECONDS`；归档会立即调度。
+
+离线回归运行 `python -m pytest tests/test_memory_v3.py -q`；隔离真实模型验证运行 `python -m scripts.eval_memory_v3 --live`。后者建立独立 SQLite 数据库，执行 10 次会话、每次 10 条用户消息及归档，输出计划、回执和最终记忆到 `data/evaluation/memory_v3_*`，不执行业务操作；会调用配置中的模型并产生 API 费用。它验证记忆链路，不替代客服完整回复或 PostgreSQL 并发压测。
+
+设计参考 [TencentCloud/TencentDB-Agent-Memory](https://github.com/TencentCloud/TencentDB-Agent-Memory/tree/42c6711c218b40d38d1d6b0ed4767bcc6069cbfd) 的上下文提取与批量冲突决策，主要对应 `MemoryCore/src/core/prompts/l1-extraction.ts`、`prompts/l1-dedup.ts` 和 `record/l1-dedup.ts`。本项目以 Python 重新实现并沿用现有数据库、认证与来源校验；没有引入腾讯项目的运行时依赖。原项目 MIT 许可证保留于 [THIRD_PARTY_TENCENT_MEMORY_LICENSE.txt](THIRD_PARTY_TENCENT_MEMORY_LICENSE.txt)。
 
 前端另开终端：
 

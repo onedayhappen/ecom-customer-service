@@ -19,6 +19,7 @@ from tests.api_fixtures import api  # noqa: F401
 
 @pytest.fixture
 def memory_api(api, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, 'memory_engine', 'legacy')  # v1/v2 facade compatibility.
     monkeypatch.setattr(settings, 'memory_enabled', True)
     monkeypatch.setattr(settings, 'memory_storage_backend', 'json')
     monkeypatch.setattr(settings, 'memory_dir', str(tmp_path / 'memory'))
