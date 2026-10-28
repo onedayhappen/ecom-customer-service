@@ -89,7 +89,7 @@ def catalogue(tool="get_logistics", data=None, *, scope="O1", evidence="e1", **q
     record = SimpleNamespace(task_id="t1", status="in_progress", goal="查进度", details={})
     data = deepcopy(data)
     if isinstance(data, dict):
-        for row in ([data["shipment"]] if data.get("shipment") else data.get("items", [])):
+        for row in ([data["shipment"]] if data.get("shipment") else data.get("items") or []):
             if isinstance(row, dict) and row.get("order_id"):
                 row.setdefault("platform_code", "test")
     receipt = dict(event_id=evidence, tool=tool, arguments={"target_ref": ref("order", "test", scope)}, result=dict(
@@ -251,3 +251,11 @@ def test_claim_publication_rejects_missing_or_foreign_logistics(data):
     assert "记录归属尚未确认" in text
     assert "物流记录显示已签收" not in text
     assert "暂未查到包裹或发货记录" not in text
+
+
+@pytest.mark.parametrize("data", [{}, {"items": None}, {"items": {"unexpected": "mapping"}}, {"items": [None]}])
+def test_malformed_order_search_does_not_become_no_match(data):
+    context = catalogue("find_orders", data)
+    claim = context["matters"][0]["claims"][0]
+    assert claim["kind"] == "unverified_binding"
+    assert "记录归属尚未确认" in render_plan(plan(claim), context)

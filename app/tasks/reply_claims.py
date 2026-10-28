@@ -113,8 +113,9 @@ def build_claims(record, receipts):
         data = receipt["result"].get("data") or {}
         if not isinstance(data, dict):
             continue
+        items = data.get("items")
         rows = ([data] if receipt["tool"] == "get_order" else
-                (data.get("items") or [])[:10] if receipt["tool"] == "find_orders" else [])
+                items[:10] if receipt["tool"] == "find_orders" and isinstance(items, list) else [])
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -128,6 +129,8 @@ def build_claims(record, receipts):
         if result.get("success") is not True:
             continue
         data = result.get("data") or {}
+        if not isinstance(data, dict):
+            data = {}
         args = receipt.get("arguments") or {}
         scope = str(args.get("target_ref") or args.get("order_ref") or args.get("order_id")
                     or args.get("tracking_number") or receipt["event_id"])
