@@ -1,362 +1,400 @@
 # 电商客服 Agent
 
-基于 **Python、FastAPI、React 和 MySQL** 的电商客服项目。Agent 使用 ReAct 查询商品、订单、物流、会员和优惠券，结合政策知识库回答问题；修改业务数据时先准备操作，再由服务端在用户确认后校验并提交。
+## 项目简介
 
-项目以“事项”保存处理进度：一次对话可以涉及多个订单，用户可以连续补充消息，也可以在后续会话中继续未完成的问题。后台负责消息归属、任务恢复、权限、确认和回复发布。
+面向商品咨询、订单物流、会员优惠和售后服务的电商客服项目。基于 Python、FastAPI 和 React，Agent 通过 ReAct 调用业务工具查询事实，结合政策知识库解释规则，并在用户确认后由服务端校验、提交业务操作。
 
-> 仓库包含代码、迁移和分批数据导入脚本；**本机已有的 MySQL 演示数据不会随 GitHub 克隆自动出现**。真实支付、商家处理和物流渠道需要独立接入。
+系统以持久化的“客服事项”组织进度：一次对话可以包含多个订单和目标，独立事项可以并行处理，用户也可以跨会话继续补充问题。消息归属、执行恢复、业务确认、回复发布和人工接管由后台运行层协调。
 
-## 1. 当前能力
+![项目背景](项目背景.png)
 
-工具注册表目前有 **48 个工具**，其中 **31 个读取、判断或试算工具**可通过独立 MCP 暴露。名称、描述和参数以[工具目录](app/tools/catalog.py)、[参数模型](app/tools/contracts.py)和[工具设计](docs/工具设计.md)为准。
+### 核心能力
 
-| 领域 | 已有能力 | 边界 |
-| --- | --- | --- |
-| 账号 | 注册、登录、退出、密码哈希、登录会话 | 账号与凭证保存在 MySQL，正常使用不靠 `.env` 管理账号 |
-| 商品 | 商品和商家查询、材质与规格、SKU价格、库存、补货计划 | 模型基于查询结果比较商品，工具不生成推荐结论 |
-| 订单与物流 | 本人订单、购买规格、支付记录、包裹和轨迹 | 数据缺失返回缺项；模拟轨迹不代表真实承运商记录 |
-| 会员与优惠券 | 成长等级、VIP、积分、可领券、持券、资格与金额试算 | 资格、数量和金额由程序核验，不自动替用户选券或领券 |
-| 报价与下单 | 配送计价、保存报价、确认下单、库存和券预占 | 报价不预占，确认时重新检查价格、地址、库存和权益 |
-| 取消与改址 | 待付款取消、占用释放、订单地址快照与加密历史 | 受支付、发货、状态和本地控制权限约束 |
-| 售后与价保 | 查询流程、判断资格、准备申请、跟踪退回及补发 | 申请成功不等于审核通过、退款到账或补发完成 |
-| 政策问答 | 检索经审核且具有适用范围、有效期的规则 | 需要配置向量模型、政策元数据并发布索引 |
-| 发票 | 已有工具与表结构 | 当前暂停补充发票内容，演示库相关记录为空 |
+| 能力           | 说明                                                                              |
+| -------------- | --------------------------------------------------------------------------------- |
+| 业务查询       | 查询商品、SKU、库存、订单、物流、会员、积分和优惠券，按程序规则判断资格与试算金额 |
+| 政策问答       | 按店铺、渠道、品类和有效期过滤规则，结合关键词与向量检索返回可追溯的政策依据      |
+| 多事项处理     | 区分多订单、多目标、连续补充和用户更正，保存进度并调度独立事项                    |
+| 跨会话记忆     | 记录有原话证据的用户偏好，支持更新、更正、遗忘和历史事项续接                      |
+| 受控业务办理   | 准备下单、改址、取消及售后申请；用户确认后重新校验权限、状态、金额与库存          |
+| 人工协作与恢复 | 支持人工接管、处理回执核实、外部进度跟踪、事件通知和交互日志                      |
 
-本地交易 Worker 支持待支付订单超时关闭。真实支付验签、查单与关单和生产业务渠道仍待接入；RocketMQ 和 Outbox 尚未实现。模拟支付记录不能作为真实资金到账依据。
+业务事实和金额以业务服务查询、计算结果为准；政策检索提供规则依据。申请提交、审核通过与资金到账分别记录，不能互相替代。
 
-## 2. 系统结构
+> 仓库提供源码、迁移和分批数据导入脚本，已有演示数据库不会随 Git 克隆自动出现。真实支付、商家处理和物流渠道需要独立接入；发票目前保留工具与表结构，演示数据为空。
+
+## 技术栈
+
+| 层次           | 技术                                              | 用途                                               |
+| -------------- | ------------------------------------------------- | -------------------------------------------------- |
+| 后端服务       | Python 3.11、FastAPI、Uvicorn、Pydantic           | HTTP API、参数契约、身份与会话校验                 |
+| 前端界面       | React 19、Vite 8、普通 CSS、Lucide React          | 客户工作台、聊天、业务确认与人工客服界面           |
+| Agent          | ReAct、OpenAI 兼容 SDK、MCP                       | 模型调用、业务工具执行和可选外部工具接入           |
+| 知识检索       | Chroma、Sentence Transformers / Embedding API     | 政策向量索引、关键词与向量检索、版本与适用范围校验 |
+| 数据与调度     | MySQL 8.4、PostgreSQL 16、Redis 7                 | 业务数据；会话、事项和记忆；缓存、唤醒与并发协调   |
+| 认证与敏感数据 | PyJWT、Cookie / CSRF 校验、AES-256-GCM            | 登录认证、请求校验与业务敏感字段加密               |
+| 部署与观测     | Docker Compose、Nginx、Prometheus、交互日志       | 多进程部署、网关、可选监控与故障定位               |
+| 测试与格式     | pytest、Node.js Test Runner、Playwright、Prettier | 后端回归、前端单元测试、浏览器测试和格式检查       |
+
+依赖以 [requirements.txt](requirements.txt)、[frontend/package.json](frontend/package.json) 和锁文件为准。
+
+## 系统架构
+
+系统将消息处理、Agent 执行和业务提交分开：事项运行层保存进度并协调执行，Agent 调用工具查询事实或准备操作，业务服务负责规则校验与事务提交。
 
 ```mermaid
 flowchart TD
-    UI[React客服界面] --> API[FastAPI：认证、消息、确认操作]
-    API --> PG[(PostgreSQL：会话、事项、事件)]
-    API --> Redis[(Redis：唤醒与并发协调)]
-    PG --> Worker[事项Worker]
-    Redis --> Worker
-    Worker --> Agent[消息归属与ReAct执行]
-    Agent --> Tools[业务工具]
-    Tools --> Service[Python业务服务]
-    Service --> MySQL[(MySQL：账号与业务数据)]
-    Agent --> RAG[政策检索与向量索引]
-    Worker --> PG
-    PG --> Notify[回复通知进程]
-    Notify --> UI
-    Commerce[交易Worker：超时与业务回执] --> Service
+    subgraph Access[交互与接口]
+        UI[React 客户界面 / 人工工作台]
+        API[FastAPI：认证、消息、确认与 SSE]
+        UI --> API
+    end
+
+    subgraph Runtime[事项运行层]
+        Intake[消息接收与归属校验]
+        Schedule[事项调度：并行、版本与恢复]
+        Agent[ReAct 执行：模型调用与工具选择]
+        Reply[回复协调：证据校验与持久化]
+        Notify[通知 Worker]
+        Intake --> Schedule --> Agent
+        Agent --> Reply --> Notify
+    end
+
+    subgraph Capabilities[工具与业务能力]
+        Tools[工具目录：参数与上下文校验]
+        Commerce[业务服务：查询、规则、事务与幂等]
+        Operations[操作准备 / 用户确认与状态重验]
+        RAG[政策 RAG：范围过滤与混合检索]
+        Memory[用户记忆：来源、更正与遗忘校验]
+        Tools --> Commerce
+        Tools --> RAG
+        Tools --> Memory
+        Tools --> Operations
+        Operations -->|确认后提交| Commerce
+    end
+
+    subgraph Storage[数据存储]
+        PG[(PostgreSQL：会话、事项、事件与记忆)]
+        Redis[(Redis：唤醒、缓存与并发协调)]
+        MySQL[(MySQL：账号与业务数据)]
+        Chroma[(Chroma：政策向量索引)]
+    end
+
+    subgraph Background[后台进程]
+        MemoryWorker[记忆 Worker]
+        CommerceWorker[交易 Worker]
+        Maintenance[维护进程]
+    end
+
+    API --> Intake
+    API -->|用户确认| Operations
+    API -->|人工接管| Schedule
+    Agent --> Tools
+    Notify -->|发布事件| API
+    API -->|SSE 更新| UI
+    Intake --> PG
+    Schedule <--> Redis
+    Reply --> PG
+    Memory --> PG
+    Commerce --> MySQL
+    RAG --> Chroma
+    MemoryWorker --> Memory
+    CommerceWorker --> Commerce
+    Maintenance --> Schedule
 ```
 
-- **Agent**负责理解问题、查询事实、澄清对象、准备操作和解释结果。
-- **业务服务**负责身份、归属、金额、规则、事务、幂等和库存控制。
-- **事项运行层**负责进度、并发、纠错、确认、恢复和回复发布。
-- **RAG**提供政策依据，不能替代订单状态、库存、会员资格和金额计算。
+事项 Worker 推进消息关联和 ReAct 执行，通知 Worker 发布持久化回复；记忆、交易与维护进程分别处理记忆提取、超时及业务回执、恢复和外部进度跟踪。PostgreSQL 保存持久化进度，Redis 用于唤醒与协调。
 
-用户身份由服务端注入。模型不能自行指定他人身份，也不能把“只查到一个订单”视为修改订单的授权。
+业务写入经过用户确认入口、权限与状态重验，再由业务服务提交。人工接管后，运行层会阻止旧执行继续发布自动回复或办理操作。
 
-## 3. 本地启动：Windows / VS Code
+## 项目结构
 
-以下命令使用 PowerShell，在仓库根目录执行。推荐用 Docker 运行数据库，在本机运行后端和前端。
+```text
+ecom-customer-service/
+├── app/
+│   ├── api/                 # HTTP 接口、认证、会话与事件流
+│   ├── agents/              # 消息关联与模型调用
+│   ├── execution/           # ReAct 执行循环
+│   ├── tasks/               # 事项归属、调度、确认、恢复与回复协调
+│   ├── tools/               # 工具目录、参数契约与分发
+│   ├── services/commerce/   # 业务规则、事务、库存、履约与外部渠道
+│   ├── data/                # 数据访问与业务查询适配
+│   ├── rag/                 # 政策知识文本、索引发布与检索
+│   ├── memory/              # 长期记忆，默认使用 v3
+│   ├── session/             # 短期上下文、摘要与预算
+│   ├── support/             # 会话事件、共享存储与人工协作
+│   ├── runtime/             # 并发、唤醒与通知
+│   ├── mcp/                 # 可选 MCP 工具服务
+│   ├── observability/       # 日志、审计与指标
+│   └── config/              # 配置加载
+├── frontend/                # React 客户端与浏览器测试
+├── migrations/mysql/        # 版本化 MySQL 业务表迁移
+├── scripts/                 # 初始化、Worker、数据导入与检查脚本
+├── tests/                   # 后端回归与集成测试
+├── deploy/                  # 网关、监控与隔离测试环境配置
+├── docs/                    # 设计文档与运行说明
+├── data/                    # 本地索引及运行数据，不提交
+├── model/                   # 本地向量模型，不提交
+├── 项目背景.png
+├── .env.example
+├── requirements.txt
+├── Dockerfile
+└── docker-compose.yml
+```
 
-### 3.1 环境与配置
+模块设计与阅读顺序见 [文档导航](docs/README.md)，整体依赖与消息流程见 [系统架构设计](docs/系统架构设计.md)。
 
-- Python 3.11，参考仓库 [Dockerfile](Dockerfile) 的运行版本。
-- Node.js 满足当前锁定的 Vite 要求：`^20.19.0 || >=22.12.0`；安装前端依赖使用 `npm ci`。
-- Docker Desktop，或者已配置的本机 MySQL、PostgreSQL 和 Redis。
-- 可用的对话模型接口；政策检索还需要 Embedding 模型或接口。
+## 快速开始
+
+以下命令使用 **PowerShell**，除明确说明外均在项目根目录执行。推荐先用 Docker 启动数据库，再在本机运行应用；已有环境可跳过依赖安装和首次初始化步骤。
+
+### 1. 准备环境与依赖
+
+- Python 3.11。
+- Node.js `^20.19.0 || >=22.12.0`，满足锁定的 Vite 版本要求。
+- Docker Desktop 和 Compose，或自行安装 MySQL、PostgreSQL、Redis。
+- 可用的对话模型接口；政策检索另需本地向量模型或 Embedding API。
 
 ```powershell
-# 已有 .venv 时跳过创建
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 
-# 保留已有配置，仅首次使用时复制
+# 仅首次创建配置文件，不覆盖已有配置
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+
+# 安装前端锁定版本的依赖
+npm --prefix frontend ci
 ```
 
-在 VS Code 中选择 `.venv` 为 Python 解释器。若终端不允许激活，可直接用 `.\.venv\Scripts\python.exe` 代替后续命令中的 `python`。
+若无法激活虚拟环境，后续 `python` 命令可改用 `.\.venv\Scripts\python.exe`。
 
-编辑 `.env`，完整选项见[配置模板](.env.example)：
+### 2. 配置环境变量
 
-| 配置 | 要求 |
-| --- | --- |
-| `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL_NAME` | 对话模型凭证、接口及实际可用模型名称 |
-| `API_JWT_SECRET` | 替换模板中的签名密钥占位值 |
-| `API_AUTH_BACKEND=mysql` | 使用 MySQL 账号、凭证和登录会话 |
-| `API_REGISTRATION_ENABLED` | 是否开放注册 |
-| `ORDER_DB_DSN` | MySQL连接，本机访问当前Compose使用 `127.0.0.1:3307` |
-| `ORDER_PLATFORM_CODES` | 使用现有演示数据时设为 `mall_demo`；模板默认值不是该演示平台 |
-| `API_SESSION_POSTGRES_DSN`、`MEMORY_POSTGRES_DSN` | 会话、事项和记忆的PostgreSQL连接 |
-| `API_CONCURRENCY_REDIS_URL`、`MEMORY_REDIS_URL`、`ORDER_CACHE_REDIS_URL` | Redis连接 |
-| `BUSINESS_DATA_KEYS`、`BUSINESS_DATA_KEY_VERSION` | 地址等字段的加密密钥集合及当前版本 |
-| `TASK_INTAKE_ENABLED`、`TASK_WORKER_ENABLED`、`TASK_OPERATIONS_ENABLED` | 消息、事项和确认入口；还需检查数据库放量开关 |
+编辑根目录 `.env`，完整选项见 [.env.example](.env.example)。默认 Compose 的本机连接配置已在模板中给出。
 
-本机通过Docker数据库运行时，地址示例如下；账号、密码按实际配置填写：
+| 配置项                                                                   | 说明                                                                 |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL_NAME`           | 对话模型凭证、接口和实际可用模型名称                                 |
+| `API_JWT_SECRET`                                                         | 替换模板占位值，设置随机签名密钥                                     |
+| `API_AUTH_BACKEND=mysql`、`API_REGISTRATION_ENABLED`                     | 使用 MySQL 登录与注册                                                |
+| `ORDER_DB_DSN`                                                           | MySQL 连接；默认 Compose 对本机开放 `127.0.0.1:3307`                 |
+| `ORDER_PLATFORM_CODES`                                                   | 与导入的数据保持一致；已有演示数据使用 `mall_demo`，模板默认是 `pdd` |
+| `API_SESSION_POSTGRES_DSN`、`MEMORY_POSTGRES_DSN`                        | 会话、事项及记忆相关 PostgreSQL 连接                                 |
+| `API_CONCURRENCY_REDIS_URL`、`MEMORY_REDIS_URL`、`ORDER_CACHE_REDIS_URL` | Redis 连接                                                           |
+| `BUSINESS_DATA_KEYS`、`BUSINESS_DATA_KEY_VERSION`                        | 地址等字段的加密密钥集合与当前版本                                   |
+| `TASK_INTAKE_ENABLED`、`TASK_WORKER_ENABLED`、`TASK_OPERATIONS_ENABLED`  | 开启消息接收、事项执行及业务确认入口；还需检查数据库中的放量状态     |
 
-```dotenv
-ORDER_DB_DSN=mysql://用户名:密码@127.0.0.1:3307/ecom_agent_orders
-ORDER_PLATFORM_CODES=mall_demo
-API_SESSION_POSTGRES_DSN=postgresql://用户名:密码@127.0.0.1:5432/ecom_agent
-MEMORY_POSTGRES_DSN=postgresql://用户名:密码@127.0.0.1:5432/ecom_agent
-API_CONCURRENCY_REDIS_URL=redis://127.0.0.1:6379/0
-MEMORY_REDIS_URL=redis://127.0.0.1:6379/0
-ORDER_CACHE_REDIS_URL=redis://127.0.0.1:6379/0
-```
-
-**已有数据时保留原业务加密密钥及旧版本。** 换掉密钥会导致历史地址等字段无法解密；API、事项 Worker 和交易 Worker 必须使用一致配置。
-
-仅在新建空环境时，可生成 JWT 密钥与版本1的业务加密密钥，分别填入 `.env`：
+仅在新建空环境时，可以分别生成 JWT 密钥和版本 1 的业务加密密钥，再填入 `.env`：
 
 ```powershell
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 python -c "import secrets,base64,json; print(json.dumps({'1':base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()}))"
 ```
 
-`API_AUTH_USERS`仅供可选的旧账号导入，正常使用保持为空，通过前端注册。新注册用户名以字母开头，长度3—32位，可含字母、数字和下划线；密码至少12位。新账号不会自动获得已有演示用户的订单。HTTPS部署应设置 `AUTH_COOKIE_SECURE=true`。
+已有数据时必须保留原业务加密密钥及旧版本，否则历史地址等字段无法解密。API 与各 Worker 使用同一份配置。正常注册登录无需填写 `API_AUTH_USERS`；新账号不会自动获得其他演示用户的订单。
 
-### 3.2 数据库与表结构
+### 3. 启动数据库并初始化表结构
 
 ```powershell
-docker compose up -d postgres redis mysql
+docker compose up -d --wait postgres redis mysql
 docker compose ps
 
-python scripts/migrate_mysql_business_schema.py
-python scripts/migrate_mysql_business_schema.py --check
+python -m scripts.migrate_mysql_business_schema
+python -m scripts.migrate_mysql_business_schema --check
 python -m scripts.init_support_db
 ```
 
-MySQL迁移按版本执行，包含旧结构清理，已有环境先核对[数据库设计](docs/数据库表设计.md)。迁移建立结构，**不自动恢复现有演示数据**。
+迁移按版本执行，包含旧结构清理；升级已有库前先备份并阅读 [数据库表设计](docs/数据库表设计.md)。迁移只建立表结构，不会恢复本机已有的演示数据。
 
-完全不用Docker也可以：自行启动本机MySQL、PostgreSQL和Redis，修改对应连接。若当前数据仍在Docker中的MySQL，需要先导出、导入到本机MySQL，再切换连接。
+新环境需要导入经过检查的数据库导出，或根据文档按依赖顺序执行 `scripts/seed_*.py`。目前没有单条命令可以完整重建已有开发库；不要直接重复运行所有导入脚本。
 
-### 3.3 应用进程
+### 4. 准备政策知识库
 
-在不同终端进入仓库根目录，使用同一虚拟环境和 `.env`：
+知识文本位于 [app/rag/knowledge](app/rag/knowledge)。为待发布文本准备对应 `名称.policy.json`，填写审核状态、来源、版本、适用范围与生效时间。
 
-| 进程 | 命令 | 职责 |
-| --- | --- | --- |
-| API | `python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8010` | 认证、消息、事件流与操作确认 |
-| 事项 Worker | `python -m scripts.task_worker` | 消息归属、Agent执行与事项推进 |
-| 记忆 Worker | `python -m scripts.memory_worker` | v3 长期记忆提取、更新、遗忘和归档进度 |
-| 回复通知 | `python -m scripts.notification_worker` | 发布持久化会话通知 |
-| 后台维护 | `python -m scripts.platform_maintenance` | 维护、恢复和清理 |
-| 交易 Worker | `python -m scripts.commerce_worker` | 待付款超时、库存和券释放、外部回执 |
-
-交易 Worker 每10秒扫描一次，`python -m scripts.commerce_worker --once`执行单轮检查。已有后台进程时先确认运行状态，避免重复启动；普通本地进程在电脑重启后需要重新启动。
-
-长期记忆默认使用 `MEMORY_ENGINE=v3`，实现位于 `app/memory/v3`。每批经过一次模型规划，输出带逐字原话证据的 ADD / UPDATE / MERGE / FORGET 等变更；程序校验证据后，在 SupportStore 的同一事务内更新记忆版本、遗忘记录、处理回执和消息检查点。同一组修改共同接受或拒绝，独立组可以继续。读取只查询有索引的当前记录（最多 500 条），写入只重建受影响的偏好字段历史；本地向量在事务外生成，失败时仍可使用关键词检索。
-
-v3 区分商品品类、鞋子用途和尺码体系；未知体系不会猜成欧码。明确偏好没有固定 90 天有效期，更新顺序依据服务端原始消息时间。遗忘会阻止当前与历史记忆召回，也阻止旧消息重放恢复该值；用户明确要求重新记住后才能恢复。这是记忆访问层面的遗忘，原始会话和审计记录仍按各自的数据保留规则保存。
-
-首次访问一个用户时，模块从原存储导入可验证来源的结构化 v2 记录，不覆盖原存储。无法验证来源、未结构化或已经重置的记录不进入新画像；导入与跳过数量保存在 `memory_v3_receipts` 的 `migration:v2` 回执中。升级前保留原库备份，升级 API 与各 Worker 后启动记忆 Worker。`MEMORY_ENGINE=legacy` 可暂停尚未迁移用户的切换；已迁移用户继续使用 v3，防止回退读到遗忘前的旧快照。不要通过删掉迁移标记来回滚；需要恢复部署时应保留 v3 读取与遗忘屏障。
-
-客户端可调用以下接口等待一次会话的记忆处理完成（均要求登录且属于该用户）：
-
-| 接口 | 行为 |
-| --- | --- |
-| `POST /api/v1/sessions/{session_id}/memory-archive` | 固定当前消息截止点，返回 `archive_id`，HTTP 202 |
-| `GET /api/v1/memory-archives/{archive_id}` | 查询截止点、处理位置、逐组结果和错误类型 |
-
-归档状态 `completed` 表示截止点已处理，`completed_with_issues` 表示有歧义或校验拒绝，需要依据 `outcomes` 澄清；`pending` / `running` / `retrying` 仍在处理中。模型或存储失败不推进检查点，最多尝试 3 次后为 `failed`；排障后可再次请求该会话归档重试。归档接口只建立记忆处理屏障，不关闭业务事项。记忆 Worker 默认每秒检查到期任务，普通输入仍遵循 `MEMORY_EXTRACTION_DEBOUNCE_SECONDS`；归档会立即调度。
-
-离线回归运行 `python -m pytest tests/test_memory_v3.py -q`；隔离真实模型验证运行 `python -m scripts.eval_memory_v3 --live`。后者建立独立 SQLite 数据库，执行 10 次会话、每次 10 条用户消息及归档，输出计划、回执和最终记忆到 `data/evaluation/memory_v3_*`，不执行业务操作；会调用配置中的模型并产生 API 费用。它验证记忆链路，不替代客服完整回复或 PostgreSQL 并发压测。
-
-设计参考 [TencentCloud/TencentDB-Agent-Memory](https://github.com/TencentCloud/TencentDB-Agent-Memory/tree/42c6711c218b40d38d1d6b0ed4767bcc6069cbfd) 的上下文提取与批量冲突决策，主要对应 `MemoryCore/src/core/prompts/l1-extraction.ts`、`prompts/l1-dedup.ts` 和 `record/l1-dedup.ts`。本项目以 Python 重新实现并沿用现有数据库、认证与来源校验；没有引入腾讯项目的运行时依赖。原项目 MIT 许可证保留于 [THIRD_PARTY_TENCENT_MEMORY_LICENSE.txt](THIRD_PARTY_TENCENT_MEMORY_LICENSE.txt)。
-
-前端另开终端：
+- 本地模型：设置 `EMBEDDING_PROVIDER=local` 和 `LOCAL_EMBEDDING_MODEL_PATH`，并准备对应模型文件。
+- 远程接口：设置 `EMBEDDING_PROVIDER=openai` 及 `EMBEDDING_API_KEY`、`EMBEDDING_BASE_URL`、`EMBEDDING_MODEL`。
 
 ```powershell
-cd frontend
-npm ci
-npm run dev
+python -m app.rag.commands.policy_index publish
 ```
 
-| 地址 | 用途 |
-| --- | --- |
-| <http://localhost:5173> | 客服前端 |
-| <http://localhost:8010/docs> | API文档 |
-| <http://localhost:8010/health> | 健康检查 |
-| <http://localhost:8010/ready> | 就绪检查 |
+对话模型接口不一定支持 Embedding。仅存在 Markdown 文件不代表索引已经发布；缺少有效政策或适用条件时，系统返回依据不足。详细流程见 [规则检索说明](docs/政策检索设计.md)。
 
-### 3.4 自动处理开关
+### 5. 启动应用
+
+在不同终端中激活同一虚拟环境，按下一节的运行命令启动 API、各 Worker 和前端，再检查放量状态：
 
 ```powershell
 python -m scripts.pipeline_rollout status
-```
 
-若处于暂停状态，核对本地演示配置后启用：
-
-```powershell
+# 仅在配置、数据及本地演示环境已核对后启用
 python -m scripts.pipeline_rollout set all --operator local-dev --reason "本地演示环境已核对"
 ```
 
-只启动API不代表Agent会自动回复，还需要事项 Worker、通知进程、可用模型和正确的放量开关。健康接口通过不代表政策索引或真实业务渠道已经验证成功。
+前端访问 [http://localhost:5173](http://localhost:5173)，注册或登录后使用。只启动 API 不会产生自动回复，还需要事项 Worker、通知进程、可用模型和正确的放量状态。
 
-## 4. 完整 Docker 部署
+## 运行命令
 
-按上一节准备 `.env`、模型和业务加密配置后运行：
+### 本地开发
+
+下列进程分别在独立终端启动；前端命令也可直接在项目根目录执行。
+
+| 进程         | 命令                                                              | 职责                                   |
+| ------------ | ----------------------------------------------------------------- | -------------------------------------- |
+| API          | `python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8010` | 认证、消息接收、SSE 与操作确认         |
+| 事项 Worker  | `python -m scripts.task_worker`                                   | 消息关联、Agent 执行与事项推进         |
+| 记忆 Worker  | `python -m scripts.memory_worker`                                 | 长期记忆提取、更新、遗忘与归档         |
+| 回复通知     | `python -m scripts.notification_worker`                           | 发布持久化会话通知                     |
+| 后台维护     | `python -m scripts.platform_maintenance`                          | 维护、恢复、清理及外部进度处理         |
+| 交易 Worker  | `python -m scripts.commerce_worker`                               | 待付款超时关闭、库存与券释放、业务回执 |
+| 前端开发服务 | `npm --prefix frontend run dev`                                   | 默认监听 5173 端口                     |
+
+交易后台单轮检查可运行 `python -m scripts.commerce_worker --once`。已有进程时先核对运行状态，避免重复启动。
+
+| 地址                                                         | 用途                         |
+| ------------------------------------------------------------ | ---------------------------- |
+| [http://localhost:5173](http://localhost:5173)               | 客户界面与人工客服工作台入口 |
+| [http://localhost:8010/docs](http://localhost:8010/docs)     | API 文档                     |
+| [http://localhost:8010/health](http://localhost:8010/health) | 健康检查                     |
+| [http://localhost:8010/ready](http://localhost:8010/ready)   | 就绪检查                     |
+
+### Docker Compose 运行
+
+先完成上述环境配置、数据库表初始化和知识库准备。首次迁移按快速开始中的本机命令执行；当前 Dockerfile 未复制 `migrations/`，不要依赖空库容器独立完成首次迁移。镜像构建说明见[构建命令](#构建命令)。
+
+本地应用进程与完整 Compose 部署选一种运行，避免重复占用端口或同时启动两套 Worker。
 
 ```powershell
 docker compose build backend frontend
 docker compose up -d
 docker compose ps
 docker compose exec backend python -m scripts.pipeline_rollout status
-```
 
-Compose启动数据库、迁移任务、API、网关、前端和各后台进程。API经网关映射到8010端口。MySQL对容器内服务使用 `mysql:3306`，对本机使用 `127.0.0.1:3307`；不要把容器内部地址用于本机Python进程。
+# 如需启用本地演示环境的自动处理
+docker compose exec backend python -m scripts.pipeline_rollout set all --operator local-dev --reason "本地演示环境已核对"
 
-```powershell
 # 查看日志
-docker compose logs --tail 100 backend worker dispatcher commerce-worker
-# 停止并移除本项目容器，保留绑定挂载的数据目录
+docker compose logs --tail 100 backend worker memory-worker dispatcher commerce-worker
+
+# 停止应用与数据库容器，保留绑定挂载的数据
 docker compose down
 ```
 
-本地应用与完整Compose二选一启动，避免重复占用5173/8010端口或无意运行两套Worker。监控、远程检索等可选配置见[运行手册](docs/并发平台运行手册.md)。
+容器内 MySQL 地址为 `mysql:3306`，本机访问为 `127.0.0.1:3307`；Compose 为应用进程覆盖相应数据库地址。本机 `data/` 与容器 `.docker-data/app/` 使用不同目录，容器政策索引需单独发布：
 
-## 5. 数据保存与演示环境
+```powershell
+docker compose exec worker python -m app.rag.commands.policy_index publish
+```
+
+使用本地 Embedding 时，Compose 将 `MODEL_DIR`（默认 `./model`）挂载到 `/app/model`。监控、远程检索和运行控制的模块关系见 [运行与可观测性设计](docs/运行与可观测性设计.md)；人工工作台权限见 [人工接管设计](docs/人工接管设计.md)。
 
 ### 数据保存位置
 
-| 数据 | 存储 | Compose本机挂载目录 |
-| --- | --- | --- |
-| 用户账号、凭证、登录会话、商品、订单、会员、优惠券和售后 | MySQL | `.docker-data/mysql` |
-| 客服消息、事项、执行记录、确认、人工工单和持久记忆 | PostgreSQL | `.docker-data/postgres` |
-| 唤醒队列、缓存、通知与共享并发控制 | Redis | `.docker-data/redis` |
-| 向量索引及应用运行文件 | 本地文件/Chroma | Docker中为`.docker-data/app`，本机运行通常为`data/` |
-| 本地向量模型 | 模型文件 | `model/`，Docker挂载来源可由`MODEL_DIR`指定 |
+| 内容                            | Compose 本机挂载目录     |
+| ------------------------------- | ------------------------ |
+| MySQL 账号及业务数据            | `.docker-data/mysql/`    |
+| PostgreSQL 会话、事项和持久记忆 | `.docker-data/postgres/` |
+| Redis 数据                      | `.docker-data/redis/`    |
+| 政策索引与应用运行数据          | `.docker-data/app/`      |
+| 应用日志                        | `.docker-data/logs/`     |
 
-目录相对于仓库根目录。例如仓库位于 `D:\GitHub\ecom-customer-service`，MySQL持久化位置就是 `D:\GitHub\ecom-customer-service\.docker-data\mysql`。
+本机运行通常使用 `data/` 和 `logs/`。`.env`、数据库、日志、索引与模型权重不随 Git 分发，迁移电脑时需独立备份和导入。
 
-保留挂载目录时，本机重建容器可以继续使用原数据；换电脑、换目录或删除数据目录不能假设数据仍在。`.gitignore`已排除`.docker-data/`、`.env`、`data/`、日志和模型权重。**数据库数据不在Docker镜像里，也不会随代码提交到GitHub。**
+## 测试命令
 
-### 当前开发库快照
+### 后端离线回归
 
-截至2026-10-25，本机`ecom_agent_orders`完成001—010迁移，共65张表。以下描述本机准备好的演示环境，不是克隆后的默认初始化结果：
-
-| 内容 | 已准备的数据 |
-| --- | --- |
-| 用户、地址 | 10位用户、13个地址 |
-| 商家与商品 | 41家店、774个商品、1,018个SKU，其中1个为不可售历史SKU |
-| 订单与物流 | 174笔订单、219条明细、81个包裹、347条轨迹 |
-| 优惠券 | 74个模板、113张持券，包含占用、释放和使用样例 |
-| 会员与积分 | 成长等级、VIP订阅、会员券额度、21条积分流水 |
-| 配送与交易 | 内地31个省级地区、1,271条配送规则，以及报价、预占、改址、补货和价保样例 |
-| 发票 | 结构存在，当前暂停补充内容，相关业务记录为空 |
-
-数据来自mall、litemall开源示例和本地补充样例。店铺映射、库存、轨迹、运费及部分流程为明确标记的模拟配置；历史金额差异等限制保留在文档中。使用真实时钟，订单和券状态会随到期处理变化。
-
-来源、字段、金额口径和最新实施记录统一见[数据库表设计](docs/数据库表设计.md)，README不作为实时数据库报表。
-
-### 新环境如何准备数据
-
-1. 执行迁移建立结构。
-2. 导入经过检查的数据库导出，或按依赖顺序使用分批导入脚本。
-3. 正确迁移业务加密密钥，核对用户归属、金额、库存和规则。
-4. 验证后启动Worker；历史待付款记录需要明确处理，不能无限占用库存。
-
-`scripts/seed_mall_catalog.py`、`seed_litemall_catalog.py`、`seed_mall_orders.py`、`seed_memberships.py`、`seed_rag_coupons.py`分别负责不同批次，部分依赖已有用户、模板和固定来源校验值。**目前没有一个命令可以完整重建上述开发库快照**。执行前阅读脚本`--help`和数据库文档，不要重复覆盖已有环境。
-
-不要将运行中的`.docker-data/mysql`直接复制进Git仓库。迁移使用一致性数据库导出；公开演示数据前需完成脱敏和初始化设计，不公开数据库密码、真实个人信息或业务加密密钥。
-
-## 6. 政策知识库与 MCP
-
-### 政策知识库
-
-文本位于[app/rag/knowledge](app/rag/knowledge)。业务库回答当前业务事实，政策检索提供适用规则，两者分别准备：
-
-1. 核对文本，为待发布文档准备对应`名称.policy.json`，填写来源、版本、适用范围、生效时间和审核状态。
-2. 配置向量模型：本地使用`EMBEDDING_PROVIDER=local`及`LOCAL_EMBEDDING_MODEL_PATH`；远程使用`EMBEDDING_PROVIDER=openai`及相应Embedding接口配置。
-3. 发布索引并验证实际命中：
-
-```powershell
-python -m app.rag.commands.policy_index publish
-```
-
-对话模型密钥不一定支持Embedding。仅有Markdown不代表政策索引已发布；缺少审核资料、模型、索引或适用条件时返回依据不足。Docker镜像中的知识文本修改后需重建镜像，再在相应环境发布索引。详见[规则检索设计](docs/refactoring/11-规则检索.md)。
-
-### MCP与业务确认
-
-本地调用与MCP复用工具目录和参数契约。独立MCP暴露31个允许独立调用的工具；报价、领券、办理准备和事项流程工具需要可信事项上下文。
-
-`prepare_*`准备确认内容，真正提交经过确认入口、状态重验和数据库事务。外部渠道通过`COMMERCE_PROVIDER_CONFIG`配置，未接通的操作返回不可用。协议见[工具实现与运行配置](docs/工具实现与运行配置.md)。
-
-## 7. API与测试
-
-### 主要API
-
-| 接口 | 用途 |
-| --- | --- |
-| `POST /api/v1/auth/register` | 注册 |
-| `POST /api/v1/auth/login`、`POST /api/v1/auth/logout` | 登录、退出 |
-| `POST /api/v1/task-messages` | 提交消息，返回接收回执 |
-| `GET /api/v1/task-messages/{session_id}` | 消息处理进度 |
-| `GET /api/v1/sessions/{session_id}/transcript` | 会话记录 |
-| `GET /api/v1/sessions/{session_id}/support-events` | SSE事件流 |
-| `GET /api/v1/task-operations/{session_id}` | 待确认操作 |
-| `POST /api/v1/task-operations/{operation_id}/confirm` | 确认操作 |
-| `POST /api/v1/sessions/{session_id}/handoff` | 转人工 |
-
-提交消息包含`session_id`、`request_id`和`message`。网络重试同一条消息复用请求编号，新消息使用新编号。当前使用持续消息入口，旧`/api/v1/chat`链路已退役。完整契约以`/docs`和[API源码](app/api)为准。
-
-### 测试命令
-
-测试入口隔离本机`.env`中的主要业务连接。后端检查前安装测试工具：
+先安装项目依赖及测试工具。推荐使用统一检查入口，它会隔离本机 `.env` 中的主要业务连接和模型密钥。
 
 ```powershell
 python -m pip install pytest
 python scripts/run_platform_checks.py
+
+# 只运行指定模块
+python scripts/run_platform_checks.py tests/test_memory_v3.py
 ```
 
-真实PostgreSQL、MySQL和Redis集成测试使用专用环境：
+### 真实数据库集成测试
+
+使用专用 MySQL、PostgreSQL 和 Redis 测试环境：
 
 ```powershell
 docker compose -p ecom-refactor-tests -f deploy/compose.integration.yml up -d --wait
 python scripts/run_platform_checks.py --integration
+
+# 测试结束后停止隔离环境
+docker compose -p ecom-refactor-tests -f deploy/compose.integration.yml down
 ```
 
-核心交易测试另使用`CORE_TOOLS_TEST_MYSQL_ADMIN`指定允许创建临时库的测试连接，未配置会跳过。测试创建并删除独立临时库，配置见[工具实现说明](docs/工具实现与运行配置.md)。跳过集成测试不等于真实数据库行为已经验证。
+部分核心交易测试另需 `CORE_TOOLS_TEST_MYSQL_ADMIN`，指向允许创建、删除临时数据库的专用测试连接；未配置时跳过。测试连接必须是专用测试库的管理连接；交易与幂等边界见 [业务操作与交易设计](docs/业务操作与交易设计.md)。跳过的测试不代表对应数据库行为已通过验证。
 
-前端在`frontend`目录执行：
+### 前端检查
+
+在项目根目录运行：
 
 ```powershell
-npm test
-npm run test:browser
-npm run build
+npm --prefix frontend test
+npm --prefix frontend run test:browser
+npm --prefix frontend run format:check
+
+# 一次运行格式检查、单元测试、构建和浏览器测试
+npm --prefix frontend run check
 ```
 
-浏览器测试在Windows默认使用Edge，其他环境需准备Playwright对应浏览器。模型接口、检索效果和真实业务渠道需要单独验证。
+浏览器测试使用模拟 API 和独立端口 `5178`。Windows 默认使用已安装的 Edge；其他环境可先运行 `npm --prefix frontend exec -- playwright install chromium`，也可通过 `PLAYWRIGHT_CHANNEL` 指定浏览器。
 
-## 8. 常见问题
+真实模型与记忆链路验证可运行 `python -m scripts.eval_memory_v3 --live`；该命令使用隔离数据，但会调用配置中的模型并产生 API 费用。详见 [上下文与记忆设计](docs/上下文与记忆设计.md)。
 
-| 现象 | 检查方向 |
-| --- | --- |
-| 前端打开但没有自动回复 | 事项Worker、通知进程、放量开关、模型配置及PostgreSQL/Redis连接 |
-| 登录正常但没有演示订单 | 当前用户是否拥有订单，平台是否为`mall_demo`，是否连接原业务库 |
-| 地址无法解密 | 是否保留原`BUSINESS_DATA_KEYS`及旧版本，各进程配置是否一致 |
-| 报价或确认失效 | 有效期、地址/价格/券变化、库存不足；按当前状态重新准备 |
-| 过期订单未关闭 | 交易Worker、到期记录，以及进行中支付或发货是否阻止关闭 |
-| 政策检索依据不足 | 审核元数据、Embedding模型、发布索引及适用范围 |
-| 换电脑后数据为空 | 业务数据未随Git分发，需要导入并核对挂载目录 |
-| Docker只有MySQL运行 | 可做部分业务库检查，完整客服链路还需要PostgreSQL、Redis和应用进程 |
+## 构建命令
 
-## 9. 项目目录与文档
+### 前端生产构建与预览
 
-| 目录 | 职责 |
-| --- | --- |
-| `app/api` | HTTP接口、认证和事件流 |
-| `app/agents`、`app/execution` | Agent与ReAct执行 |
-| `app/tasks` | 事项归属、并行处理、确认和回复协调 |
-| `app/tools` | 工具注册、参数契约和适配 |
-| `app/services/commerce`、`app/data` | 业务规则、事务、履约和数据访问 |
-| `app/rag`、`app/memory` | 知识检索与用户记忆 |
-| `app/support`、`app/mcp` | 会话事件、人工协作及MCP接入 |
-| `frontend` | React客服界面 |
-| `migrations/mysql` | 版本化业务表迁移 |
-| `scripts`、`deploy` | 初始化、导入、后台进程、检查和部署 |
-| `tests`、`docs` | 测试与设计文档 |
+```powershell
+npm --prefix frontend ci
+npm --prefix frontend run build
+npm --prefix frontend run preview
+```
 
-- [数据库表设计](docs/数据库表设计.md)：业务表、来源、会员优惠券和实施记录。
-- [工具设计](docs/工具设计.md)：工具职责、描述和参数。
-- [工具实现与运行配置](docs/工具实现与运行配置.md)：事务、确认、外部协议和验证。
-- [并发平台运行手册](docs/并发平台运行手册.md)：部署、放量、故障处理和恢复。
-- [Python交易后端设计与面试要点](docs/Python交易后端设计与面试要点.md)：库存、幂等、并发、支付和MQ演进。
-- [项目结构](docs/项目结构.md)与[重构实施入口](docs/refactoring/重构实施入口.md)：模块职责与实现过程。
+构建产物输出到 `frontend/dist/`。预览服务用于检查构建产物，API 与后台进程仍需单独运行。自定义后端地址时，在 `frontend/.env.local` 中设置 `VITE_API_BASE_URL`，然后重新构建；示例见 [frontend/.env.example](frontend/.env.example)。
+
+### Docker 镜像构建
+
+```powershell
+# 后端镜像供 API 与各 Worker 共用
+docker compose build backend
+
+# 前端使用 Vite 构建，再由 Nginx 提供静态资源
+docker compose build frontend
+
+# 同时构建
+docker compose build backend frontend
+```
+
+后端直接运行 Python 源码，无单独的前端式打包步骤；后端构建入口为根目录 `Dockerfile`。
+
+## 常见问题与文档
+
+| 现象                     | 检查方向                                                            |
+| ------------------------ | ------------------------------------------------------------------- |
+| 前端可打开但没有自动回复 | 事项 Worker、通知进程、放量状态、模型配置和 PostgreSQL / Redis 连接 |
+| 登录后没有演示订单       | 数据是否导入、用户是否拥有订单、`ORDER_PLATFORM_CODES` 是否匹配     |
+| 地址无法解密             | 原业务加密密钥及旧版本是否保留，各进程配置是否一致                  |
+| 政策检索依据不足         | 审核元数据、Embedding 模型、当前运行环境的索引及适用条件            |
+| 订单未自动超时关闭       | 交易 Worker、到期记录和当前支付 / 发货状态                          |
+| 换电脑后数据为空         | 独立导入数据库、核对挂载目录及配置；镜像不包含原数据库数据          |
+
+- [模块设计文档导航](docs/README.md)：阅读顺序、模块清单与关键术语。
+- [系统架构设计](docs/系统架构设计.md)：分层、主链路、存储与后台进程。
+- [工具设计](docs/工具设计.md)：工具契约、职责、参数模型与 MCP 边界。
+- [业务操作与交易设计](docs/业务操作与交易设计.md)：确认、事务、库存、幂等与外部处理。
+- [数据库表设计](docs/数据库表设计.md)：业务领域表、约束与运行数据。
+- [上下文与记忆设计](docs/上下文与记忆设计.md)：原话、请求预算、记忆更新与遗忘。
+- [政策检索设计](docs/政策检索设计.md)：适用条件、证据与索引版本。
+- [人工接管设计](docs/人工接管设计.md)：工单、权限、交接与机器人恢复。
+- [运行与可观测性设计](docs/运行与可观测性设计.md)：调度、通知、额度、控制与日志。
+- [前端交互设计](docs/前端交互设计.md)：界面分工、事件恢复与确认卡片。
+- [前端维护说明](frontend/README.md)：前端代码约定与检查命令。
+
+记忆实现参考腾讯开源项目的上下文提取与批量冲突决策，相关来源及保留的许可证见 [上下文与记忆设计](docs/上下文与记忆设计.md)。当前运行任务的 Outbox 已实现；MySQL 交易 Outbox、RocketMQ 和真实支付渠道仍待接入。
