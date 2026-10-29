@@ -4,10 +4,22 @@ export function mergeMessages(previous, events) {
   for (const e of events) {
     if (e.kind === 'message')
       merged.set(e.sequence, {
+        ...merged.get(e.sequence),
         ...e.payload,
         sequence: e.sequence,
         actor: e.actor,
         at: e.created_at,
+      })
+  }
+  const revoked = new Set(
+    events.filter((e) => e.kind === 'attachment_revoked').map((e) => e.payload.attachment_id),
+  )
+  for (const [sequence, message] of merged) {
+    const ids = (message.attachment_ids || []).filter((id) => revoked.has(id))
+    if (ids.length)
+      merged.set(sequence, {
+        ...message,
+        revoked_attachment_ids: [...new Set([...(message.revoked_attachment_ids || []), ...ids])],
       })
   }
   return [...merged.values()].sort((a, b) => a.sequence - b.sequence)

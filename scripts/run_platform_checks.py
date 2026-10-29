@@ -37,6 +37,8 @@ def main():
             'MCP_ENABLED': 'false', 'RETRIEVAL_SERVICE_URL': '',
             'DEEPSEEK_API_KEY': '', 'OPENAI_API_KEY': '', 'DASHSCOPE_API_KEY': '', 'ROUTER_API_KEY': '',
             'EMBEDDING_API_KEY': '', 'EMBEDDING_BASE_URL': '', 'AUDIT_POSTGRES_DSN': '',
+            'VISION_API_KEY': '', 'VISION_BASE_URL': '', 'VISION_MODEL': '',
+            'MEDIA_STORAGE_DIR': str(Path(directory) / 'media'),
             'API_AUTH_USERS': '', 'API_JWT_SECRET': 'isolated-test-runner-jwt-key-32-characters',
             'ECOM_INTEGRATION': '1' if integration else '0',
         })

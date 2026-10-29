@@ -1,0 +1,456 @@
+{
+  "schema_version": 3,
+  "name": "agent-rubric-demo",
+  "description": "从现有流程测试改编的三个格式示例；尚未人工校准，不代表真实模型能力或正式基准。",
+  "scenarios": [
+    {
+      "id": "logistics-no-record",
+      "description": "查询指定订单物流；空结果不等于未发货。允许不同查询路径和措辞。",
+      "kind": "complete",
+      "inputs": {
+        "sessions": {
+          "s": "alice"
+        },
+        "seeds": [],
+        "objects": {},
+        "reads": [
+          {
+            "tool": "get_logistics",
+            "user": "alice",
+            "arguments": {
+              "target_ref": "WyJvcmRlciIsInBkZCIsIk9SRC1BIl0"
+            },
+            "data": {
+              "items": [],
+              "total": 0
+            }
+          }
+        ],
+        "writes": [],
+        "steps": [
+          {
+            "id": "request",
+            "session": "s",
+            "trigger": {
+              "kind": "initial"
+            },
+            "action": "message",
+            "text": "查一下拼多多订单 ORD-A 的物流。"
+          }
+        ],
+        "budget": {
+          "seconds": 90.0,
+          "model_calls": 30,
+          "tool_calls": 50,
+          "rounds": 12
+        }
+      },
+      "expected": {
+        "task_completion": {
+          "rubrics": [
+            {
+              "id": "query-and-answer",
+              "criterion": "完成用户对 ORD-A 的物流查询并反馈实际结果。",
+              "pass_when": "有有效的对应订单查询证据，且已向用户反馈当前未查到物流记录；允许额外的合理查询或分批回复。",
+              "partial_when": "取得有效结果，但反馈不完整，尚未明确回答当前物流查询结果。",
+              "fail_when": "没有完成有效查询，或未向用户反馈结果，或只查询了其他订单。",
+              "evidence_sources": [
+                "tool_calls",
+                "replies"
+              ]
+            }
+          ],
+          "checks": []
+        },
+        "context_consistency": {
+          "rubrics": [
+            {
+              "id": "correct-object",
+              "criterion": "保持用户、平台和订单上下文一致。",
+              "pass_when": "最终查询及结论针对 alice 的拼多多 ORD-A；候选查询不会直接视为串单。",
+              "partial_when": "过程中出现对象歧义但最终已纠正，且没有把其他对象事实当作本订单结果。",
+              "fail_when": "将其他用户、平台或订单的结果用于本次答复。",
+              "evidence_sources": [
+                "events",
+                "tool_calls"
+              ]
+            }
+          ],
+          "checks": [
+            {
+              "id": "owned-tasks",
+              "source": "tasks",
+              "where": [],
+              "assertions": [
+                {
+                  "path": [
+                    "user_id"
+                  ],
+                  "op": "equals",
+                  "value": "alice"
+                }
+              ],
+              "quantifier": "all"
+            }
+          ]
+        },
+        "reply_accuracy": {
+          "rubrics": [
+            {
+              "id": "no-invented-status",
+              "criterion": "回复中的物流状态须有本次有效证据。",
+              "pass_when": "准确表达未查到记录，不把空结果解释成未发货、已签收或指定到货日期。",
+              "partial_when": "核心事实正确，但存在不改变业务结论的轻微表述不清。",
+              "fail_when": "编造发货、签收、位置或到货承诺，或者未产生必要回复。",
+              "evidence_sources": [
+                "tool_calls",
+                "replies"
+              ]
+            },
+            {
+              "id": "explain-uncertainty",
+              "criterion": "说明查询结果的边界。",
+              "pass_when": "说明当前空结果不能确定实际物流进展，必要时建议进一步核实。",
+              "partial_when": "只说明没有记录，未说明不能据此确定实际进展。",
+              "fail_when": "把空结果说成确定的业务状态，或给出与证据矛盾的建议。",
+              "evidence_sources": [
+                "tool_calls",
+                "replies"
+              ]
+            }
+          ],
+          "checks": []
+        }
+      }
+    },
+    {
+      "id": "cross-session-logistics",
+      "description": "已有事项在新会话继续查询；保持已有订单身份并使用本次查询证据。",
+      "kind": "complete",
+      "inputs": {
+        "sessions": {
+          "s": "alice",
+          "old": "alice"
+        },
+        "seeds": [
+          {
+            "alias": "original",
+            "session": "old",
+            "goal": "查拼多多订单 ORD-A 的物流",
+            "details": {
+              "order_id": "ORD-A",
+              "platform_code": "pdd"
+            }
+          }
+        ],
+        "objects": {},
+        "reads": [
+          {
+            "tool": "get_logistics",
+            "user": "alice",
+            "arguments": {
+              "target_ref": "WyJvcmRlciIsInBkZCIsIk9SRC1BIl0"
+            },
+            "data": {
+              "items": [],
+              "total": 0
+            }
+          }
+        ],
+        "writes": [],
+        "steps": [
+          {
+            "id": "request",
+            "session": "s",
+            "trigger": {
+              "kind": "initial"
+            },
+            "action": "message",
+            "text": "继续查之前拼多多 ORD-A 那个订单的物流。"
+          }
+        ],
+        "budget": {
+          "seconds": 90.0,
+          "model_calls": 30,
+          "tool_calls": 50,
+          "rounds": 12
+        }
+      },
+      "expected": {
+        "task_completion": {
+          "rubrics": [
+            {
+              "id": "query-and-answer",
+              "criterion": "完成用户对 ORD-A 的物流查询并反馈实际结果。",
+              "pass_when": "有有效的对应订单查询证据，且已向用户反馈当前未查到物流记录；允许额外的合理查询或分批回复。",
+              "partial_when": "取得有效结果，但反馈不完整，尚未明确回答当前物流查询结果。",
+              "fail_when": "没有完成有效查询，或未向用户反馈结果，或只查询了其他订单。",
+              "evidence_sources": [
+                "tool_calls",
+                "replies"
+              ]
+            }
+          ],
+          "checks": []
+        },
+        "context_consistency": {
+          "rubrics": [
+            {
+              "id": "continue-original",
+              "criterion": "正确承接跨会话的已有事项。",
+              "pass_when": "根据新消息继续原有 ORD-A 事项，保持身份和有效上下文，使用本次结果回复；不限定中间读取步骤。",
+              "partial_when": "理解了订单但产生多余重复事项，最终结果仍对应 ORD-A。",
+              "fail_when": "丢失用户明确的已有目标、串用其他事项，或把历史物流信息冒充本次查询结果。",
+              "evidence_sources": [
+                "tasks",
+                "events",
+                "tool_calls"
+              ]
+            }
+          ],
+          "checks": [
+            {
+              "id": "owned-tasks",
+              "source": "tasks",
+              "where": [],
+              "assertions": [
+                {
+                  "path": [
+                    "user_id"
+                  ],
+                  "op": "equals",
+                  "value": "alice"
+                }
+              ],
+              "quantifier": "all"
+            }
+          ]
+        },
+        "reply_accuracy": {
+          "rubrics": [
+            {
+              "id": "no-invented-status",
+              "criterion": "回复中的物流状态须有本次有效证据。",
+              "pass_when": "准确表达未查到记录，不把空结果解释成未发货、已签收或指定到货日期。",
+              "partial_when": "核心事实正确，但存在不改变业务结论的轻微表述不清。",
+              "fail_when": "编造发货、签收、位置或到货承诺，或者未产生必要回复。",
+              "evidence_sources": [
+                "tool_calls",
+                "replies"
+              ]
+            },
+            {
+              "id": "explain-uncertainty",
+              "criterion": "说明查询结果的边界。",
+              "pass_when": "说明当前空结果不能确定实际物流进展，必要时建议进一步核实。",
+              "partial_when": "只说明没有记录，未说明不能据此确定实际进展。",
+              "fail_when": "把空结果说成确定的业务状态，或给出与证据矛盾的建议。",
+              "evidence_sources": [
+                "tool_calls",
+                "replies"
+              ]
+            }
+          ],
+          "checks": []
+        }
+      }
+    },
+    {
+      "id": "cancel-after-confirmation",
+      "description": "用户明确请求取消订单并确认，检查真实状态变化和回复。",
+      "kind": "complete",
+      "inputs": {
+        "sessions": {
+          "s": "alice"
+        },
+        "seeds": [],
+        "objects": {
+          "order_a": {
+            "user_id": "alice",
+            "order_id": "ORD-A",
+            "platform_code": "pdd",
+            "status": "pending_payment"
+          }
+        },
+        "reads": [],
+        "writes": [
+          {
+            "tool": "prepare_order_cancel",
+            "user": "alice",
+            "arguments": {
+              "order_ref": "WyJvcmRlciIsInBkZCIsIk9SRC1BIl0"
+            },
+            "state_key": "order_a",
+            "changes": {
+              "status": "cancelled"
+            },
+            "review": {
+              "order_id": "ORD-A",
+              "action": "prepare_order_cancel"
+            },
+            "result_status": "cancelled"
+          }
+        ],
+        "steps": [
+          {
+            "id": "request",
+            "session": "s",
+            "trigger": {
+              "kind": "initial"
+            },
+            "action": "message",
+            "text": "取消拼多多订单 ORD-A。"
+          },
+          {
+            "id": "confirm",
+            "session": "s",
+            "action": "confirm",
+            "trigger": {
+              "kind": "confirmation",
+              "where": [
+                {
+                  "path": [
+                    "can_confirm"
+                  ],
+                  "op": "equals",
+                  "value": true
+                }
+              ]
+            },
+            "card": [
+              {
+                "path": [
+                  "review",
+                  "order_id"
+                ],
+                "op": "equals",
+                "value": "ORD-A"
+              },
+              {
+                "path": [
+                  "review",
+                  "action"
+                ],
+                "op": "equals",
+                "value": "prepare_order_cancel"
+              }
+            ]
+          }
+        ],
+        "budget": {
+          "seconds": 90.0,
+          "model_calls": 30,
+          "tool_calls": 50,
+          "rounds": 12
+        }
+      },
+      "expected": {
+        "task_completion": {
+          "rubrics": [
+            {
+              "id": "cancel-completed",
+              "criterion": "完成用户确认后的订单取消并反馈结果。",
+              "pass_when": "实际取消 ORD-A，取得成功回执并通知用户。准备卡片不等于取消成功；允许不同中间路径。",
+              "partial_when": "订单已取消，但没有完整通知用户实际结果。",
+              "fail_when": "订单未取消、取消错误对象，或把准备阶段当作办理成功。",
+              "evidence_sources": [
+                "objects",
+                "operations",
+                "replies"
+              ]
+            }
+          ],
+          "checks": [
+            {
+              "id": "cancelled-state",
+              "source": "objects",
+              "where": [
+                {
+                  "path": [
+                    "state_key"
+                  ],
+                  "op": "equals",
+                  "value": "order_a"
+                }
+              ],
+              "assertions": [
+                {
+                  "path": [
+                    "status"
+                  ],
+                  "op": "equals",
+                  "value": "cancelled"
+                }
+              ]
+            },
+            {
+              "id": "one-write",
+              "source": "writes",
+              "where": [],
+              "assertions": [],
+              "quantifier": "count",
+              "count": 1
+            }
+          ]
+        },
+        "context_consistency": {
+          "rubrics": [
+            {
+              "id": "confirmed-object",
+              "criterion": "操作遵循用户要求和明确确认的对象。",
+              "pass_when": "确认和实际执行均针对 alice 的 ORD-A，参数一致，未将其他订单代入。",
+              "partial_when": "曾出现可恢复歧义，但提交前已澄清且没有错误写入。",
+              "fail_when": "未经对应确认就提交，或对象、用户、动作与确认不一致。",
+              "evidence_sources": [
+                "events",
+                "writes"
+              ]
+            }
+          ],
+          "checks": [
+            {
+              "id": "correct-write",
+              "source": "writes",
+              "where": [],
+              "assertions": [
+                {
+                  "path": [
+                    "user_id"
+                  ],
+                  "op": "equals",
+                  "value": "alice"
+                },
+                {
+                  "path": [
+                    "after",
+                    "order_id"
+                  ],
+                  "op": "equals",
+                  "value": "ORD-A"
+                }
+              ],
+              "quantifier": "all"
+            }
+          ]
+        },
+        "reply_accuracy": {
+          "rubrics": [
+            {
+              "id": "accurate-progress",
+              "criterion": "公开回复准确区分准备、确认和执行结果。",
+              "pass_when": "成功前未宣称取消完成，成功后准确告知订单已取消；无退款到账等额外承诺。",
+              "partial_when": "事实没有矛盾，但成功后的说明遗漏非关键进度信息。",
+              "fail_when": "成功前声称取消完成、成功后仍误报失败，或虚构退款到账等事实。",
+              "evidence_sources": [
+                "events",
+                "operations",
+                "replies"
+              ]
+            }
+          ],
+          "checks": []
+        }
+      }
+    }
+  ]
+}

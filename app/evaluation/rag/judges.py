@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import Field, StrictInt, model_validator
 
-from app.evaluation.dataset import Record
+from app.evaluation.rag.dataset import Record
 from app.prompts.evaluation import (
     FAITHFULNESS_PROMPT, ANSWER_QUALITY_PROMPT, RAG_ANSWER_PROMPT,
 )

@@ -12,6 +12,9 @@ export function useTaskConversation(identity) {
     () => localStorage.getItem(sessionKey) || crypto.randomUUID(),
   )
   const [input, setInput] = useState('')
+  const [attachments, setAttachments] = useState([])
+  const [uploading, setUploading] = useState(false)
+  const uploadLock = useRef(false)
   const [error, setError] = useState('')
   const [progress, setProgress] = useState(null)
   const [acceptedSequence, setAcceptedSequence] = useState(0)
@@ -129,13 +132,64 @@ export function useTaskConversation(identity) {
   function send(event) {
     event.preventDefault()
     const message = input.trim()
-    if (!message || items.current.length >= 20) return
-    const payload = { session_id: sessionId, request_id: crypto.randomUUID(), message }
+    if ((!message && !attachments.length) || uploadLock.current || items.current.length >= 20)
+      return
+    const payload = {
+      session_id: sessionId,
+      request_id: crypto.randomUUID(),
+      message,
+      ...(attachments.length ? { attachment_ids: attachments.map((a) => a.attachment_id) } : {}),
+    }
     recordSend(payload)
     save([...items.current, { payload, status: 'queued' }])
     setInput('')
+    setAttachments([])
     setError('')
     deliver(payload)
+  }
+  async function uploadImages(event) {
+    const files = Array.from(event.target.files || [])
+    event.target.value = ''
+    if (uploadLock.current || !files.length) return
+    if (files.length + attachments.length > 4) {
+      setError('每条消息最多 4 张图片')
+      return
+    }
+    const sid = sessionId
+    uploadLock.current = true
+    setUploading(true)
+    try {
+      for (const file of files) {
+        if (file.size > 10 * 1024 * 1024) throw new Error('每张图片不能超过 10 MB')
+        const body = new FormData()
+        body.append('session_id', sid)
+        body.append('upload_request_id', crypto.randomUUID())
+        body.append('file', file)
+        const image = await request('/api/v1/attachments', { method: 'POST', body })
+        if (active.current !== sid) return
+        setAttachments((previous) => [...previous, image])
+      }
+      setError('')
+    } catch (e) {
+      if (active.current === sid) setError(e.message)
+    } finally {
+      uploadLock.current = false
+      setUploading(false)
+    }
+  }
+  async function removeAttachment(id) {
+    if (uploadLock.current) return
+    uploadLock.current = true
+    setUploading(true)
+    try {
+      await request(`/api/v1/attachments/${id}`, { method: 'DELETE' })
+      setAttachments((previous) => previous.filter((a) => a.attachment_id !== id))
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      uploadLock.current = false
+      setUploading(false)
+    }
   }
   function handleComposerKeyDown(event) {
     if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey)
@@ -145,10 +199,12 @@ export function useTaskConversation(identity) {
     if (!event.repeat) event.currentTarget.form.requestSubmit()
   }
   function startNew() {
+    if (uploadLock.current) return
     const sid = crypto.randomUUID()
     active.current = sid
     setSessionId(sid)
     setInput('')
+    setAttachments([])
     setError('')
     setAcceptedSequence(0)
     setProgress(null)
@@ -213,6 +269,11 @@ export function useTaskConversation(identity) {
       Math.max(acceptedSequence, progress?.received_sequence || 0),
     )
   return {
+    sessionId,
+    attachments,
+    uploading,
+    uploadImages,
+    removeAttachment,
     conversation,
     state,
     typing,

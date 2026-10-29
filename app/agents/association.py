@@ -17,7 +17,24 @@ DetailField = Literal[
 class Quote(StrictModel):
     session_id: str = Field(min_length=1, max_length=200)
     sequence: int = Field(ge=1)
-    quote: str = Field(min_length=1, max_length=4000)
+    kind: Literal['text_quote', 'attachment_ref', 'image_observation'] = 'text_quote'
+    quote: str = Field(default='', max_length=4000)
+    attachment_id: str | None = None
+    observation_id: str | None = None
+    field_path: Literal['image_type', 'summary', 'visible_text', 'candidate_entities', 'uncertainties'] | None = None
+
+    @model_validator(mode='after')
+    def valid_source(self):
+        if self.kind == 'text_quote':
+            if not self.quote or self.attachment_id or self.observation_id or self.field_path:
+                raise ValueError('Invalid text quote')
+        elif self.quote or not self.attachment_id:
+            raise ValueError('Image evidence cannot impersonate user text')
+        elif self.kind == 'image_observation' and (not self.observation_id or not self.field_path):
+            raise ValueError('Image observation requires a field and observation ID')
+        elif self.kind == 'attachment_ref' and (self.observation_id or self.field_path):
+            raise ValueError('Attachment existence is not an observation')
+        return self
 
 
 class Detail(StrictModel):
@@ -91,7 +108,9 @@ def complete_quoted_clarification_sources(proposal, context):
             continue
         sources = question["sources"]
         if all(any(q.session_id == s["session_id"] and q.sequence == s["sequence"]
-                   and q.quote in s["content"] for q in decision.evidence) for s in sources):
+                   and ((q.kind == 'text_quote' and q.quote in s['content'])
+                        or (q.kind != 'text_quote' and any(i['attachment_id'] == q.attachment_id
+                            for i in s.get('visual_context', [])))) for q in decision.evidence) for s in sources):
             combined = set(decision.sequences) | {s["sequence"] for s in sources}
             if len(combined) <= 100 and combined & current:
                 decision.sequences = sorted(combined)
@@ -111,6 +130,8 @@ def omit_ungrounded_details(proposal, context):
             continue
         question = candidates.get(decision.task_id, {}).get("question") or {}
         def retain(detail):
+            if detail.evidence.kind != 'text_quote':
+                return False
             if not isinstance(detail.value, str) or detail.value.casefold() in detail.evidence.quote.casefold():
                 return True
             return (decision.effect == "answer" and question.get("valid")

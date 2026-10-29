@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useRef } from 'react'
 import { Bot, Headphones, UserRound } from 'lucide-react'
 import { messageTimestamp } from '../chatTime'
+import Attachments from './Attachments'
 
-function CustomerMessage({ message, typing = false }) {
+function CustomerMessage({ message, typing = false, sessionId }) {
   const role = message?.role ?? 'assistant'
   const isUser = role === 'user'
   const Avatar = isUser ? UserRound : role === 'agent' ? Headphones : Bot
@@ -29,7 +30,10 @@ function CustomerMessage({ message, typing = false }) {
               </span>
             </>
           ) : (
-            <p>{message.content}</p>
+            <>
+              <p>{message.content}</p>
+              <Attachments message={message} sessionId={sessionId} />
+            </>
           )}
         </div>
       </div>
@@ -37,7 +41,7 @@ function CustomerMessage({ message, typing = false }) {
   )
 }
 
-function StaffMessage({ message }) {
+function StaffMessage({ message, sessionId, ticketId }) {
   return (
     <article
       className={`support-message ${message.role === 'user' ? 'from-user' : ''} ${message.internal ? 'internal-note' : ''}`}
@@ -51,11 +55,14 @@ function StaffMessage({ message }) {
         {message.internal ? ' · 内部备注' : ''} · {new Date(message.at).toLocaleTimeString()}
       </small>
       <p>{message.content}</p>
+      <Attachments message={message} sessionId={sessionId} ticketId={ticketId} />
     </article>
   )
 }
 
 export default function Transcript({
+  sessionId,
+  ticketId,
   messages,
   hasOlder = false,
   loadingHistory = false,
@@ -81,7 +88,15 @@ export default function Transcript({
       )}
       {showEmptyState && messages.length === 0 && <p className="support-muted">暂无消息</p>}
       {messages.map((message, index) => {
-        if (!customerView) return <StaffMessage key={message.sequence} message={message} />
+        if (!customerView)
+          return (
+            <StaffMessage
+              key={message.sequence}
+              message={message}
+              sessionId={sessionId}
+              ticketId={ticketId}
+            />
+          )
         const timestamp = messageTimestamp(message.at, messages[index - 1]?.at)
         return (
           <Fragment key={message.sequence}>
@@ -90,7 +105,7 @@ export default function Transcript({
                 {timestamp.label}
               </time>
             )}
-            <CustomerMessage message={message} />
+            <CustomerMessage message={message} sessionId={sessionId} />
           </Fragment>
         )
       })}

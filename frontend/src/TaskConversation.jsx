@@ -1,9 +1,15 @@
 import { useTaskConversation } from './chat/useTaskConversation'
 import Transcript from './chat/Transcript'
 import OperationConfirmation from './OperationConfirmation'
+import { Attachment } from './chat/Attachments'
 
 export default function TaskConversation({ identity }) {
   const {
+    sessionId,
+    attachments,
+    uploading,
+    uploadImages,
+    removeAttachment,
     conversation,
     state,
     typing,
@@ -34,7 +40,7 @@ export default function TaskConversation({ identity }) {
           </h1>
         </div>
         <div className="support-toolbar">
-          <button onClick={startNew} disabled={pending.length > 0}>
+          <button onClick={startNew} disabled={pending.length > 0 || uploading}>
             新建会话
           </button>
         </div>
@@ -47,6 +53,7 @@ export default function TaskConversation({ identity }) {
         )}
         <Transcript
           {...conversation}
+          sessionId={sessionId}
           showEmptyState={false}
           customerView
           typing={typing}
@@ -77,6 +84,17 @@ export default function TaskConversation({ identity }) {
           />
         ))}
         <form className="support-compose" onSubmit={send}>
+          <label className="image-upload">
+            图片
+            <input
+              type="file"
+              aria-label="添加图片"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              disabled={uploading || attachments.length >= 4}
+              onChange={uploadImages}
+            />
+          </label>
           <textarea
             aria-label="咨询内容"
             rows={1}
@@ -88,8 +106,17 @@ export default function TaskConversation({ identity }) {
             title="Enter 发送，Shift+Enter 换行"
             placeholder="可以连续补充订单、原因和其他问题"
           />
-          <button disabled={!input.trim() || pending.length >= 20}>发送消息</button>
+          <button
+            disabled={(!input.trim() && !attachments.length) || uploading || pending.length >= 20}
+          >
+            {uploading ? '上传中…' : '发送消息'}
+          </button>
         </form>
+        <div className="chat-attachments">
+          {attachments.map((a) => (
+            <Attachment key={a.attachment_id} id={a.attachment_id} onRemove={removeAttachment} />
+          ))}
+        </div>
       </section>
     </main>
   )

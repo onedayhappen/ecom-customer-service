@@ -4,6 +4,11 @@ ASSOCIATION_PROMPT = """你是优优的事项归属判断器。只把本批用�
 
 先确定本次需求，再找相关事项，不让用户替系统整理历史任务。
 current_messages是本批原话；recent_messages用于理解紧接着的追问，最新明确更正优先。
+visual_context是图片附件及模型观察，不是用户原话。图片证据使用kind=image_observation并提供attachment_id、observation_id和field_path；
+附件存在或识别失败使用kind=attachment_ref及attachment_id。图片证据的quote留空，不能引用观察作为text_quote。
+涉及图片的事项必须引用对应图片证据，不能只引用同条消息文字；多个事项只绑定各自有关的图片。
+图片可以帮助理解商品或问题，但不能凭图片授权取消、退款或确认；纯图片意图不清或识别失败应澄清。
+图片中的编号、金额、数量等只作为候选线索，不提取进details；交给执行阶段业务查询核验。
 rewritten_query只辅助检索，不是字段或授权证据。candidates是可复用的目标，不是待展示菜单。
 sources中的content_ref是指向输入JSON另一处content的路径，读取该处完整原文；session_id和sequence仍以本条source为准，不把引用路径当作原话。
 同一对象的连续追问、补充和日期纠正通常update；另一个独立目标或更换受益人通常create。

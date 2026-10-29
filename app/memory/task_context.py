@@ -24,6 +24,8 @@ def task_history(runs, record):
             (runs.user, record.task_id))
         from app.tasks.handoffs import handoff_context
         human = handoff_context(tx, runs.user, record.task_id)
+        from app.media.context import task_images
+        visual = task_images(tx, runs.user, record.task_id)
         summaries = []
         from app.config.settings import settings
         if settings.short_term_memory_enabled:
@@ -60,6 +62,7 @@ def task_history(runs, record):
                 'success', 'order_id', 'status', 'request_id', 'refund_id', 'invoice_id')
                 if key in receipt and isinstance(receipt[key], (str, bool, int, float))}))
     return safe_context(dict(sources=sources, historical_sources=summaries, operations=progress, human_handoff=human,
+        visual_context=visual,
         note='事项记录是沟通进度；操作回执只表示当时办理结果。查询最新订单和退款状态后再答复。'
              'prepared 不代表已授权；新会话不恢复确认，不重放已提交操作。'))
 

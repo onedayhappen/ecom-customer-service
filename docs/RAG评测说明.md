@@ -79,10 +79,10 @@ flowchart LR
 
 ## 代码入口
 
-- [题集与轨迹结构](../app/evaluation/dataset.py)、[示例数据](../app/evaluation/datasets/)
-- [检索适配与评测编排](../app/evaluation/evaluator.py)、[政策检索服务](../app/rag/service.py)
-- [召回与排序指标](../app/evaluation/metrics.py)
-- [模型裁判](../app/evaluation/judges.py)、[评分提示词](../app/prompts/evaluation.py)
-- [命令行与报告输出](../app/evaluation/run.py)、[评测回归测试](../tests/test_evaluation_pipeline.py)
+- [题集与轨迹结构](../app/evaluation/rag/dataset.py)、[示例数据](../app/evaluation/rag/datasets/)
+- [检索适配与评测编排](../app/evaluation/rag/evaluator.py)、[政策检索服务](../app/rag/service.py)
+- [召回与排序指标](../app/evaluation/rag/metrics.py)
+- [模型裁判](../app/evaluation/rag/judges.py)、[评分提示词](../app/prompts/evaluation.py)
+- [命令行与报告输出](../app/evaluation/rag/run.py)、[评测回归测试](../tests/test_evaluation_pipeline.py)
 
 政策适用条件与索引机制见 [政策检索设计](政策检索设计.md)，运行命令见 [项目 README](../README.md#rag-质量评测)。

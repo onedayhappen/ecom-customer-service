@@ -20,13 +20,23 @@ from app.tasks.repository import TaskRepository
 
 class IncomingMessage(StrictModel):
     request_id: str = Field(min_length=1, max_length=200)
-    content: str = Field(min_length=1, max_length=4000)
+    content: str = Field(default='', max_length=4000)
+    attachment_ids: list[str] = Field(default_factory=list, max_length=4)
+    retry_source_sequence: int | None = Field(default=None, ge=1)
     action: Literal["handoff", "cancel"] | None = None
     task_id: str | None = Field(default=None, min_length=1, max_length=200)
     task_version: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def validate_control(self):
+        if not self.content.strip() and not self.attachment_ids:
+            raise ValueError('消息需要文字或图片')
+        if len(set(self.attachment_ids)) != len(self.attachment_ids):
+            raise ValueError('图片不能重复')
+        if self.action and self.attachment_ids:
+            raise ValueError('控制消息不能携带图片')
+        if self.retry_source_sequence and (self.content or len(self.attachment_ids) != 1):
+            raise ValueError('图片重试必须引用单个原始附件')
         if self.action == "cancel":
             if self.task_id is None or self.task_version is None:
                 raise ValueError("取消需要明确的事项及版本")
@@ -101,7 +111,13 @@ class MessageIntake:
         from app.support.runtime import explicit_handoff
         if incoming.action is None and explicit_handoff(incoming.content):
             incoming = incoming.model_copy(update={"action": "handoff"})
-        fingerprint = TaskRepository._fingerprint(dict(session_id=sid, **incoming.model_dump()))
+        canonical = incoming.model_dump()
+        # Text-only retries admitted before the image schema keep their hash.
+        if not canonical['attachment_ids']:
+            canonical.pop('attachment_ids')
+        if canonical['retry_source_sequence'] is None:
+            canonical.pop('retry_source_sequence')
+        fingerprint = TaskRepository._fingerprint(dict(session_id=sid, **canonical))
         with self.store.transaction() as tx:
             from app.tasks.provenance import lock_input_user
             lock_input_user(tx, user)
@@ -125,9 +141,26 @@ class MessageIntake:
                     raise SupportError("待理解消息过多，请稍后继续或转人工", 429)
             sequence = self.store._event(tx, control, "message", user, {
                 "role": "user", "content": incoming.content, "request_id": incoming.request_id,
+                "attachment_ids": incoming.attachment_ids,
+                "image_retry_source": incoming.retry_source_sequence,
                 "intake_action": incoming.action,
                 "control_task_id": incoming.task_id, "control_task_version": incoming.task_version,
             }, key="intake:" + incoming.request_id)
+            from app.media.jobs import bind_message
+            retry_source = None
+            if incoming.retry_source_sequence:
+                original = tx.one('''SELECT e.payload FROM message_attachments m JOIN support_events e
+                    ON e.session_id=m.session_id AND e.sequence=m.sequence
+                    WHERE m.user_id=? AND m.session_id=? AND m.sequence=? AND m.attachment_id=? AND m.status='active' ''',
+                    (user, sid, incoming.retry_source_sequence, incoming.attachment_ids[0]))
+                if not original:
+                    raise SupportError('图片重试来源不存在', 404)
+                from app.tasks.provenance import context_event_valid
+                if not context_event_valid(tx, sid, incoming.retry_source_sequence):
+                    raise SupportError('图片重试来源已失效')
+                retry_source = dict(session_id=sid, sequence=incoming.retry_source_sequence,
+                                    text=json.loads(original['payload'])['content'])
+            bind_message(tx, user, sid, sequence, incoming.attachment_ids, incoming.content, retry_source=retry_source)
             inserted = tx.execute("""INSERT INTO message_intake_items
                 (user_id,request_id,session_id,sequence,request_hash) VALUES (?,?,?,?,?)
                 ON CONFLICT(user_id,request_id) DO NOTHING""",
@@ -220,6 +253,8 @@ class MessageIntake:
                 JOIN support_events e ON e.session_id=i.session_id AND e.sequence=i.sequence
                 WHERE i.session_id=? AND i.association_status='pending' ORDER BY i.sequence LIMIT ?""", (sid, self.batch_size))
             previous = json.loads(job["payload"] or "{}")
+            from app.media.context import ready_prefix
+            messages = ready_prefix(tx, sid, messages)
             if previous.get("sequences"):
                 messages = [m for m in messages if m["sequence"] in previous["sequences"]]
             elif through_sequence is not None:

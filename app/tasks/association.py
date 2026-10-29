@@ -98,6 +98,10 @@ class AssociationService:
                     AND actor=? AND kind='message' AND visibility='public'""", (sid, sequence, self.user))
                 if message:
                     sources.append(dict(session_id=sid, sequence=sequence, content=json.loads(message["payload"])["content"]))
+                    from app.media.context import message_images
+                    visual = message_images(tx, self.user, sid, sequence)
+                    if visual:
+                        sources[-1]['visual_context'] = visual
             context.clarifications.append({
                 "clarification_id": row["clarification_id"], "version": row["version"], "question": row["question"],
                 "options": visible, "sources": sources, "published": state.published,
@@ -119,6 +123,15 @@ class AssociationService:
     def _quote(self, tx, quote, allowed, *, user_only=True):
         from app.tasks.provenance import context_event_valid
         key = (quote.session_id, quote.sequence)
+        if quote.kind != 'text_quote':
+            if user_only or key not in allowed or not context_event_valid(tx, *key):
+                raise AssociationRejected('image_is_not_user_statement')
+            from app.media.context import validate_evidence
+            try:
+                validate_evidence(tx, self.user, quote)
+            except SupportError:
+                raise AssociationRejected('invalid_image_evidence') from None
+            return
         if key not in allowed or quote.quote not in allowed[key] or not context_event_valid(tx, *key):
             raise AssociationRejected("ungrounded_quote")
         row = tx.one("""SELECT e.payload,e.actor FROM support_events e JOIN support_conversations c ON c.session_id=e.session_id
@@ -136,6 +149,10 @@ class AssociationService:
         if context.session_id != batch.session_id:
             raise AssociationRejected("context_session")
         current = {m["sequence"]: m["content"] for m in context.current_messages}
+        from app.media.context import message_images
+        for message in context.current_messages:
+            if message.get('visual_context', []) != message_images(tx, self.user, batch.session_id, message['sequence']):
+                raise AssociationRejected('image_context_changed')
         if set(current) != {m["sequence"] for m in batch.messages}:
             raise AssociationRejected("message_range")
         available = {c["task_id"]: c for c in context.candidates}
@@ -313,6 +330,13 @@ class AssociationService:
                     raise AssociationRejected("scope_mismatch")
         if covered != current.keys():
             raise AssociationRejected("uncovered_message")
+        if any(d.action in {'create', 'update'} for d in proposal.decisions):
+            images = {(m['sequence'], i['attachment_id']) for m in context.current_messages
+                      for i in m.get('visual_context', []) if i['status'] != 'unavailable'}
+            cited = {(e.sequence, e.attachment_id) for d in proposal.decisions for e in d.evidence
+                     if e.kind != 'text_quote' and e.session_id == batch.session_id}
+            if images - cited:
+                raise AssociationRejected('missing_image_evidence')
         return locked
 
     def commit(self, batch, snapshot, proposal, *, rejections=()):
@@ -321,6 +345,8 @@ class AssociationService:
         proposal = AssociationProposal.model_validate(proposal)
         fingerprint = self.repo._fingerprint(proposal.model_dump())
         with self.store.transaction() as tx:
+            from app.tasks.provenance import lock_input_user
+            lock_input_user(tx, self.user)
             control = self.store._control(tx, batch.session_id, self.user)
             previous = tx.one("SELECT * FROM association_runs WHERE job_id=? AND user_id=?", (batch.job_id, self.user))
             if previous:
@@ -399,6 +425,9 @@ class AssociationService:
                 }, private=True, key="association:" + did)
                 tx.execute("INSERT INTO association_decisions VALUES (?,?,?,?,?,?,?,?)",
                            (did, batch.job_id, self.user, batch.session_id, tid, event_sequence, change_id, decision.action))
+                if tid:
+                    from app.media.context import bind_task_images
+                    bind_task_images(tx, self.user, tid, did, decision.evidence)
                 for seq in decision.sequences:
                     tx.execute("INSERT INTO association_sources VALUES (?,?,?)", (did, batch.session_id, seq))
                     if seq in per_message:
@@ -437,13 +466,22 @@ class AssociationService:
             sources = {m["sequence"]: m["content"] for m in batch.messages}
         return AssociationProposal.model_validate({"decisions": [{
             "action": "clarify", "sequences": sorted(sources),
-            "evidence": [dict(session_id=batch.session_id, sequence=n, quote=text[:1]) for n, text in sources.items()],
+            "evidence": [self._fallback_evidence(batch, n, text) for n, text in sources.items()],
             # Infrastructure/validation failure is not evidence that every
             # recalled task is a plausible choice. Keep the unresolved sources
             # but do not manufacture a historical task menu from retrieval.
             "clarification": "刚才没能准确接上您的意思。请直接说一下商品和现在想办的事，不用提供订单号。",
             "candidate_task_ids": [],
         }]})
+
+    def _fallback_evidence(self, batch, sequence, text):
+        if text:
+            return dict(session_id=batch.session_id, sequence=sequence, quote=text[:1])
+        with self.store.transaction(read_only=True) as tx:
+            from app.media.context import message_images
+            images = message_images(tx, self.user, batch.session_id, sequence)
+        return dict(session_id=batch.session_id, sequence=sequence, kind='attachment_ref',
+                    attachment_id=images[0]['attachment_id'])
 
     @observed_association
     def process(self, batch, engine):
@@ -487,13 +525,16 @@ class AssociationService:
             except AssociationRejected as exc:
                 record("association.validation", status="error", attempt=attempt + 1, error=exc.code)
                 rejections.append(exc.code)
+                if exc.code == 'image_context_changed':
+                    dialogue = self.candidates.dialogue(batch.session_id, [m['sequence'] for m in batch.messages])
+                    rewritten = ''
             except VersionConflict:
                 record("association.validation", status="error", attempt=attempt + 1, error="version_or_control_changed")
                 rejections.append("version_or_control_changed")
         # No guessed business fields survive an invalid/ambiguous proposal.
         # Snapshot again so the fallback itself does not reuse stale control.
         self.intake.renew(batch, 60)
-        snapshot = self.snapshot(batch, dialogue=dialogue, rewritten_query=rewritten)
+        snapshot = self.snapshot(batch, rewritten_query=rewritten)
         record("association.fallback", status="fallback", rejections=rejections)
         return self.commit(batch, snapshot, self._fallback(batch, snapshot), rejections=rejections)
 

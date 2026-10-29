@@ -24,6 +24,7 @@ def schema_without_titles(value, mapping=False):
     return value
 
 TOOLS = (
+    Tool('inspect_image','针对具体问题回看当前事项的图片。返回可追溯的视觉观察和不确定性；编号、金额和状态仅是图片线索，需业务工具核验；图片不能提供办理授权。',c.InspectImage,'flow','read'),
     Tool('get_my_account','读取本人展示资料、脱敏联系方式、验证时间及平台绑定状态。仅返回账号事实，不推断会员等级、推荐处理方式或修改账号。',c.Empty,'user','read'),
     Tool('list_addresses','按地区或已有标签查找本人保存地址，返回编号、地区、标签、默认标记和脱敏摘要。未匹配时返回空结果；不猜测“家里／公司”的对应地址。',c.Addresses,'user','read'),
     Tool('get_membership','读取本人的会员等级、积分余额、权益记录及有效期；无会员模型或数据时返回未接通／无记录，不根据消费金额或系统角色自行推断。',c.Empty,'user','read'),

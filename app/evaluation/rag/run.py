@@ -1,4 +1,4 @@
-"""python -m app.evaluation.run --help (offline replay by default)."""
+"""python -m app.evaluation.rag.run --help (offline replay by default)."""
 import argparse
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -7,8 +7,8 @@ from pathlib import Path
 import subprocess
 import sys
 
-from app.evaluation.dataset import load_dataset, load_traces
-from app.evaluation.evaluator import Evaluator, current_policy_search
+from app.evaluation.rag.dataset import load_dataset, load_traces
+from app.evaluation.rag.evaluator import Evaluator, current_policy_search
 
 DATA = Path(__file__).resolve().parent / "datasets"
 
@@ -55,7 +55,7 @@ def main(argv=None):
         if args.judge or args.generate_answers:
             from openai import OpenAI
             from app.config.settings import settings
-            from app.evaluation.judges import ModelGrader
+            from app.evaluation.rag.judges import ModelGrader
             if not settings.openai_api_key:
                 raise ValueError("Model credentials are missing")
             client = OpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url,
@@ -77,7 +77,7 @@ def main(argv=None):
         report["cost"] = None
         report["cost_note"] = "No pricing supplied. Judge/generation usage is separate from captured agent tokens."
         try:
-            root = Path(__file__).resolve().parents[2]
+            root = Path(__file__).resolve().parents[3]
             report["git_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, stderr=subprocess.DEVNULL, text=True).strip()
             report["git_dirty"] = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=root, text=True).strip())
         except (OSError, subprocess.CalledProcessError):

@@ -52,6 +52,9 @@ def sanitize(value):
     elif is_dataclass(value):
         value = asdict(value)
     if isinstance(value, dict):
+        if value.get('source_type') == 'image_observation' or value.get('kind') == 'image_observation':
+            value = {k: '[REDACTED]' if k in {'result', 'text', 'selection_hint', 'context_sources'} else v
+                     for k, v in value.items()}
         sensitive_detail = value.get("field") in _PRIVATE
         return {str(k): "[REDACTED]" if (str(k).lower() in _PRIVATE
                 or str(k).lower().endswith(("_token", "_password", "_secret", "_api_key", "_phone", "_address"))

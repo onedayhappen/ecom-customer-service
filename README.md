@@ -259,28 +259,53 @@ python scripts/run_platform_checks.py
 python scripts/run_platform_checks.py tests/test_memory_v3.py
 ```
 
+### Agent 行为评测
+
+完整场景按**任务完成、对象与上下文一致性、最终回复准确性**三个维度评测。评测从真实消息服务驱动关联、执行、确认与回复，每次使用独立进程、临时 SQLite 和有状态的受控业务后端。三个维度均支持 rubric 评分，并保留关键事实核验；已提供三个格式示例，正式题集与人工校准后续补充，当前不提供模型效果分数。
+
+```powershell
+# 查看 v3/v4 场景协议；模型名替换为服务中可用的模型
+python -m app.evaluation.agent.run --print-schema
+python -m app.evaluation.agent.run --dataset app/evaluation/agent/agent_demo.json --live-model --judge-model 裁判模型名 --repetitions 3
+
+# 动态用户、多会话及同快照记忆读取对照
+python -m app.evaluation.agent.run --dataset app/evaluation/agent/agent_simulation_demo.json --live-model --model 客服模型名 --user-model 用户模拟模型名 --judge-model 裁判模型名 --repetitions 3
+
+# 回放同一批采集；含语义标准时需要显式配置 --judge-model
+python -m app.evaluation.agent.run --dataset path/to/scenarios.json --traces path/to/captures.json --judge-model 裁判模型名 --repetitions 3
+python scripts/run_platform_checks.py tests/test_agent_e2e.py tests/test_agent_rubrics.py tests/test_agent_simulation.py tests/test_agent_latency.py
+```
+
+报告默认写入 `output/agent-e2e/`，保留逐次结果、证据完整性、评分覆盖率及固定重复结果。采集缺失、超时和裁判失败不会自动通过；原始采集可能含场景数据，不属于公开汇总报告。
+
+简历展示以三个质量指标及响应时间为主：`resume_summary` 分别汇总任务完成、对象与上下文一致性、回复准确性通过率，以及首条公开回复和本轮服务处理耗时的平均值、P50、P95。计时排除模拟用户、行为复核和裁判耗时；无回复、超时及重叠请求单独统计。这里测量服务入口耗时，不是首 token 或前端延迟，旧轨迹缺少计时则保持未评分。长期记忆对照保留为可选诊断。
+
+`--live-model` 复用当前模型服务配置并可能产生 API 费用，可通过 `--model` 指定客服模型。兼容 v3 静态场景，v4 动态执行另需 `--user-model`；可用 `--reviewer-model` 和 `--memory-model` 分别指定用户行为复核和记忆提取模型。报告区分全部运行、模拟有效运行与有效配对。当前 Agent 主链路尚未调用长期记忆召回，评测如实记录，不预设记忆提升。退出码 0 表示全部通过，1 表示存在失败或未评分，2 表示输入或配置错误。
+
+数据与指标定义见 [Agent 评测设计](docs/Agent评测设计.md)，可用公开数据及转换要求见 [开源评测数据集](docs/开源评测数据集.md)。
+
 ### RAG 质量评测
 
-正式评测入口位于 `app/evaluation/`，支持 Recall@k、Precision@k、MRR@k、NDCG@k，以及基于实际证据的答案忠实度评分。
+正式评测入口位于 `app/evaluation/rag/`，支持 Recall@k、Precision@k、MRR@k、NDCG@k，以及基于实际证据的答案忠实度评分。
 
 ```powershell
 # 离线演示，不调用模型；示例分数不代表真实项目效果
-python -m app.evaluation.run --output data/evaluation/demo.json
+python -m app.evaluation.rag.run --output data/evaluation/demo.json
 
 # 回放已采集的检索结果，计算召回与排序指标
-python -m app.evaluation.run --dataset data/evaluation/cases.json --traces data/evaluation/traces.json --output data/evaluation/replay.json
+python -m app.evaluation.rag.run --dataset data/evaluation/cases.json --traces data/evaluation/traces.json --output data/evaluation/replay.json
 
 # 使用当前政策检索服务，需要已发布的政策索引及相应检索配置
-python -m app.evaluation.run --mode retrieve --dataset data/evaluation/cases.json --live --output data/evaluation/retrieval.json
+python -m app.evaluation.rag.run --mode retrieve --dataset data/evaluation/cases.json --live --output data/evaluation/retrieval.json
 
 # 对采集的实际答案进行模型评分
-python -m app.evaluation.run --dataset data/evaluation/cases.json --traces data/evaluation/traces.json --judge --live --output data/evaluation/judged.json
+python -m app.evaluation.rag.run --dataset data/evaluation/cases.json --traces data/evaluation/traces.json --judge --live --output data/evaluation/judged.json
 
 # 生成独立的 RAG 答案并评分
-python -m app.evaluation.run --mode retrieve --dataset data/evaluation/cases.json --generate-answers --judge --live --output data/evaluation/generated.json
+python -m app.evaluation.rag.run --mode retrieve --dataset data/evaluation/cases.json --generate-answers --judge --live --output data/evaluation/generated.json
 ```
 
-`cases.json` 与 `traces.json` 需按 `app/evaluation/datasets/` 中的示例结构准备。`--live` 开启配置中的检索或模型调用；模型评分复用项目的模型服务配置，可能产生 API 费用。可用 `--k 1 3 5` 指定评测范围，`--model` 与 `--answer-model` 分别指定裁判和生成模型。
+`cases.json` 与 `traces.json` 需按 `app/evaluation/rag/datasets/` 中的示例结构准备。`--live` 开启配置中的检索或模型调用；模型评分复用项目的模型服务配置，可能产生 API 费用。可用 `--k 1 3 5` 指定评测范围，`--model` 与 `--answer-model` 分别指定裁判和生成模型。
 
 退出码 0 表示通过当前启用的检查，1 表示有题未通过，2 表示参数、输入或配置错误。模块职责、数据流和指标口径见 [RAG 评测说明](docs/RAG评测说明.md)。
 
@@ -361,6 +386,8 @@ docker compose build backend frontend
 - [上下文与记忆设计](docs/上下文与记忆设计.md)：原话、请求预算、记忆更新与遗忘。
 - [政策检索设计](docs/政策检索设计.md)：适用条件、证据与索引版本。
 - [RAG 评测说明](docs/RAG评测说明.md)：召回、排序、答案忠实度和评测命令。
+- [Agent 评测设计](docs/Agent评测设计.md)：任务完成、对象与上下文一致性、最终回复准确性及运行入口。
+- [开源评测数据集](docs/开源评测数据集.md)：外部数据来源与项目适配要求。
 - [人工接管设计](docs/人工接管设计.md)：工单、权限、交接与机器人恢复。
 - [运行与可观测性设计](docs/运行与可观测性设计.md)：调度、通知、额度、控制与日志。
 - [前端交互设计](docs/前端交互设计.md)：界面分工、事件恢复与确认卡片。

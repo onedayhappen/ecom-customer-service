@@ -32,6 +32,8 @@ cryptography==50.0.2
 
 # Monitoring and Windows IANA timezone data (zoneinfo)
 prometheus-client==0.26.0
+pillow==12.2.0
+python-multipart==0.0.32
 tzdata==2026.5; sys_platform == "win32"
 
 # Development tools are installed separately:

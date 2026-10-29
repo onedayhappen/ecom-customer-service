@@ -152,6 +152,19 @@ class _TaskContext:
             "instruction": TASK_CONTEXT_NOTE,
         }, ensure_ascii=False)}]
 
+    def inspect_image(self, attachment_id, question, detail='brief'):
+        from app.media.service import MediaService
+        def reserve():
+            self.check()
+            with self.budget_lock:
+                if self.model_calls >= self.request.budget.model_calls:
+                    raise ExecutionStopped('model_call_budget')
+                self.model_calls += 1
+                self.persist_usage()
+        return MediaService(self.runs.store).inspect(
+            self.runs.user, self.record.task_id, attachment_id, question, detail,
+            before_call=reserve, check=self.check, timeout=self.call_timeout())
+
     def read_progress(self, arguments):
         try:
             query = ReadTaskContext.model_validate(arguments)

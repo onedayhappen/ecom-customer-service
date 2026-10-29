@@ -70,6 +70,8 @@ class RewriteAhead:
                 messages = tx.all("""SELECT sequence FROM message_intake_items
                     WHERE session_id=? AND sequence>? AND association_status='pending'
                     ORDER BY sequence LIMIT ?""", (sid, max(payload["sequences"]), self.batch_size))
+                from app.media.context import ready_prefix
+                messages = ready_prefix(tx, sid, messages)
             if messages:
                 dialogue = CandidateService(self.store, job["user_id"]).dialogue(sid, [r["sequence"] for r in messages])
                 self.pending[sid] = PreparedRewrite(dialogue, self.pool.submit(self._run, dialogue))

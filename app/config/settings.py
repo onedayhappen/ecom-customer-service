@@ -41,6 +41,21 @@ class Settings(BaseSettings):
     deepseek_model_name: str = "deepseek-v4-flash"
     temperature: float = 0.7
 
+    # Dedicated vision endpoint; text-only providers must not receive images.
+    vision_api_key: str = ''
+    vision_base_url: str = ''
+    vision_model: str = ''
+    vision_model_revision: str = '1'
+    vision_timeout_seconds: float = Field(default=25, ge=1, le=60)
+    media_storage_dir: str = 'data/media'
+    media_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1024, le=20 * 1024 * 1024)
+    media_max_pixels: int = Field(default=20_000_000, ge=1, le=40_000_000)
+    media_max_assets_per_user: int = Field(default=500, ge=1)
+    media_retention_days: int = Field(default=90, ge=1)
+    media_concurrency: int = Field(default=2, ge=1, le=8)
+    media_context_tokens: int = Field(default=3000, ge=500, le=12000)
+    media_job_deadline_seconds: int = Field(default=120, ge=30, le=600)
+
     # One task pipeline. Database rollout controls govern users across instances.
     task_intake_enabled: bool = True
     task_worker_enabled: bool = True

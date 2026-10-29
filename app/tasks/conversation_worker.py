@@ -21,6 +21,8 @@ class ConversationWorker:
         self.store, self.engine = store, engine
         self.executions = TaskWorker(store, engine, tools=tools, concurrency=concurrency, queue=queue)
         self.intake = MessageIntake(store)
+        from app.media.jobs import ImageWorker
+        self.images = ImageWorker(store)
         self.pool = ThreadPoolExecutor(min(concurrency, 4), thread_name_prefix="message-association")
         self.capacity, self.associations = min(concurrency, 4), {}
         self.receipt_pool = ThreadPoolExecutor(1, thread_name_prefix="business-receipt")
@@ -110,6 +112,7 @@ class ConversationWorker:
                                (clock(tx) + 2, row["task_id"]))
 
     def tick(self):
+        self.images.tick()
         if time.monotonic() >= self.trace_flush_at:
             from app.observability.interactions import flush_pending
             flush_pending(self.store)
@@ -185,6 +188,7 @@ class ConversationWorker:
         return published
 
     def close(self):
+        self.images.close()
         self.reply_pool.shutdown(wait=True)
         self.receipt_pool.shutdown(wait=True)
         self.pool.shutdown(wait=True)

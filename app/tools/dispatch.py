@@ -41,6 +41,8 @@ def invoke(name,arguments):
 
 
 def flow(name,args,ctx):
+    if name=='inspect_image':
+        return ok(ctx.inspect_image(**args))
     if name=='read_task_context':
         result=ctx.read_progress({})
         with ctx.runs.store.transaction(read_only=True) as tx:

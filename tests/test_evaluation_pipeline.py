@@ -6,11 +6,11 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from app.evaluation.dataset import EvalCase, EvalDataset, ReplayDataset, ReplayTrace, load_dataset, load_traces
-from app.evaluation.evaluator import Evaluator, current_policy_search, evidence_for
-from app.evaluation.judges import ModelGrader
-from app.evaluation.metrics import retrieval_metrics
-from app.evaluation.run import DATA, main
+from app.evaluation.rag.dataset import EvalCase, EvalDataset, ReplayDataset, ReplayTrace, load_dataset, load_traces
+from app.evaluation.rag.evaluator import Evaluator, current_policy_search, evidence_for
+from app.evaluation.rag.judges import ModelGrader
+from app.evaluation.rag.metrics import retrieval_metrics
+from app.evaluation.rag.run import DATA, main
 
 
 def fixture():
@@ -216,7 +216,7 @@ def test_cli_rejects_unsafe_or_ambiguous_modes_before_calls(arguments):
 
 
 def test_cli_offline_replay_does_not_initialize_live_components(tmp_path, monkeypatch):
-    import app.evaluation.run as runner
+    import app.evaluation.rag.run as runner
     monkeypatch.setattr(runner, "current_policy_search", lambda *a: pytest.fail("live search invoked"))
     output = tmp_path / "report.json"
     assert main(["--output", str(output)]) == 0

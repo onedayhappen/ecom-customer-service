@@ -89,6 +89,10 @@ def mask_sensitive(data: Any, *, _key: str = "") -> Any:
         mask_sensitive({"order_id": "ORD-1", "phone": "13800138000", "note": "手机13800138000"})
         # → {"order_id": "ORD-1", "phone": "138****00", "note": "手机138****00"}
     """
+    if ((isinstance(data, dict) and (data.get('source_type') == 'image_observation' or data.get('kind') == 'image_observation'))
+            or (isinstance(data, str) and '"image_observation"' in data)):
+        from app.observability.interactions import sanitize
+        data = sanitize(data)
     if isinstance(data, dict):
         return {
             k: (mask_value(v, whole=True) if k.lower() in _SENSITIVE_KEYS else mask_sensitive(v, _key=k))

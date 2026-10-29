@@ -60,7 +60,9 @@ class ReplyCoordinator:
         return receipts
 
     def _valid_receipt(self, tx, record, evidence):
+        from app.media.context import dependency_stamp
         return (evidence.get('task_id') == record.task_id and evidence.get('object') == object_key(record)
+            and evidence.get('provenance', {}).get('media', []) == dependency_stamp(tx, self.user, [record.task_id])
             and not evidence.get('late')
             and isinstance(evidence.get('result'), dict) and evidence['result'].get('success') is True
             and evidence.get('observed_epoch', 0) >= clock(tx) - 60
@@ -365,12 +367,16 @@ class ReplyCoordinator:
                         continue
                     from app.tasks.reply_claims import build_claims, fallback_text
                     metadata["claims"] = build_claims(record, receipts)
+                    from app.media.context import image_claims
+                    visual_claims = image_claims(tx, self.user, record.task_id)
+                    metadata['claims'] += visual_claims
                     text = fallback_text(metadata["claims"])
                     if any(r['tool'] in {'search_knowledge','search_policies'} for r in receipts):
                         from app.memory.source_policy import POLICY_REFRESH
                         metadata['context_content'] = '\n'.join(filter(None, (
                             facts(record, [r for r in receipts if r['tool'] not in {'search_knowledge','search_policies'}]), POLICY_REFRESH)))
                     metadata["evidence_ids"] = [r["event_id"] for r in receipts]
+                    metadata['evidence_ids'] += [c['evidence_id'] for c in visual_claims]
                     if not text:
                         subject = "订单 " + label(record.details["order_id"]) if record.details.get("order_id") else label(record.goal)
                         text = subject + "：暂时没有可核实的查询结果，可补充信息后重试，或转人工客服核实。"

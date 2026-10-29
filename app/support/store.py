@@ -20,6 +20,7 @@ from app.runtime.maintenance import SCHEMA as MAINTENANCE_SCHEMA
 from app.session.short_term import SCHEMA as CONTEXT_SCHEMA
 from app.memory.runtime import SCHEMA as MEMORY_RUNTIME_SCHEMA
 from app.memory.v3.schema import SCHEMA as MEMORY_V3_SCHEMA
+from app.media.schema import SCHEMA as MEDIA_SCHEMA
 
 
 class SupportError(Exception):
@@ -72,8 +73,8 @@ SCHEMA = (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, response TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS support_bot_runs (
         job_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL)""",
-) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA + MEMORY_RUNTIME_SCHEMA + MEMORY_V3_SCHEMA
-SCHEMA_VERSION = 25
+) + TASK_SCHEMA + JOB_SCHEMA + NOTIFICATION_SCHEMA + MAINTENANCE_SCHEMA + CONTEXT_SCHEMA + MEMORY_RUNTIME_SCHEMA + MEMORY_V3_SCHEMA + MEDIA_SCHEMA
+SCHEMA_VERSION = 26
 
 
 class Tx:

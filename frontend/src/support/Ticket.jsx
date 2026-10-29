@@ -130,7 +130,7 @@ export default function Ticket({ ticketId, role, onChanged }) {
           </details>
         ))}
       </details>
-      <Transcript {...conversation} />
+      <Transcript {...conversation} sessionId={detail?.ticket.session_id} ticketId={ticketId} />
       <TaskHandover
         entries={detail.task_handovers}
         ticketId={ticketId}

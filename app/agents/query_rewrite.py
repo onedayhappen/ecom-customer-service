@@ -3,7 +3,7 @@ import json
 
 from app.config.settings import settings
 from app.observability.interactions import call_model
-from app.prompts.query_rewrite import QUERY_REWRITE_PROMPT
+from app.prompts.query_rewrite import QUERY_REWRITE_PROMPT, IMAGE_REWRITE_NOTE
 
 
 def validate_rewrite(value):
@@ -27,7 +27,7 @@ def rewrite(client, model, context):
     template = {
         **settings.chat_completion_options,
         "model": model, "temperature": 0, "max_tokens": 2000, "timeout": 15,
-        "messages": [{"role": "system", "content": QUERY_REWRITE_PROMPT}],
+        "messages": [{"role": "system", "content": QUERY_REWRITE_PROMPT + '\n' + IMAGE_REWRITE_NOTE}],
     }
     template.pop("response_format", None)
     response = call_model(client, context.request(template))

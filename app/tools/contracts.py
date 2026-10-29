@@ -14,6 +14,11 @@ class Input(BaseModel):
 class Empty(Input):
     pass
 
+class InspectImage(Input):
+    attachment_id: str = Field(min_length=1, max_length=200)
+    question: str = Field(min_length=1, max_length=1000)
+    detail: Literal['brief', 'full'] = 'brief'
+
 class Page(Input):
     cursor: str | None = Field(None, max_length=4096, description='上一页返回的 next_cursor；省略查第一页')
 

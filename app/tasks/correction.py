@@ -157,6 +157,8 @@ class CorrectionService:
             raise SupportError("用户纠正必须引用用户原话", 422)
         fingerprint = self.repo._fingerprint({"session_id": session_id, **request.model_dump()})
         with self.store.transaction() as tx:
+            from app.tasks.provenance import lock_input_user
+            lock_input_user(tx, self.user)
             control = self.store._control(tx, session_id, self.user)
             previous = tx.one("SELECT request_hash,result FROM task_corrections WHERE user_id=? AND correction_id=?",
                               (self.user, request.correction_id))
@@ -192,6 +194,8 @@ class CorrectionService:
             operations = self._operations(tx, ids)
             source_rows = tx.all("SELECT session_id,sequence FROM association_sources WHERE decision_id=?", (request.decision_id,))
             self._invalidate(tx, "decision", request.decision_id, request.correction_id)
+            tx.execute("""UPDATE task_attachments SET status='invalidated',version=version+1
+                WHERE decision_id=? AND status='active'""", (request.decision_id,))
             self._invalidate(tx, "change", row["change_id"], request.correction_id)
             tx.execute("UPDATE task_provenance_users SET revision=revision+1 WHERE user_id=?", (self.user,))
             original = records[old_id]
@@ -257,6 +261,15 @@ class CorrectionService:
                 tx.execute("INSERT INTO association_decisions VALUES (?,?,?,?,?,?,?,?)",
                            (target_decision, "correction:" + request.correction_id, self.user, session_id, target_id,
                             sequence, target_decision, "update"))
+                tx.execute('''INSERT INTO task_attachments
+                    (task_id,attachment_id,source_session_id,source_sequence,decision_id)
+                    SELECT ?,l.attachment_id,l.source_session_id,l.source_sequence,?
+                    FROM task_attachments l JOIN media_assets a ON a.attachment_id=l.attachment_id
+                    JOIN message_attachments m ON m.attachment_id=l.attachment_id
+                        AND m.session_id=l.source_session_id AND m.sequence=l.source_sequence
+                    WHERE l.decision_id=? AND a.user_id=? AND a.status='ready' AND a.expires_at>?
+                        AND m.status='active' ON CONFLICT DO NOTHING''',
+                    (target_id, target_decision, request.decision_id, self.user, clock(tx)))
                 for source in source_rows:
                     tx.execute("INSERT INTO association_sources VALUES (?,?,?) ON CONFLICT DO NOTHING",
                                (target_decision, source["session_id"], source["sequence"]))

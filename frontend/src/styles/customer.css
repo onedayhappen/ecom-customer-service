@@ -802,3 +802,42 @@
     padding-bottom: max(15px, env(safe-area-inset-bottom));
   }
 }
+.chat-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chat-attachment {
+  margin: 6px 0;
+  max-width: 220px;
+  font-size: 12px;
+}
+.chat-attachment img {
+  display: block;
+  max-width: 200px;
+  max-height: 180px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+.chat-attachment button {
+  margin: 4px 4px 0 0;
+}
+.image-upload {
+  position: relative;
+  cursor: pointer;
+  font-size: 12px;
+  width: 32px;
+}
+.image-upload input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.image-upload:focus-within {
+  outline: 2px solid #216b60;
+}
+.customer-shell .support-compose {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}

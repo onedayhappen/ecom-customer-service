@@ -233,6 +233,8 @@ class TaskRuns:
 
     def evidence(self, record, *, seconds=60):
         with self.store.transaction(read_only=True) as tx:
+            from app.media.context import dependency_stamp
+            media = dependency_stamp(tx, self.user, [record.task_id])
             task_field = "e.payload::jsonb->>'task_id'" if tx.postgres else "json_extract(e.payload,'$.task_id')"
             rows = tx.all(f"""SELECT e.payload FROM support_events e JOIN support_conversations c ON c.session_id=e.session_id
                 WHERE c.user_id=? AND e.kind='task_tool_result' AND {task_field}=? ORDER BY e.created_at DESC LIMIT 30""",
@@ -243,6 +245,7 @@ class TaskRuns:
                     and e.get('tool') not in {'search_knowledge','search_policies'}
                     and e["observed_epoch"] >= cutoff and e["result"].get("success")
                     and self.control_versions_valid(tx, e.get("controls"))
+                    and e.get('provenance', {}).get('media', []) == media
                     and not any(invalid(tx, self.user, "decision", did) for did in e["provenance"]["decisions"])]
 
     def save_progress(self, request, payload, progress, index):

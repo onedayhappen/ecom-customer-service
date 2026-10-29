@@ -26,7 +26,8 @@ class MessageBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     session_id: UUID
     request_id: UUID
-    message: str = Field(min_length=1, max_length=4000)
+    message: str = Field(default='', max_length=4000)
+    attachment_ids: list[UUID] = Field(default_factory=list, max_length=4)
     action: Literal["handoff", "cancel"] | None = None
     task_id: UUID | None = None
     task_version: int | None = Field(default=None, ge=1)
@@ -39,6 +40,7 @@ async def receive(body: MessageBody, request: Request):
     await asyncio.to_thread(ensure_session, sid, user)
     return await asyncio.to_thread(
         MessageIntake(get_store()).receive, sid, user, request_id=str(body.request_id), content=body.message,
+        attachment_ids=[str(aid) for aid in body.attachment_ids],
         action=body.action, task_id=str(body.task_id) if body.task_id else None, task_version=body.task_version)
 
 

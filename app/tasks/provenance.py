@@ -61,7 +61,9 @@ class ProvenanceGuard:
                 if not tx.one("SELECT decision_id FROM association_decisions WHERE user_id=? AND decision_id=?",
                               (self.user, did)) or invalid(tx, self.user, "decision", did):
                     raise SupportError("来源已失效或不存在", 409)
+            from app.media.context import dependency_stamp
             return {"user_id": self.user, "tasks": tasks, "decisions": decisions,
+                    'media': dependency_stamp(tx, self.user, tasks),
                     "revision": revision(tx, self.user)}
 
     def require_current(self, stamp, *, tx=None, lock=False):
@@ -85,6 +87,9 @@ class ProvenanceGuard:
                 if not tx.one("SELECT decision_id FROM association_decisions WHERE user_id=? AND decision_id=?",
                               (self.user, did)) or invalid(tx, self.user, "decision", did):
                     raise SupportError("关联来源已失效", 409)
+            from app.media.context import dependency_stamp
+            if stamp.get('media', []) != dependency_stamp(tx, self.user, tasks):
+                raise VersionConflict()
 
     def valid(self, stamp, *, tx=None):
         try:

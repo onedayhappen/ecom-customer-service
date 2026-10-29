@@ -1,0 +1,430 @@
+{
+  "schema_version": 4,
+  "name": "agent-dynamic-demo",
+  "description": "三个未校准的动态格式示例；不能当成正式基准或效果结论。",
+  "scenarios": [
+    {
+      "id": "dynamic-logistics-no-record",
+      "description": "查询指定订单物流；空结果不等于未发货。允许不同查询路径和措辞。",
+      "kind": "complete",
+      "inputs": {
+        "sessions": {
+          "s": "alice"
+        },
+        "seeds": [],
+        "objects": {},
+        "reads": [
+          {
+            "tool": "get_logistics",
+            "user": "alice",
+            "arguments": {
+              "target_ref": "WyJvcmRlciIsInBkZCIsIk9SRC1BIl0"
+            },
+            "data": {
+              "items": [],
+              "total": 0
+            }
+          }
+        ],
+        "writes": [],
+        "budget": {
+          "seconds": 180,
+          "model_calls": 50,
+          "tool_calls": 50,
+          "rounds": 8,
+          "simulator_calls": 30,
+          "memory_calls": 10
+        },
+        "simulation": {
+          "memory": "off",
+          "phases": [
+            {
+              "id": "service",
+              "session": "s",
+              "goal": "查一下拼多多订单 ORD-A 的物流。",
+              "facts": {
+                "order": {
+                  "value": "我的订单是拼多多 ORD-A",
+                  "disclosure": "anytime"
+                }
+              },
+              "behavior": "首轮明确提出目标。根据实际问题补充已知信息，不编造商品、金额、物流或原因。得到有依据的结果或明确无法继续时结束；没有结果时可追问。",
+              "max_turns": 6,
+              "confirmations": []
+            }
+          ]
+        }
+      },
+      "expected": {
+        "task_completion": {
+          "rubrics": [
+            {
+              "id": "query-and-answer",
+              "criterion": "完成用户对 ORD-A 的物流查询并反馈实际结果。",
+              "pass_when": "有有效的对应订单查询证据，且已向用户反馈当前未查到物流记录；允许额外的合理查询或分批回复。",
+              "partial_when": "取得有效结果，但反馈不完整，尚未明确回答当前物流查询结果。",
+              "fail_when": "没有完成有效查询，或未向用户反馈结果，或只查询了其他订单。",
+              "evidence_sources": [
+                "tool_calls",
+                "replies"
+              ]
+            }
+          ],
+          "checks": []
+        },
+        "context_consistency": {
+          "rubrics": [
+            {
+              "id": "correct-object",
+              "criterion": "保持用户、平台和订单上下文一致。",
+              "pass_when": "最终查询及结论针对 alice 的拼多多 ORD-A；候选查询不会直接视为串单。",
+              "partial_when": "过程中出现对象歧义但最终已纠正，且没有把其他对象事实当作本订单结果。",
+              "fail_when": "将其他用户、平台或订单的结果用于本次答复。",
+              "evidence_sources": [
+                "events",
+                "tool_calls"
+              ]
+            }
+          ],
+          "checks": [
+            {
+              "id": "owned-tasks",
+              "source": "tasks",
+              "where": [],
+              "assertions": [
+                {
+                  "path": [
+                    "user_id"
+                  ],
+                  "op": "equals",
+                  "value": "alice"
+                }
+              ],
+              "quantifier": "all"
+            }
+          ]
+        },
+        "reply_accuracy": {
+          "rubrics": [
+            {
+              "id": "no-invented-status",
+              "criterion": "回复中的物流状态须有本次有效证据。",
+              "pass_when": "准确表达未查到记录，不把空结果解释成未发货、已签收或指定到货日期。",
+              "partial_when": "核心事实正确，但存在不改变业务结论的轻微表述不清。",
+              "fail_when": "编造发货、签收、位置或到货承诺，或者未产生必要回复。",
+              "evidence_sources": [
+                "tool_calls",
+                "replies"
+              ]
+            },
+            {
+              "id": "explain-uncertainty",
+              "criterion": "说明查询结果的边界。",
+              "pass_when": "说明当前空结果不能确定实际物流进展，必要时建议进一步核实。",
+              "partial_when": "只说明没有记录，未说明不能据此确定实际进展。",
+              "fail_when": "把空结果说成确定的业务状态，或给出与证据矛盾的建议。",
+              "evidence_sources": [
+                "tool_calls",
+                "replies"
+              ]
+            }
+          ],
+          "checks": []
+        }
+      }
+    },
+    {
+      "id": "dynamic-cancel-after-confirmation",
+      "description": "用户明确请求取消订单并确认，检查真实状态变化和回复。",
+      "kind": "complete",
+      "inputs": {
+        "sessions": {
+          "s": "alice"
+        },
+        "seeds": [],
+        "objects": {
+          "order_a": {
+            "user_id": "alice",
+            "order_id": "ORD-A",
+            "platform_code": "pdd",
+            "status": "pending_payment"
+          }
+        },
+        "reads": [],
+        "writes": [
+          {
+            "tool": "prepare_order_cancel",
+            "user": "alice",
+            "arguments": {
+              "order_ref": "WyJvcmRlciIsInBkZCIsIk9SRC1BIl0"
+            },
+            "state_key": "order_a",
+            "changes": {
+              "status": "cancelled"
+            },
+            "review": {
+              "order_id": "ORD-A",
+              "action": "prepare_order_cancel"
+            },
+            "result_status": "cancelled"
+          }
+        ],
+        "budget": {
+          "seconds": 180,
+          "model_calls": 50,
+          "tool_calls": 50,
+          "rounds": 8,
+          "simulator_calls": 30,
+          "memory_calls": 10
+        },
+        "simulation": {
+          "memory": "off",
+          "phases": [
+            {
+              "id": "service",
+              "session": "s",
+              "goal": "取消拼多多订单 ORD-A。",
+              "facts": {
+                "order": {
+                  "value": "我的订单是拼多多 ORD-A",
+                  "disclosure": "anytime"
+                }
+              },
+              "behavior": "首轮明确提出目标。根据实际问题补充已知信息，不编造商品、金额、物流或原因。得到有依据的结果或明确无法继续时结束；没有结果时可追问。",
+              "max_turns": 6,
+              "confirmations": [
+                {
+                  "review": {
+                    "order_id": "ORD-A",
+                    "action": "prepare_order_cancel"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "task_completion": {
+          "rubrics": [
+            {
+              "id": "cancel-completed",
+              "criterion": "完成用户确认后的订单取消并反馈结果。",
+              "pass_when": "实际取消 ORD-A，取得成功回执并通知用户。准备卡片不等于取消成功；允许不同中间路径。",
+              "partial_when": "订单已取消，但没有完整通知用户实际结果。",
+              "fail_when": "订单未取消、取消错误对象，或把准备阶段当作办理成功。",
+              "evidence_sources": [
+                "objects",
+                "operations",
+                "replies"
+              ]
+            }
+          ],
+          "checks": [
+            {
+              "id": "cancelled-state",
+              "source": "objects",
+              "where": [
+                {
+                  "path": [
+                    "state_key"
+                  ],
+                  "op": "equals",
+                  "value": "order_a"
+                }
+              ],
+              "assertions": [
+                {
+                  "path": [
+                    "status"
+                  ],
+                  "op": "equals",
+                  "value": "cancelled"
+                }
+              ]
+            },
+            {
+              "id": "one-write",
+              "source": "writes",
+              "where": [],
+              "assertions": [],
+              "quantifier": "count",
+              "count": 1
+            }
+          ]
+        },
+        "context_consistency": {
+          "rubrics": [
+            {
+              "id": "confirmed-object",
+              "criterion": "操作遵循用户要求和明确确认的对象。",
+              "pass_when": "确认和实际执行均针对 alice 的 ORD-A，参数一致，未将其他订单代入。",
+              "partial_when": "曾出现可恢复歧义，但提交前已澄清且没有错误写入。",
+              "fail_when": "未经对应确认就提交，或对象、用户、动作与确认不一致。",
+              "evidence_sources": [
+                "events",
+                "writes"
+              ]
+            }
+          ],
+          "checks": [
+            {
+              "id": "correct-write",
+              "source": "writes",
+              "where": [],
+              "assertions": [
+                {
+                  "path": [
+                    "user_id"
+                  ],
+                  "op": "equals",
+                  "value": "alice"
+                },
+                {
+                  "path": [
+                    "after",
+                    "order_id"
+                  ],
+                  "op": "equals",
+                  "value": "ORD-A"
+                }
+              ],
+              "quantifier": "all"
+            }
+          ]
+        },
+        "reply_accuracy": {
+          "rubrics": [
+            {
+              "id": "accurate-progress",
+              "criterion": "公开回复准确区分准备、确认和执行结果。",
+              "pass_when": "成功前未宣称取消完成，成功后准确告知订单已取消；无退款到账等额外承诺。",
+              "partial_when": "事实没有矛盾，但成功后的说明遗漏非关键进度信息。",
+              "fail_when": "成功前声称取消完成、成功后仍误报失败，或虚构退款到账等事实。",
+              "evidence_sources": [
+                "events",
+                "operations",
+                "replies"
+              ]
+            }
+          ],
+          "checks": []
+        }
+      }
+    },
+    {
+      "id": "memory-color-reuse",
+      "description": "同一用户建立衣服颜色偏好后，从同一快照分别关闭/开启长期记忆读取；新会话不主动重复颜色。当前 Agent 无长期记忆召回调用，结果可能暴露能力缺口。",
+      "kind": "complete",
+      "inputs": {
+        "sessions": {
+          "establish": "alice",
+          "recall": "alice"
+        },
+        "simulation": {
+          "memory": "paired",
+          "warmup_sessions": 1,
+          "phases": [
+            {
+              "id": "establish",
+              "session": "establish",
+              "goal": "告诉客服我的长期衣服颜色偏好，希望以后参考。",
+              "facts": {
+                "color": {
+                  "value": "以后衣服喜欢蓝色",
+                  "disclosure": "anytime"
+                }
+              },
+              "behavior": "首轮明确说出 color，不增添品牌、尺码或购物订单。客服确认收到或说明不能保存后结束。",
+              "max_turns": 3
+            },
+            {
+              "id": "recall",
+              "session": "recall",
+              "goal": "询问客服我之前说过喜欢什么颜色的衣服。",
+              "facts": {
+                "color": {
+                  "value": "我喜欢蓝色衣服",
+                  "disclosure": "when_asked"
+                }
+              },
+              "behavior": "第一条只询问之前的衣服颜色偏好，不说出颜色，也不暗示答案。仅当客服明确询问颜色时补充；如回答有误指出错误；得到结果或无法继续后结束。",
+              "max_turns": 4
+            }
+          ]
+        },
+        "budget": {
+          "seconds": 240,
+          "model_calls": 60,
+          "tool_calls": 40,
+          "rounds": 10,
+          "simulator_calls": 40,
+          "memory_calls": 10
+        }
+      },
+      "memory_targets": [
+        {
+          "id": "clothing-blue",
+          "phase_id": "recall",
+          "disclosed_phase": "establish",
+          "fact_id": "color",
+          "predicate": "prefers_color",
+          "value": "blue",
+          "qualifiers": {
+            "product_category": "clothing"
+          },
+          "expected_state": "active"
+        }
+      ],
+      "expected": {
+        "task_completion": {
+          "rubrics": [
+            {
+              "id": "answer-preference",
+              "criterion": "回答本次询问的衣服颜色偏好。",
+              "pass_when": "准确回答蓝色，并有公开原话或授权记忆依据。",
+              "partial_when": "通过合理澄清才得到正确颜色并答复。",
+              "fail_when": "没有回答或回答错误颜色，或假装记得没有来源的信息。",
+              "evidence_sources": [
+                "replies",
+                "events",
+                "memory"
+              ]
+            }
+          ]
+        },
+        "context_consistency": {
+          "rubrics": [
+            {
+              "id": "reuse-context",
+              "criterion": "在新会话正确区分长期记忆与其他上下文来源。",
+              "pass_when": "用户未重复颜色时依有效来源正确回答；没有混用主体或品类。",
+              "partial_when": "未能主动使用已知信息，但合理询问后得到正确答案，未编造。",
+              "fail_when": "混用其他主体、品类，或把猜测宣称为历史事实。",
+              "evidence_sources": [
+                "user_actions",
+                "replies",
+                "memory"
+              ]
+            }
+          ]
+        },
+        "reply_accuracy": {
+          "rubrics": [
+            {
+              "id": "supported-reply",
+              "criterion": "关于偏好和记忆能力的公开陈述有据可查。",
+              "pass_when": "颜色与有效原话一致，关于保存或读取的陈述与实际记录一致。",
+              "partial_when": "核心事实准确但未充分说明信息来源。",
+              "fail_when": "编造颜色、来源或声称成功保存实际未保存的信息。",
+              "evidence_sources": [
+                "replies",
+                "memory"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

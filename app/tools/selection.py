@@ -7,7 +7,7 @@ def names(value):
     return frozenset(value.split())
 
 
-COMMON = names('read_task_context ask_user handoff_to_human search_policies')
+COMMON = names('read_task_context ask_user handoff_to_human search_policies inspect_image')
 ORDER = names('find_orders get_order get_order_items')
 PRODUCT = names('search_products get_product_details get_merchant')
 SALE = ORDER | names('find_after_sales get_after_sale_status get_refunds get_logistics')

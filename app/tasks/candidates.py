@@ -329,12 +329,21 @@ class CandidateService:
                 if not row or row["actor"] != self.user or payload.get("role") != "user":
                     raise SupportError("消息范围不属于当前用户", 404)
                 current.append(dict(session_id=session_id, sequence=sequence, content=payload["content"]))
+                from app.media.context import message_images
+                visual = message_images(tx, self.user, session_id, sequence)
+                if visual:
+                    current[-1]['visual_context'] = visual
             rows = tx.all("""SELECT sequence,payload FROM support_events WHERE session_id=? AND sequence<?
                 AND kind='message' AND visibility='public' ORDER BY sequence DESC LIMIT 12""", (session_id, sequences[0]))
             recent = [dict(session_id=session_id, sequence=r["sequence"], role=p["role"], content=p["content"],
                            required=bool(re.search(r"不|别|仅|只|如果|除非|否则|只有|另一|第[一二三四五\d]|[?？]|ORD-|SKU-|ITEM-", p["content"], re.I)))
                       for r in reversed(rows) if (p := json.loads(r["payload"])).get("role") in {"user", "assistant", "agent"}
                       and self._source_allowed(tx, session_id, r["sequence"])]
+            from app.media.context import message_images
+            for message in recent:
+                visual = message_images(tx, self.user, session_id, message['sequence'])
+                if visual:
+                    message['visual_context'] = visual
         context = CandidateContext(session_id, current, recent, [], self.scope)
         if self.scope != BusinessScope() and len(recent) < len(rows):
             context.gaps.append("recent_source_scope_unknown")
@@ -399,6 +408,10 @@ class CandidateService:
                         (record.task_id not in current_ids, "history")) if active],
                     "sources": self._sources(tx, record.task_id),
                 })
+                from app.media.context import task_images
+                visual = task_images(tx, self.user, record.task_id)
+                if visual:
+                    context.candidates[-1]['visual_context'] = visual
         context.omitted_candidates = max(0, len(ranked) - len(context.candidates))
         if any(item[3] for item in ranked[self.max_candidates:]):
             context.gaps.append("required_candidates_exceed_limit")
