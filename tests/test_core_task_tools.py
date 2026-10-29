@@ -24,7 +24,7 @@ def business(svc,monkeypatch):
 def test_mcp_only_exposes_read_tools():
     from app.mcp.server import list_business_tools,call_business_tool
     tools=asyncio.run(list_business_tools())
-    assert len(tools)==31
+    assert len(tools)==34
     assert all(t.annotations.readOnlyHint for t in tools)
     assert 'prepare_invoice' not in {t.name for t in tools}
     assert not asyncio.run(call_business_tool('claim_coupon',{}))['ok']
@@ -141,4 +141,6 @@ def test_customer_reply_projects_new_tool_results(store,business):
     with store.transaction(read_only=True) as tx:
         messages=tx.all("SELECT payload FROM support_events WHERE kind='message' AND visibility='public'")
     texts='\n'.join(json.loads(r['payload']).get('content','') for r in messages)
-    assert '已支付' in texts and '订单号：paid' in texts
+    assert '已支付' in texts and '订单 paid' in texts
+    assert '耳机' in texts and '30.00' in texts
+    assert published['evidence_ids'] == out['evidence_ids']

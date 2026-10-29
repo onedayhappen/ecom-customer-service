@@ -32,8 +32,14 @@ def invoke(name,arguments):
             ctx.operation_id=result['operation_id']
             return ok(dict(result,next_state='needs_confirmation'))
         return commerce.read(name,args)
-    except ValidationError:
-        return failure(BusinessError('invalid_arguments','参数类型、范围或必填字段不正确'))
+    except ValidationError as error:
+        # Field paths and stable error types let the model repair a call. Never
+        # expose Pydantic input/ctx/msg: they can contain private user values.
+        errors = [dict(path=list(item['loc']) if item['type'] != 'extra_forbidden' else [],
+                       type=item['type'])
+                  for item in error.errors(include_input=False, include_context=False, include_url=False)[:20]]
+        return failure(BusinessError('invalid_arguments','参数类型、范围或必填字段不正确',
+                                     validation_errors=errors))
     except PreparationRejected as error:
         return failure(BusinessError('insufficient_data', str(error)))
     except BusinessError as error:
@@ -41,6 +47,8 @@ def invoke(name,arguments):
 
 
 def flow(name,args,ctx):
+    if name=='recall_user_memory':
+        return ok(ctx.recall_memory(**args))
     if name=='inspect_image':
         return ok(ctx.inspect_image(**args))
     if name=='read_task_context':

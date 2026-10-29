@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY scripts ./scripts
+COPY migrations/mysql ./migrations/mysql
 COPY data/.gitkeep ./data/.gitkeep
 
 # Runtime-writable directories. Persistent data is mounted by Compose.

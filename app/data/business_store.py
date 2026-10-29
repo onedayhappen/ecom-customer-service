@@ -1,5 +1,5 @@
 """MySQL-only production business transactions; no fixture fallback."""
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 import re
 import pymysql
 from app.data.order_dao import parse_mysql_dsn
@@ -43,7 +43,11 @@ class BusinessStore:
             yield Transaction(conn,write)
             conn.commit() if write else conn.rollback()
         except BaseException:
-            conn.rollback()
+            # A timed-out query may already have closed the socket. Preserve
+            # that original failure instead of replacing it with rollback's
+            # uninformative InterfaceError.
+            with suppress(Exception):
+                conn.rollback()
             raise
         finally:
             conn.close()

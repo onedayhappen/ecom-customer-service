@@ -49,6 +49,24 @@ def result(name, args):
     return {"success": True, "order": {"order_id": args["order_id"], "status": "已发货", "stock": 1}}
 
 
+class ProductQueryClient(QueryClient):
+    def create(self, **params):
+        from app.tasks.runtime import current_task
+        context = current_task()
+        context.check()
+        if not context.historical:
+            args = {"target_ref": "sku:test"}
+            receipt = context.tools("get_product_details", args)
+            context.check()
+            context.receipts.append(context.runs.save_tool(context.request, context.payload, 1,
+                "get_product_details", args, receipt))
+        return response("已保存测试回执。")
+
+
+def product_result(name, args):
+    return {"ok": True, "success": True, "data": {"items": [{"inventory": {"available_qty": 1}}]}}
+
+
 def drain(worker, ids, user="alice", timeout=10):
     deadline = time.monotonic() + timeout
     schedule = TaskSchedule(worker.store, user)
@@ -199,10 +217,10 @@ def test_stock_condition_selects_only_verified_branch_and_records_shared_resourc
     exchange, es = task(store, "s", goal="换货")
     refund, rs = task(store, "s", goal="退款")
     p = enqueue(store, parent, ps)
-    dep = dict(job_id=p, kind="query", tool="query_order", field="order.stock")
+    dep = dict(job_id=p, kind="query", tool="get_product_details", field="data.items.0.inventory.available_qty")
     yes = enqueue(store, exchange, es, dependencies=[{**dep, "compare": "gt", "value": 0}])
     no = enqueue(store, refund, rs, dependencies=[{**dep, "value": 0}])
-    worker = TaskWorker(store, engine(QueryClient()), tools=result)
+    worker = TaskWorker(store, engine(ProductQueryClient()), tools=product_result)
     try:
         assert drain(worker, [p, yes])[1]["result"]["state"] == "ready"
         worker.tick()
@@ -220,7 +238,7 @@ def test_address_then_resend_requires_real_operation_receipt(store):
     resend, rs = task(store, "s", goal="改地址后补发")
     p = enqueue(store, parent, ps)
     child = enqueue(store, resend, rs, dependencies=[dict(job_id=p, kind="operation", operation_id="not-a-receipt")])
-    worker = TaskWorker(store, engine(QueryClient()), tools=result)
+    worker = TaskWorker(store, engine(ProductQueryClient()), tools=product_result)
     try:
         drain(worker, [p])
         worker.tick()
@@ -235,12 +253,12 @@ def test_changed_parent_and_foreign_dependency_cannot_authorize_child(store):
     parent, ps = task(store, "s")
     child, cs = task(store, "s")
     p = enqueue(store, parent, ps)
-    worker = TaskWorker(store, engine(QueryClient()), tools=result)
+    worker = TaskWorker(store, engine(ProductQueryClient()), tools=product_result)
     try:
         drain(worker, [p])
         TaskRepository(store, "alice").update(parent.task_id, "s", expected_version=1, change_id="change",
             source=ps, patch={"details": {"order_id": "ORD-CHANGED"}})
-        c = enqueue(store, child, cs, dependencies=[dict(job_id=p, kind="query", tool="query_order", field="order.stock", value=1)])
+        c = enqueue(store, child, cs, dependencies=[dict(job_id=p, kind="query", tool="get_product_details", field="data.items.0.inventory.available_qty", value=1)])
         worker.tick()
         assert TaskSchedule(store, "alice").get(c)["reason"] == "dependency_changed"
         foreign, fs = task(store, "other", user="bob")
@@ -255,19 +273,19 @@ def test_dependency_changed_during_child_read_blocks_its_evidence(store):
     parent, ps = task(store, "s")
     child, cs = task(store, "old")
     p = enqueue(store, parent, ps)
-    worker = TaskWorker(store, engine(QueryClient()), tools=result)
+    worker = TaskWorker(store, engine(ProductQueryClient()), tools=product_result)
     try:
         drain(worker, [p])
     finally:
         worker.close()
     request_child = {**request(child, cs), "session_id": "old"}
     c = TaskSchedule(store, "alice").enqueue(request_child, dependencies=[
-        dict(job_id=p, kind="query", tool="query_order", field="order.stock", value=1)])
+        dict(job_id=p, kind="query", tool="get_product_details", field="data.items.0.inventory.available_qty", value=1)])
     def changed(name, args):
         TaskRepository(store, "alice").update(parent.task_id, "s", expected_version=1, change_id="changed-parent",
             source=ps, patch={"details": {"order_id": "ORD-B"}})
-        return result(name, args)
-    worker = TaskWorker(store, engine(QueryClient()), tools=changed)
+        return product_result(name, args)
+    worker = TaskWorker(store, engine(ProductQueryClient()), tools=changed)
     try:
         assert drain(worker, [c])[0]["result"]["state"] == "interrupted"
         with store.transaction(read_only=True) as tx:
@@ -342,7 +360,7 @@ def test_no_forward_dependency_and_no_unknown_schema_field(store):
     with pytest.raises(SupportError):
         enqueue(store, record, source, dependencies=[dict(job_id="missing", kind="operation", operation_id="x")])
     with pytest.raises(ValueError):
-        Dependency.model_validate(dict(job_id="p", kind="query", tool="query_order", field="x();", value=True))
+        Dependency.model_validate(dict(job_id="p", kind="query", tool="get_order", field="x();", value=True))
 
 
 def test_control_change_stops_pending_work_and_queue_expiry_calls_no_model(store):

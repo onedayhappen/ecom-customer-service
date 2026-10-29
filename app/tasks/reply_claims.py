@@ -103,6 +103,53 @@ def _parcel_text(row, events):
     return summary, text
 
 
+def _memory_claims(record, receipt):
+    """Attribute recalled preferences without treating them as business receipts."""
+    data = receipt['result'].get('data', {})
+    if not isinstance(data, dict):
+        return []
+    quality = _quality(receipt['result'])
+    selected = []
+
+    def add(subject, text):
+        claim = dict(task_id=record.task_id, evidence_id=receipt['event_id'],
+                     subject_ref=subject, scope_ref=receipt['event_id'], query_scope=receipt.get('arguments', {}),
+                     kind='user_memory', text=text, quality=quality, selection_hint=text)
+        claim['claim_id'] = sha256(json.dumps(claim, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:24]
+        selected.append(claim)
+
+    if data.get('available') is False:
+        add('user_memory', '暂时无法读取你的历史偏好；可以按你这次明确提出的要求继续，不能据此猜测过去的喜好。')
+        return selected
+    if data.get('available') is not True:
+        return []
+    facts = data.get('long_term_facts')
+    if not isinstance(facts, list):
+        return []
+    if not facts:
+        add('user_memory', '本次没有查到与你的问题相关、可核实的历史偏好；这不表示你从未说过，可以说明这次的要求。')
+    for fact in facts[:20]:
+        if not isinstance(fact, dict) or not isinstance(fact.get('content'), str) or not fact['content'].strip():
+            continue
+        from app.memory.source_policy import memory_safe
+        qualifiers = fact.get('qualifiers', {})
+        names = {'product_category': '品类', 'usage': '用途', 'size_system': '尺码体系', 'subject': '适用人'}
+        values = {'clothing': '衣服', 'shoes': '鞋类', 'phone': '手机', 'self': '本人',
+                  'general': '通用', 'daily': '日常', 'running': '跑步', 'unknown': '未确定'}
+        scope = '；'.join(names.get(k, k) + '：' + values.get(str(v), str(v)) for k, v in qualifiers.items())
+        if len(fact['content']) + len(scope) > 2000 or not memory_safe(fact['content']) or not memory_safe(scope):
+            continue
+        historical = data.get('view') == 'historical'
+        text = ('历史偏好记录（不代表当前偏好）：' if historical else '你此前明确表达过：') + fact['content']
+        if fact.get('qualifiers'):
+            text += '。适用范围：' + scope
+        if historical and data.get('as_of'):
+            text += '。查询的历史时点：' + str(data['as_of'])
+        text += '。这只是有来源的个人偏好记录，本次明确要求优先，不代表订单状态或办理授权。'
+        add('memory:' + str(fact.get('memory_id', '')), text)
+    return selected
+
+
 def build_claims(record, receipts):
     """Pure bounded projection; no DB, network, model, or execution draft access."""
     claims = []
@@ -127,6 +174,9 @@ def build_claims(record, receipts):
     for receipt in receipts[:30]:
         result, tool = receipt["result"], receipt["tool"]
         if result.get("success") is not True:
+            continue
+        if tool == 'recall_user_memory':
+            claims.extend(_memory_claims(record, receipt))
             continue
         data = result.get("data") or {}
         if not isinstance(data, dict):

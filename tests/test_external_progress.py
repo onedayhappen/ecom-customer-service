@@ -297,7 +297,7 @@ def test_explicit_resume_after_query_limit_starts_a_new_bounded_attempt(store, m
     assert record(store, initial.task_id).status == 'waiting_external'
 
 
-def read_wait(store, goal, details, name, result):
+def read_wait(store, goal, details, name, result, arguments=None):
     from tests.test_task_candidates import task
     from tests.test_task_execution import engine, Client, response, request
     current, _ = task(store, 's', goal=goal, details=details)
@@ -310,7 +310,7 @@ def read_wait(store, goal, details, name, result):
     req = TaskExecutionInput.model_validate(request(current, source))
     reserved, _ = runs.begin(req)
     evidence = runs.save_tool(req, reserved['payload'], 1, name,
-        {'order_id': details['order_id']}, result)
+        arguments if arguments is not None else {'order_id': details['order_id']}, result)
     current, payload = runs.save_progress(req, reserved['payload'], ProgressInput(
         expected_version=current.version, state='waiting_external',
         wait_reason='等待业务进展', evidence_id=evidence['event_id']), 1)
@@ -321,8 +321,11 @@ def read_wait(store, goal, details, name, result):
 
 def test_signed_delivery_dispute_preserves_customer_statement_and_hands_off(store):
     from app.tasks.external_evidence import observation
+    from app.services.commerce.common import ok, ref
+    receipt = ok({'shipment': dict(shipment_id='pack', order_id='ORD-A', platform_code='shop',
+                                  tracking_number='TRACK-A', status='in_transit')}, sources=[{'kind': 'mysql'}])
     current = read_wait(store, '物流显示签收但我没收到', {'order_id': 'ORD-A', 'tracking_number': 'TRACK-A'},
-        'query_logistics', dict(success=True, logistics=dict(order_id='ORD-A', tracking_number='TRACK-A', status='运输中')))
+        'get_logistics', receipt, arguments={'target_ref': ref('shipment', 'pack')})
     class Logistics:
         def read(self, user, binding):
             return observation(binding, phase='delivered', rank=30, content='物流系统记录这票包裹已签收。',

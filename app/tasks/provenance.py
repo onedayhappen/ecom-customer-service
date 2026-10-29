@@ -53,7 +53,7 @@ class ProvenanceGuard:
         self.store, self.user = store, user
         self.repo = TaskRepository(store, user)
 
-    def capture(self, task_ids=(), decision_ids=(), *, tx=None):
+    def capture(self, task_ids=(), decision_ids=(), *, tx=None, memory=None):
         with (nullcontext(tx) if tx is not None else self.store.transaction(read_only=True)) as tx:
             tasks = {tid: self.repo._record(self.repo._row(tx, tid)).version for tid in sorted(set(task_ids))}
             decisions = sorted(set(decision_ids))
@@ -62,9 +62,13 @@ class ProvenanceGuard:
                               (self.user, did)) or invalid(tx, self.user, "decision", did):
                     raise SupportError("来源已失效或不存在", 409)
             from app.media.context import dependency_stamp
-            return {"user_id": self.user, "tasks": tasks, "decisions": decisions,
+            stamp = {"user_id": self.user, "tasks": tasks, "decisions": decisions,
                     'media': dependency_stamp(tx, self.user, tasks),
                     "revision": revision(tx, self.user)}
+            if memory:
+                from copy import deepcopy
+                stamp['memory'] = deepcopy(memory)
+            return stamp
 
     def require_current(self, stamp, *, tx=None, lock=False):
         if lock and tx is None:
@@ -90,6 +94,10 @@ class ProvenanceGuard:
             from app.media.context import dependency_stamp
             if stamp.get('media', []) != dependency_stamp(tx, self.user, tasks):
                 raise VersionConflict()
+            if 'memory' in stamp:
+                from app.memory.task_recall import dependencies_current
+                if not dependencies_current(tx, self.store, self.user, stamp['memory']):
+                    raise SupportError('历史偏好已变化，请重新查询', 409)
 
     def valid(self, stamp, *, tx=None):
         try:

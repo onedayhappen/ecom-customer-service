@@ -36,6 +36,10 @@ def isolated_selection(monkeypatch):
     ('购买两件耳机', {'search_products', 'quote_checkout', 'prepare_purchase'}, {'prepare_invoice'}),
     ('查询库存', {'get_restock_plan'}, {'prepare_purchase'}),
     ('查询会员积分', {'get_membership', 'list_points'}, {'prepare_purchase'}),
+    ('这张优惠券为什么不能用于订单', {'find_orders', 'get_order_items', 'check_coupon'}, {'prepare_purchase'}),
+    ('查询订单和会员积分', {'get_order', 'get_membership', 'list_points'}, {'prepare_purchase'}),
+    ('查询会员权益并对比商品材质', {'get_membership', 'search_products', 'get_product_details'}, {'prepare_purchase'}),
+    ('查询上次催单是否受理', {'find_orders', 'get_dispatch_status'}, {'prepare_purchase'}),
     ('帮我处理一下', {'find_orders', 'ask_user'}, {'prepare_purchase', 'prepare_after_sale'}),
 ])
 def test_goals_keep_dependencies_and_reduce_schemas(goal, required, excluded):

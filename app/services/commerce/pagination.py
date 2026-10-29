@@ -84,32 +84,43 @@ class PaginationMixin:
         )
 
     def sql_page(
-        self, tx, query, values, tool, args, *, keys, size=20, data=None, limitations=()
+        self, tx, query, values, tool, args, *, keys, size=20, data=None, limitations=(), descending=()
     ):
         """Bounded keyset pagination; query and keys are trusted internal SQL."""
         conditions = {key: value for key, value in args.items() if key != "cursor"}
         binding = self._cursor_binding(tool, conditions)
         condition = ""
-        columns = ",".join(keys)
+        descending = tuple(key for key in keys if key in descending)
+        columns = ",".join(key + (" DESC" if key in descending else " ASC") for key in keys)
+        if not descending:
+            columns = ",".join(keys)
         parameters = list(values)
         if args.get("cursor"):
             payload = self._decode_cursor(args["cursor"], binding)
             try:
-                if payload["keys"] != list(keys) or len(payload["last"]) != len(keys):
+                if (payload["keys"] != list(keys) or len(payload["last"]) != len(keys)
+                        or payload.get("descending", []) != list(descending)):
                     raise ValueError()
-                parameters.extend(
+                last = [
                     at(value["value"])
                     if value["type"] == "datetime"
                     else value["value"]
                     for value in payload["last"]
-                )
+                ]
             except (ValueError, TypeError, KeyError, AttributeError):
                 raise BusinessError("invalid_cursor", "分页游标无效或已过期") from None
-            if len(keys) > 1:
-                placeholders = ",".join(["%s"] * len(keys))
-                condition = f" WHERE ({columns}) > ({placeholders})"
+            if not descending:
+                condition = " WHERE (" + columns + ") > (" + ",".join(["%s"] * len(keys)) + ")"
+                parameters.extend(last)
             else:
-                condition = f" WHERE {keys[0]} > %s"
+                terms = []
+                for index, key in enumerate(keys):
+                    operator = "<" if key in descending else ">"
+                    terms.append("(" + " AND ".join(
+                        [previous + "=%s" for previous in keys[:index]] + [key + operator + "%s"]
+                    ) + ")")
+                    parameters.extend(last[:index + 1])
+                condition = " WHERE " + " OR ".join(terms)
         total = tx.one(
             f"SELECT COUNT(*) AS n FROM ({query}) page_count", tuple(values)
         )["n"]
@@ -130,9 +141,10 @@ class PaginationMixin:
                 }
                 for key in keys
             ]
-            next_token = self._encode_cursor(
-                {"binding": binding, "keys": list(keys), "last": last}
-            )
+            payload = {"binding": binding, "keys": list(keys), "last": last}
+            if descending:
+                payload['descending'] = list(descending)
+            next_token = self._encode_cursor(payload)
         return ok(
             {
                 **(data or {}),

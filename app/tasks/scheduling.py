@@ -4,9 +4,10 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 import json
+import math
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationError, model_validator
 
 from app.runtime.budgets import tenant_for
 from app.runtime.outbox import clock, TERMINAL
@@ -16,7 +17,7 @@ from app.tasks.candidates import BusinessScope
 from app.tasks.execution_models import TaskExecutionInput
 from app.tasks.execution_store import TaskRuns, object_key
 from app.tasks.models import StrictModel
-from app.tasks.provenance import revision
+from app.tasks.provenance import context_event_valid, revision
 from app.tasks.repository import VersionConflict
 
 
@@ -25,8 +26,9 @@ class Dependency(StrictModel):
     job_id: str = Field(min_length=1, max_length=200)
     kind: Literal["query", "operation"]
     evidence_id: str | None = None
-    tool: Literal["query_order", "query_logistics", "query_product", "search_knowledge"] | None = None
-    field: str | None = Field(default=None, pattern=r"^[a-zA-Z_][a-zA-Z_0-9]*(\.[a-zA-Z_][a-zA-Z_0-9]*){0,4}$")
+    tool: str | None = Field(default=None, min_length=1, max_length=128)
+    field: str | None = Field(default=None, max_length=256,
+        pattern=r"^data(?:\.(?:[a-zA-Z_][a-zA-Z_0-9]*|0|[1-9][0-9]{0,5})){1,8}$")
     compare: Literal["eq", "gt"] = "eq"
     value: bool | str | int | float | None = None
     operation_id: str | None = Field(default=None, max_length=200)
@@ -36,6 +38,14 @@ class Dependency(StrictModel):
         if self.kind == "query":
             if not self.tool or not self.field or self.value is None or self.operation_id:
                 raise ValueError("Query dependency requires a tool, field and value")
+            from app.tools.catalog import BY_NAME
+            spec = BY_NAME.get(self.tool)
+            if spec is None or spec.effect != 'read' or spec.task_only:
+                raise ValueError("Query dependency requires a current business read tool")
+            if isinstance(self.value, float) and not math.isfinite(self.value):
+                raise ValueError("Dependency values must be finite")
+            if self.compare == 'gt' and type(self.value) not in (int, float):
+                raise ValueError("Greater-than dependencies require a numeric value")
         elif not self.operation_id or self.tool or self.field or self.evidence_id or self.value is not None:
             raise ValueError("Operation dependency requires only an operation receipt")
         return self
@@ -43,6 +53,28 @@ class Dependency(StrictModel):
 
 class ScheduleBlocked(SupportError):
     pass
+
+
+def stored_dependencies(schedule):
+    """Old persisted names/paths are blocked, never guessed or silently renamed."""
+    try:
+        return [Dependency.model_validate(raw) for raw in schedule['dependencies']]
+    except (ValidationError, KeyError, TypeError):
+        raise ScheduleBlocked('dependency_contract_unsupported') from None
+
+
+def query_value(result, path):
+    """Traverse explicit dictionary keys/list indices, without expressions or coercion."""
+    value = result
+    for part in path.split('.'):
+        if isinstance(value, dict):
+            value = value.get(part)
+        elif isinstance(value, list) and part.isascii() and part.isdecimal():
+            index = int(part)
+            value = value[index] if index < len(value) else None
+        else:
+            return None
+    return value
 
 
 def resources(record, tenant):
@@ -59,8 +91,7 @@ def _task_field(tx):
 
 def dependencies_ready(tx, runs, schedule):
     """Recheck durable receipts, ownership and provenance immediately before start."""
-    for raw in schedule["dependencies"]:
-        dep = Dependency.model_validate(raw)
+    for dep in stored_dependencies(schedule):
         parent = runs._row(tx, dep.job_id)
         result = json.loads(parent["response"] or "{}")
         payload = json.loads(parent["payload"])
@@ -94,21 +125,31 @@ def dependencies_ready(tx, runs, schedule):
         for eid in result.get("evidence_ids", []):
             if dep.evidence_id and dep.evidence_id != eid:
                 continue
-            event = tx.one("""SELECT e.payload FROM support_events e
-                JOIN support_conversations c ON c.session_id=e.session_id
-                WHERE c.user_id=? AND e.kind='task_tool_result' AND e.event_key=?""",
-                (runs.user, "task-tool:" + eid))
-            evidence = json.loads(event["payload"]) if event else {}
+            from app.tasks.evidence import find_evidence
+            event = find_evidence(tx, runs.user, eid, task_id=payload['task_id'], kind='task_tool_result')
+            evidence = event['payload'] if event else {}
+            observed = evidence.get('observed_epoch')
+            receipt = evidence.get('result') or {}
             if (evidence.get("task_id") != payload["task_id"] or evidence.get("tool") != dep.tool
-                    or not evidence.get("result", {}).get("success")
-                    or evidence.get("observed_epoch", 0) < clock(tx) - 60
+                    or evidence.get('late') or not isinstance(receipt, dict)
+                    or receipt.get('success') is not True or receipt.get('ok') is not True
+                    or not isinstance(receipt.get('data'), dict)
+                    or type(observed) not in (int, float)
+                    or (isinstance(observed, float) and not math.isfinite(observed))
+                    or not clock(tx) - 60 <= observed <= clock(tx)
+                    or not context_event_valid(tx, event['session_id'], event['sequence'])
                     or not runs.control_versions_valid(tx, evidence.get("controls"))
                     or not runs.guard.valid(evidence.get("provenance"), tx=tx)):
                 continue
-            value = evidence["result"]
-            for part in dep.field.split("."):
-                value = value.get(part) if isinstance(value, dict) else None
+            from app.tools.catalog import BY_NAME
+            try:
+                BY_NAME[dep.tool].arguments.model_validate(evidence.get('arguments'))
+            except ValidationError:
+                continue
+            value = query_value(receipt, dep.field)
             numeric = type(value) in (int, float) and type(dep.value) in (int, float)
+            if isinstance(value, float) and not math.isfinite(value):
+                continue
             found = ((numeric and value > dep.value) if dep.compare == "gt"
                      else (type(value) is type(dep.value) and value == dep.value))
             if found:
@@ -360,6 +401,13 @@ class TaskWorker:
                 remaining = (usage.get("model_calls", 0) < request.budget.model_calls
                              and usage.get("tool_calls", 0) < request.budget.tool_calls)
                 if running and attempts < 2 and remaining and record.status == "in_progress" and record.version == effective_version:
+                    try:
+                        stored_dependencies(payload['schedule'])
+                    except ScheduleBlocked as exc:
+                        receipt['reason'] = str(exc)
+                        tx.execute('UPDATE runtime_jobs SET response=?,error=? WHERE job_id=?',
+                                   (json.dumps(receipt), str(exc), row['job_id']))
+                        continue
                     request = request.model_copy(update={"job_id": _id(row["job_id"], "readonly-recovery"),
                                                          "expected_version": record.version})
                     if payload.get("execution_source"):

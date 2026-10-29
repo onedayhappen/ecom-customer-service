@@ -3,6 +3,19 @@
 from contextvars import ContextVar, Token
 
 _current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default=None)
+_remote_tool_context: ContextVar[dict | None] = ContextVar('remote_tool_context', default=None)
+
+
+def set_remote_tool_context(context: dict) -> Token:
+    return _remote_tool_context.set(context)
+
+
+def reset_remote_tool_context(token: Token) -> None:
+    _remote_tool_context.reset(token)
+
+
+def get_remote_tool_context() -> dict | None:
+    return _remote_tool_context.get()
 
 
 def set_current_user_id(user_id: str | None) -> Token:

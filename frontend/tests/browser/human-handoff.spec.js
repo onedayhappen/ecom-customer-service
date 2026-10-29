@@ -76,8 +76,49 @@ test('staff handover update retries with the same id; resolving does not enable 
                   created_at: ticket.created_at,
                 },
               ],
-              observed_evidence: [],
-              operations: [],
+              observed_evidence: [
+                {
+                  event_id: 'candidate-receipt',
+                  tool: 'find_orders',
+                  evidence_kind: 'candidates',
+                  success: true,
+                  observed_at: '2026-10-29T01:00:00Z',
+                  result_observed_at: '2026-10-29T00:59:59Z',
+                  session_id: sid,
+                  sequence: 2,
+                  task_version: 1,
+                  query_scope: { query: '耳机' },
+                  sources: [{ kind: 'mysql', tables: ['orders'] }],
+                  facts: { items: [{ order_id: 'ORD-A' }, { order_id: 'ORD-B' }], total: 3 },
+                  limitations: ['渠道成功不代表已核实银行卡入账'],
+                  has_more: true,
+                },
+                { event_id: 'empty-receipt', success: false, facts: {} },
+              ],
+              operations: [
+                {
+                  operation_id: 'op1',
+                  tool: 'prepare_after_sale',
+                  status: 'succeeded',
+                  result: { status: 'submitted', after_sale_id: 'SALE-A' },
+                  note: '申请提交不代表退款到账。',
+                },
+              ],
+              image_observations: [
+                {
+                  attachment_id: 'image-a',
+                  session_id: sid,
+                  sequence: 1,
+                  status: 'completed',
+                  observations: [
+                    {
+                      observation_id: 'vision-a',
+                      created_at: ticket.created_at,
+                      result: { summary: '杯子边缘有裂纹', uncertainties: ['无法确定破损原因'] },
+                    },
+                  ],
+                },
+              ],
               note: '人工说明不授予额外权益。',
             },
           },
@@ -101,6 +142,17 @@ test('staff handover update retries with the same id; resolving does not enable 
   await page.getByRole('button', { name: '客服工作台' }).click()
   await page.getByRole('button', { name: '领取工单' }).click()
   await expect(page.getByRole('region', { name: '事项交接记录' })).toContainText('ORD-A')
+  await page.getByText('查询依据与操作回执', { exact: true }).click()
+  await expect(page.getByText('候选记录（尚未选定）', { exact: false })).toBeVisible()
+  await expect(page.getByText('本摘要仅覆盖部分结果，请核对分页、截断和缺失范围。')).toBeVisible()
+  await expect(
+    page.getByText('摘要未载入可展示事实，不代表没有业务记录；请核对原始回执。'),
+  ).toBeVisible()
+  await expect(page.getByText('申请提交不代表退款到账。')).toBeVisible()
+  await expect(page.getByText('渠道成功不代表已核实银行卡入账', { exact: false })).toBeVisible()
+  await page.getByText('图片观察（待业务核验）', { exact: true }).click()
+  await expect(page.getByText('杯子边缘有裂纹', { exact: false })).toBeVisible()
+  await expect(page.getByText('无法确定破损原因', { exact: false })).toBeVisible()
   await page.getByRole('textbox', { name: '人工补充内容' }).fill('左耳没有声音')
   await page.getByRole('button', { name: '保存事项更新' }).click()
   await expect(page.getByRole('alert')).toBeVisible()

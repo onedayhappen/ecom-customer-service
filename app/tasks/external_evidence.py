@@ -131,8 +131,9 @@ def finished(binding, value):
     goal = binding.get('completion')
     if goal == 'submission':
         return value['phase'] in {'submitted', 'approved', 'awaiting_return', 'return_shipped',
-                                  'warehouse_received', 'refunding', 'funds_settled'}
+                                  'warehouse_received', 'refunding', 'funds_settled', 'refund_channel_succeeded'}
     return (goal == 'refund_settled' and value['phase'] == 'funds_settled'
+            or goal == 'refund_channel_result' and value['phase'] == 'refund_channel_succeeded'
             or goal == 'commerce_result' and value['phase'] in {'service_completed','invoice_issued'}
             or goal == 'warehouse_received' and value['phase'] == 'warehouse_received'
             or goal == 'tracking_delivered' and value['phase'] == 'delivered'
@@ -144,14 +145,18 @@ class BusinessProgress:
         from app.services.commerce import service
         from app.services.commerce.common import ref,decoded
         svc=service(user)
-        if binding.get('kind') not in {'commerce_sale','commerce_invoice'}:
+        if binding.get('kind') == 'query_logistics':
+            from app.tasks.external_queries import logistics_progress
+            return logistics_progress(svc, binding)
+        if binding.get('kind') not in {'commerce_sale','commerce_invoice','query_sale'}:
             raise ExternalEvidenceError('历史业务接口不支持该进度查询')
-        with svc.store.transaction() as tx:
-            receipt=svc.receipt(tx,binding['operation_id'])
-            value=decoded(receipt['result']) if receipt else {}
-            key='after_sale_id' if binding['kind']=='commerce_sale' else 'invoice_id'
-            if not value.get(key) or any(value.get(k)!=binding.get(k) for k in (key,'order_id','platform_code')):
-                raise ExternalEvidenceError('业务回执与跟进对象不符')
+        key='invoice_id' if binding['kind']=='commerce_invoice' else 'after_sale_id'
+        if binding['kind'] != 'query_sale':
+            with svc.store.transaction() as tx:
+                receipt=svc.receipt(tx,binding['operation_id'])
+                value=decoded(receipt['result']) if receipt else {}
+                if not value.get(key) or any(value.get(k)!=binding.get(k) for k in (key,'order_id','platform_code')):
+                    raise ExternalEvidenceError('业务回执与跟进对象不符')
         phase,rank,content='submitted',10,'业务申请已登记，处理结果仍待核实。'
         if binding['kind']=='commerce_invoice':
             result=svc.read('get_invoices',dict(target_ref=ref('invoice',binding['invoice_id'])))
@@ -163,6 +168,11 @@ class BusinessProgress:
         else:
             result=svc.read('get_after_sale_status',dict(after_sale_id=binding['after_sale_id']))
             data=result['data']; sale=data['after_sale']; work=data.get('work_order') or {}
+            if binding['kind'] == 'query_sale':
+                from app.tasks.external_queries import refund_progress, verify_sale
+                verify_sale(svc, binding, result)
+                if sale['kind'] in {'refund_only','return_refund','price_protection','order_cancel'}:
+                    return refund_progress(svc, binding, result)
             if sale['status'] in {'rejected','cancelled','closed'}:
                 phase,rank,content='business_rejected',90,'售后申请已拒绝、撤回或关闭，需要核实后续处理。'
             elif sale['kind']=='order_cancel' and sale['status']=='completed' and work.get('provider_reference'):

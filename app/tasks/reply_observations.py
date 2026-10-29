@@ -42,7 +42,7 @@ def _same_order(data, target):
 def binding_verified(record, receipt):
     """Cheap typed binding check shared by both publication contracts."""
     tool, result = receipt["tool"], receipt["result"]
-    if tool not in LOGISTICS | REFUNDS | {"get_order", "query_order", "query_logistics", "query_after_sale"}:
+    if tool not in LOGISTICS | REFUNDS | {"get_order", "get_dispatch_status", "query_order", "query_logistics", "query_after_sale"}:
         return True
     target = _target(receipt)
     if not target:
@@ -61,7 +61,7 @@ def binding_verified(record, receipt):
                 and (target[0] != "order" or all(_same_order(p, target) for p in parcels))
                 and (target[0] not in {"shipment", "return_shipment"}
                      or all(p.get(target[0] + "_id") == target[-1] for p in parcels)))
-    if tool in {"get_order", "query_order"}:
+    if tool in {"get_order", "get_dispatch_status", "query_order"}:
         return bool(_same_order(result.get("order", {}) if tool == "query_order" else data, target))
     if tool == "query_logistics":
         row = result.get("logistics") or {}

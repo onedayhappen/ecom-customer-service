@@ -151,6 +151,17 @@ def describe(name, data, query=""):
                 lines += ["渠道报告支付成功金额为" + text + "。" for currency, value in sorted(totals.items()) if (text := amount(value, currency))]
             lines += _money_fields(data, [("order_paid_amount", "订单记录的已付金额为")])
             lines.append("这些是支付记录，不能据此确认银行卡余额或未同步的扣款。")
+    elif name == "get_dispatch_status":
+        order = scalar(data.get("order_id"))
+        prefix = "订单 " + order + "：" if order else ""
+        for row in items[:3]:
+            when = scalar(row.get("created_at"))
+            lines.append(prefix + (when + "登记的" if when else "这笔")
+                         + "催单记录状态为" + state(row.get("status")) + "。")
+        if not items and data.get("total") == 0:
+            lines.append(prefix + "本次暂未查到催单登记记录。")
+        lines.append("催单受理或处理完成不等于已经发货，实际发货情况仍需查询物流。")
+        partial = len(items) > 3
     elif name in {"check_coupon", "assess_order_action", "assess_after_sale", "assess_price_protection"}:
         lines.append("本次核验结果：" + state(data.get("eligibility")) + "。")
         lines += _money_fields(data, [("requested_amount", "可申请金额为"), ("discount_amount", "已核实优惠金额为"), ("threshold_gap", "距离使用门槛还差")])
@@ -231,10 +242,25 @@ def describe(name, data, query=""):
                 if value:
                     text += "，购买单价" + value
             else:
-                text = "开票申请" + ("「" + scalar(row["title"]) + "」" if row.get("title") else "") + "的记录状态为" + state(row.get("status"))
+                kind = "正式发票" if data.get('collection') == 'issued' else "开票申请"
+                text = kind + ("「" + scalar(row["title"]) + "」" if row.get("title") else "") + "的记录状态为" + state(row.get("status"))
             lines.append(text + "。")
         if name == "get_invoices":
-            lines.append("申请记录不等于已取得正式发票，文件是否就绪仍需核实。")
+            lines.append("文件是否可下载仍需核实。" if data.get('collection') == 'issued'
+                         else "申请记录不等于已取得正式发票，文件是否就绪仍需核实。")
+        partial = len(items) > 3
+    elif name in {"get_shipment_items", "get_after_sale_items"}:
+        quantity_label = "包裹记录数量" if name == "get_shipment_items" else "售后申请数量"
+        for row in items[:3]:
+            text = "原购买商品" + subject(row)
+            if name == "get_shipment_items" and row.get("actual_spec_snapshot"):
+                actual = specs({'spec_snapshot': row['actual_spec_snapshot']})
+                if actual:
+                    text += "，包裹记录规格为" + "、".join(actual)
+            if type(row.get("quantity")) is int:
+                text += "，" + quantity_label + str(row["quantity"]) + "件"
+            lines.append(text + "。")
+        lines.append("明细记录不代表已发货、签收或退款完成。")
         partial = len(items) > 3
     elif name == "get_restock_plan":
         for row in items[:3]:
@@ -289,10 +315,14 @@ def describe(name, data, query=""):
         title = title or scalar(data.get("username"))
         if title:
             lines.append("当前账号显示名称为" + title + "。")
-        for contact in rows(data.get("contacts"))[:3]:
+        contacts = items if data.get('collection') == 'contacts' else rows(data.get('contacts'))
+        for contact in contacts[:3]:
             channel = {"phone": "手机号", "email": "邮箱"}.get(contact.get("contact_type"), "联系方式")
             lines.append(channel + ("已验证，完整内容已隐藏。" if contact.get("verified_at") else "暂未查到验证记录。"))
-        partial = len(rows(data.get("contacts"))) > 3
+        platforms = items if data.get('collection') == 'platform_accounts' else rows((data.get('platform_accounts') or {}).get('items'))
+        for account in platforms[:3]:
+            lines.append("平台「" + scalar(account.get('platform_code')) + "」绑定记录状态为" + state(account.get('status')) + "。")
+        partial = len(contacts) > 3 or len(platforms) > 3
     elif name == "read_task_context":
         for row in rows(data.get("handoffs"))[:3]:
             lines.append("人工处理记录的状态为" + state(row.get("status")) + "；这不是业务办理成功的凭据。")

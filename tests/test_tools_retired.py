@@ -20,15 +20,15 @@ from tests.test_task_execution import Client, engine, request, response, local_b
 
 def test_local_and_mcp_catalogues_match_supported_boundaries():
     from app.mcp.server import list_business_tools
-    assert len(TOOL_DEFINITIONS) == len(_TOOL_MAP) == 50
-    assert len(CAPABILITIES) == len(IMPLEMENTED_CAPABILITIES) == 50
-    assert len(asyncio.run(list_business_tools())) == 31
+    assert len(TOOL_DEFINITIONS) == len(_TOOL_MAP) == 54
+    assert len(CAPABILITIES) == len(IMPLEMENTED_CAPABILITIES) == 54
+    assert len(asyncio.run(list_business_tools())) == 34
 
 
 @pytest.mark.parametrize('name', [
     'query_order', 'query_product', 'query_logistics', 'list_user_orders',
     'apply_refund', 'issue_invoice', 'query_user_coupons', 'calc_promotion',
-    'search_knowledge', 'load_skill', 'recall_user_memory',
+    'search_knowledge', 'load_skill',
     'save_task_progress',
     'prepare_operation', 'escalate_to_human',
 ])
@@ -56,7 +56,7 @@ def test_old_remote_server_cannot_restore_deleted_tools(monkeypatch):
     monkeypatch.setattr('app.mcp.MCPClient', OldServer)
     manager = ToolManager(use_mcp=True, mcp_server_url='http://unused')
     try:
-        assert len(manager.tool_definitions) == 50 and 'query_order' not in manager.tool_names
+        assert len(manager.tool_definitions) == 54 and 'query_order' not in manager.tool_names
         assert json.loads(manager.execute_tool('query_order', {}))['success'] is False
     finally:
         manager.close()
@@ -73,11 +73,11 @@ def test_task_only_receives_the_new_subset_with_optional_flags(store, monkeypatc
     assert result['evidence_ids'] == []
     names={t['function']['name'] for t in client.requests[0]['tools']}
     assert len(client.requests) == 1 and 'read_task_context' in names
-    assert 'recall_user_memory' not in names and 'query_order' not in names
+    assert 'recall_user_memory' in names and 'query_order' not in names
     assert engine(Client()).execute_task(store, 'alice', req) == result
 
 
-@pytest.mark.parametrize('name', ['query_order', 'prepare_operation', 'recall_user_memory'])
+@pytest.mark.parametrize('name', ['query_order', 'prepare_operation'])
 def test_model_cannot_invoke_removed_tools(store, name):
     record, source = task(store, 's')
     client = Client(response(calls=[(name, {})]))

@@ -70,6 +70,7 @@ class _TaskContext:
     def __init__(self, runs, request, reservation, tools):
         self.runs, self.request, self.tools = runs, request, tools
         self.record, self.payload = reservation["record"], reservation["payload"]
+        self.mcp_remote_tools = set()
         self.deadline = time.monotonic() + request.budget.seconds
         usage = self.payload.get("usage", {})
         self.model_calls = usage.get("model_calls", 0)
@@ -165,6 +166,15 @@ class _TaskContext:
             self.runs.user, self.record.task_id, attachment_id, question, detail,
             before_call=reserve, check=self.check, timeout=self.call_timeout())
 
+    def recall_memory(self, query):
+        result = self.memory.recall(query)
+        if not result.get('success'):
+            return dict(available=False, long_term_facts=[],
+                        note='历史偏好暂时不可用，请按用户当前要求处理，需要时询问本人。')
+        self.runs.bind_memory(self.request, self.payload, self.memory.snapshots)
+        self.check()
+        return dict(available=True, **{k: v for k, v in result.items() if k != 'success'})
+
     def read_progress(self, arguments):
         try:
             query = ReadTaskContext.model_validate(arguments)
@@ -226,11 +236,15 @@ class _TaskContext:
             if not isinstance(result, dict):
                 result = _failure("invalid_tool_result")
             if name not in {"ask_user", "handoff_to_human"}:
+                # Recall establishes its dependency during the call. All other
+                # reads retain the fence captured before they were admitted.
+                receipt_payload = (json.loads(json.dumps(self.payload))
+                                   if name == 'recall_user_memory' else admitted_payload)
                 try:
-                    evidence = self.runs.save_tool(self.request, admitted_payload, call_index,
+                    evidence = self.runs.save_tool(self.request, receipt_payload, call_index,
                         name, mask_sensitive(arguments), result)
                 except SupportError:
-                    evidence = self.runs.save_late_tool(self.request, admitted_payload, admitted,
+                    evidence = self.runs.save_late_tool(self.request, receipt_payload, admitted,
                         call_index, name, mask_sensitive(arguments), result)
                 return result, evidence
             return result, None
@@ -245,8 +259,8 @@ class TaskExecutor:
     def __init__(self, store, authenticated_user_id, *, tools=None, scope=None):
         self.runs = TaskRuns(store, authenticated_user_id, scope=scope)
         if tools is None:
-            from app.tools.registry import execute_tool
-            tools = execute_tool
+            from app.tools.task_dispatch import execute_task_tool
+            tools = execute_task_tool
         self.tools = tools
 
     def run(self, request, engine):

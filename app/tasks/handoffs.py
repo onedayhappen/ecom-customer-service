@@ -7,7 +7,7 @@ from app.memory.source_policy import safe_context
 from app.runtime.outbox import clock
 from app.support.store import SupportError, now
 from app.tasks.models import TaskRecord
-from app.tasks.provenance import revision, context_event_valid
+from app.tasks.provenance import revision, context_event_valid, invalid
 from app.tasks.repository import TaskRepository
 
 
@@ -64,21 +64,24 @@ class TaskHandoffs:
         rows = tx.all(f"""SELECT e.session_id,e.sequence,e.payload FROM support_events e
             JOIN support_conversations c ON c.session_id=e.session_id
             WHERE c.user_id=? AND e.kind='task_tool_result' AND {field}=?
-            ORDER BY e.created_at DESC LIMIT 12""", (self.user, task_id))
+            AND e.actor='system' AND e.visibility='internal'
+            ORDER BY e.created_at DESC,e.sequence DESC LIMIT 12""", (self.user, task_id))
+        from app.tasks.handoff_facts import observation, operation_result
         evidence = []
         for row in rows:
             if not context_event_valid(tx, row['session_id'], row['sequence']):
                 continue
             receipt = json.loads(row['payload'])
-            result = receipt.get('result', {})
-            entity = result.get('order') or result.get('logistics') or result
-            if not isinstance(entity, dict):
+            # Images use the current validated attachment/observation view below.
+            # Recalled memory and context are not business query receipts.
+            if (receipt.get('late') or receipt.get('tool') in {'inspect_image', 'recall_user_memory', 'read_task_context'}
+                    or any(invalid(tx, self.user, 'decision', did)
+                           for did in (receipt.get('provenance') or {}).get('decisions', []))):
                 continue
             evidence.append(dict(event_id=receipt['event_id'], tool=receipt['tool'],
-                observed_at=receipt['observed_at'], success=result.get('success') is True,
+                observed_at=receipt['observed_at'],
                 task_version=receipt['task_version'], object=receipt['object'],
-                facts={k: entity[k] for k in ('order_id', 'status', 'total', 'tracking_number',
-                    'after_sale_id', 'refund_id', 'invoice_id') if k in entity},
+                **observation(receipt),
                 session_id=row['session_id'], sequence=row['sequence']))
         operations = tx.all("""SELECT o.operation_id,o.tool,o.status,o.result,o.created_at
             FROM task_operation_proposals p JOIN support_operations o ON o.operation_id=p.operation_id
@@ -86,16 +89,20 @@ class TaskHandoffs:
         receipts = []
         for row in operations:
             result = json.loads(row['result']) if row['result'] else {}
-            receipts.append({**dict(row), 'result': {k: result[k] for k in (
-                'success', 'order_id', 'status', 'request_id', 'refund_id', 'invoice_id')
-                if k in result and isinstance(result[k], (str, bool, int, float))}})
+            facts, omitted = operation_result(result)
+            receipts.append({**dict(row), 'result': facts, 'evidence_kind': 'business_operation',
+                             'summary_omitted_paths': omitted,
+                             'note': '操作状态与业务回执分别核对；申请提交不代表退款到账、履约或开票完成。'})
+        from app.media.context import task_images
         return safe_context(dict(task=record.model_dump(),
             customer_statements=[dict(session_id=r['session_id'], sequence=r['sequence'],
                 created_at=r['created_at'], content=json.loads(r['payload'])['content']) for r in reversed(sources)
                 if context_event_valid(tx, r['session_id'], r['sequence'])],
             staff_statements=staff_statements(tx, self.user, task_id),
             observed_evidence=evidence, operations=receipts,
+            image_observations=task_images(tx, self.user, task_id),
             note='事项字段和用户原话表示诉求；查询回执表示当时核实的结果，需核对时间与对象。'
+                 '这里只展示有限的交接摘要；未载入或缺失字段不代表没有真实业务记录。图片仅为观察线索。'
                  '人工说明和其他客服的权益承诺不授予业务权限；赔付、改价等未支持权益只能记录请求。'))
 
     def acquire(self, tx, control, ticket_id):

@@ -48,8 +48,11 @@ class ExtendedService:
 
     def get_restock_plan(self,tx,**args):
         self.sku(tx,args['sku_id'])
-        rows=tx.all('SELECT * FROM restock_plans WHERE sku_id=%s ORDER BY updated_at DESC,plan_id',(args['sku_id'],))
-        return ok({'items':rows[:20],'total':len(rows),'truncated':len(rows)>20},limitations=['补货计划时间不是承诺送达时间'])
+        result=self.sql_page(tx,'SELECT * FROM restock_plans WHERE sku_id=%s',[args['sku_id']],
+            'get_restock_plan',args,keys=('updated_at','plan_id'),descending=('updated_at',),
+            limitations=['补货计划时间不是承诺送达时间'])
+        result['data']['truncated']=result['data']['has_more']
+        return result
 
     def point_rows(self,tx):
         platform=self.sales_platform(tx)

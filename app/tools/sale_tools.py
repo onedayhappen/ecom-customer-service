@@ -3,6 +3,7 @@ from app.tools.dispatch import bind
 
 find_after_sales = bind('find_after_sales')
 get_after_sale_status = bind('get_after_sale_status')
+get_after_sale_items = bind('get_after_sale_items')
 get_refunds = bind('get_refunds')
 assess_after_sale = bind('assess_after_sale')
 prepare_after_sale = bind('prepare_after_sale')

@@ -23,9 +23,12 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config.settings import settings
-from app.tools.request_context import reset_current_user_id, set_current_user_id
-from app.mcp.auth import verify_mcp_user_context
-mcp = FastMCP("ecom-tools", host="127.0.0.1", port=9123)
+from app.tools.request_context import (reset_current_user_id, set_current_user_id,
+    get_remote_tool_context, set_remote_tool_context, reset_remote_tool_context)
+from app.mcp.auth import verify_mcp_claims
+# Each request must inherit its own authenticated identity, not the context of
+# the HTTP request that happened to create a persistent MCP server session.
+mcp = FastMCP("ecom-tools", host="127.0.0.1", port=9123, stateless_http=True, json_response=True)
 
 
 from mcp import types
@@ -39,13 +42,18 @@ async def list_business_tools():
     # Standalone MCP carries identity, but no durable task/confirmation context.
     from app.tools.selection import global_tools
     allowed = global_tools()
+    remote = get_remote_tool_context()
+    if remote and remote.get('allowed_tools') is not None:
+        allowed = allowed.intersection(remote['allowed_tools'])
     return [types.Tool(name=t.name, description=t.description, inputSchema=t.arguments.model_json_schema(),
         annotations=types.ToolAnnotations(readOnlyHint=True, destructiveHint=False))
         for t in TOOLS if not t.task_only and t.name in allowed]
 
 @mcp._mcp_server.call_tool()
 async def call_business_tool(name: str, arguments: dict):
-    if name not in BY_NAME or BY_NAME[name].task_only:
+    remote = get_remote_tool_context()
+    if (name not in BY_NAME or BY_NAME[name].task_only
+            or remote and remote.get('allowed_tools') is not None and name not in remote['allowed_tools']):
         from app.services.commerce.common import BusinessError, failure
         return failure(BusinessError('unsupported_capability', '此工具需要可信事项执行器'))
     return json.loads(await asyncio.to_thread(execute_tool, name, arguments))
@@ -77,16 +85,21 @@ class MCPAuthenticationMiddleware:
 
         # 第二层鉴权：解析真实操作用户
         try:
-            user_id = verify_mcp_user_context(context_token)
+            claims = verify_mcp_claims(context_token)
         except Exception:
             await JSONResponse({"detail": "MCP 用户上下文无效或已过期"}, status_code=401)(scope, receive, send)
             return
-        user_context = set_current_user_id(user_id)
+        from app.tasks.candidates import BusinessScope
+        user_context = set_current_user_id(claims['sub'])
+        tool_context = set_remote_tool_context(dict(
+            business_scope=BusinessScope(**claims.get('business_scope', {})),
+            allowed_tools=claims.get('allowed_tools')))
         try:
             await self.app(scope, receive, send)
         finally:
             # ContextVar 是请求级状态，必须复位，不能泄漏到后续用户请求。
             reset_current_user_id(user_context)
+            reset_remote_tool_context(tool_context)
 
 
 if __name__ == "__main__":

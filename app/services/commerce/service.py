@@ -89,12 +89,15 @@ def service(user=None, scope=None):
     from app.config.settings import settings
     from app.data.business_store import BusinessStore
     from app.tasks.runtime import current_task
-    from app.tools.request_context import get_current_user_id
+    from app.tools.request_context import get_current_user_id, get_remote_tool_context
 
     user = user or get_current_user_id()
     ctx = current_task()
     if scope is None and ctx:
         scope = ctx.runs.candidates.scope
+    remote = get_remote_tool_context()
+    if scope is None and remote:
+        scope = remote['business_scope']
     factory = _factory.get()
     if factory:
         return factory(user, scope)

@@ -12,6 +12,7 @@ from app.tasks.conversation_worker import ConversationWorker
 def main():
     if not settings.task_worker_enabled or not settings.task_intake_enabled:
         raise SystemExit("事项 Worker 或消息入口已在配置中关闭")
+    settings.validate_runtime_configuration()
     from app.runtime.metrics import install, RUNTIME_HEARTBEAT
     install(settings.runtime_metrics_port, settings.runtime_metrics_host)
     from openai import OpenAI
@@ -23,6 +24,8 @@ def main():
     with OpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url, timeout=30, max_retries=0) as client:
         engine = AgentEngine("others", client=LlmClient(raw_client=client, model=settings.deepseek_model_name),
                              model=settings.deepseek_model_name)
+        # Default TaskExecutor dispatch creates scoped MCP reads when enabled;
+        # never share a user-bound ToolManager across this multi-user worker.
         worker = ConversationWorker(get_store(), engine,
             concurrency=settings.api_chat_worker_concurrency,
             queue=TaskQueue(settings.api_concurrency_redis_url, prefix=settings.api_chat_queue_prefix + ":tasks"))

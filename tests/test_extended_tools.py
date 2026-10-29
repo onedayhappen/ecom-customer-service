@@ -129,6 +129,25 @@ def test_dispatch_confirmation_only_queues_and_replays(extended):
         with svc.store.transaction() as tx: assert tx.one('SELECT COUNT(*) n FROM commerce_provider_requests')['n']==1
 
 
+def test_dispatch_status_tracks_real_provider_receipt_without_resubmitting(extended):
+    svc=extended
+    provider=Provider(dict(status='accepted',reference='dispatch-receipt'))
+    args={'order_ref':ref('order','shop','paid')}
+    with provider_factory(lambda _:provider):
+        result=commit(svc,'request_dispatch',args,'dispatch-progress')
+        queued=read(svc,'get_dispatch_status',**args)
+        assert result['status']=='queued' and queued['data']['items'][0]['status']=='queued'
+        assert not provider.calls
+        svc.process_provider_request('dispatch-progress')
+        accepted=read(svc,'get_dispatch_status',**args)
+        row=accepted['data']['items'][0]
+        assert row['status']=='accepted' and row['provider_reference']=='dispatch-receipt'
+        assert len(provider.calls)==1
+        assert not {'payload_ciphertext','result','lease_token','user_id'} & row.keys()
+    bob=CommerceService(svc.store,'bob',scope=svc.scope,secret=svc.secret)
+    with pytest.raises(BusinessError): read(bob,'get_dispatch_status',**args)
+
+
 def test_after_sale_logistics_are_bounded_and_pageable(extended):
     svc=extended; now=utcnow()
     auth=dict(address={'detail':'退货仓'},carriers=[dict(code='SF',name='顺丰')],requirements=[],deadline=(now+timedelta(days=7)).isoformat())
@@ -181,6 +200,24 @@ def test_search_sql_filter_pagination_and_batch_skus(extended):
     unknown=read(svc,'search_products',query='批量耳机10004',specs=[dict(name='不存在',value='a')])
     assert unknown['data']['items'][0]['unapplied_conditions']==[dict(name='不存在',value='a')]
     with pytest.raises(BusinessError): read(svc,'search_products',query='别的条件',cursor=first['next_cursor'])
+
+
+def test_product_filters_match_one_sku_and_keep_product_level_unknowns(extended):
+    svc=extended
+    with svc.store.transaction(write=True) as tx:
+        tx.execute("UPDATE product_skus SET spec_values=%s WHERE sku_id='s1'",(dumps({'颜色':'黑','尺码':'S'}),))
+        tx.execute("UPDATE product_skus SET spec_values=%s WHERE sku_id='s2'",(dumps({'颜色':'白','尺码':'L'}),))
+    combined=[dict(name='颜色',value='黑'),dict(name='尺码',value='L')]
+    assert read(svc,'search_products',query='耳机',specs=combined)['data']['total']==0
+    combined[1]['value']='S'
+    match=read(svc,'search_products',query='耳机',specs=combined)['data']['items'][0]
+    assert [s['sku_id'] for s in match['sku_summary']]==['s1']
+    assert match['unapplied_conditions']==[]
+    with svc.store.transaction(write=True) as tx:
+        tx.execute("UPDATE product_skus SET status='inactive' WHERE sku_id='s1'")
+        tx.execute("UPDATE product_skus SET spec_values='{}' WHERE sku_id='s2'")
+    # A field known on another (even inactive) SKU cannot be ignored on s2.
+    assert read(svc,'search_products',query='耳机',specs=combined)['data']['total']==0
 
 
 def basket(svc,quantity=2):

@@ -67,8 +67,12 @@ class ReadService:
     def get_order(self,tx,**args):
         o=self.owned_order(tx,args['order_ref']); address=tx.one('SELECT province_code,city_code,district_code,captured_at FROM order_address_snapshots WHERE platform_code=%s AND order_id=%s',(o['platform_code'],o['order_id']))
         related={}
-        for table,key in [('payment_transactions','payment_id'),('shipments','shipment_id'),('after_sale_requests','after_sale_id'),('invoice_requests','invoice_id')]:
-            rows=self.order_rows(tx,table,o); related[table]={'count':len(rows),'references':[r[key] for r in rows[:5]]}
+        for table,key,kind in [('payment_transactions','payment_id','payment'),('shipments','shipment_id','shipment'),('after_sale_requests','after_sale_id','after_sale'),('invoice_requests','invoice_id','invoice')]:
+            params=(o['platform_code'],o['order_id'])
+            where=' FROM '+table+' WHERE platform_code=%s AND order_id=%s'
+            count=tx.one('SELECT COUNT(*) n'+where,params)['n']
+            rows=tx.all('SELECT '+key+',status'+where+' ORDER BY '+key+' LIMIT 5',params)
+            related[table]={'count':count,'truncated':count>5,'items':[{'id':r[key],'target_ref':ref(kind,r[key]),'status':r['status']} for r in rows]}
         return ok(dict(state(masked(o),ORDER_STATES),order_ref=args['order_ref'],address=address,related=related))
     def get_order_items(self,tx,**args):
         o=self.owned_order(tx,args['order_ref']); rows=self.order_rows(tx,'order_items',o)

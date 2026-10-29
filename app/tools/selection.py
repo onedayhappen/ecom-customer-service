@@ -7,11 +7,11 @@ def names(value):
     return frozenset(value.split())
 
 
-COMMON = names('read_task_context ask_user handoff_to_human search_policies inspect_image')
+COMMON = names('read_task_context ask_user handoff_to_human search_policies inspect_image recall_user_memory')
 ORDER = names('find_orders get_order get_order_items')
 PRODUCT = names('search_products get_product_details get_merchant')
 SALE = ORDER | names('find_after_sales get_after_sale_status get_refunds get_logistics')
-COUPON = PRODUCT | names('list_promotions list_claimable_coupons find_my_coupons get_coupon check_coupon estimate_purchase')
+COUPON = PRODUCT | ORDER | names('list_promotions list_claimable_coupons find_my_coupons get_coupon check_coupon estimate_purchase')
 
 TASK_TOOLS = {
     'product': PRODUCT,
@@ -26,7 +26,7 @@ TASK_TOOLS = {
     'address': ORDER | names('list_addresses assess_order_action prepare_order_address_change prepare_order_update'),
     'order_update': ORDER | names('assess_order_action prepare_order_update'),
     'cancel': SALE | names('assess_order_action prepare_order_cancel assess_after_sale prepare_after_sale'),
-    'dispatch': ORDER | names('get_logistics request_dispatch'),
+    'dispatch': ORDER | names('get_logistics get_dispatch_status request_dispatch'),
     'after_sale': SALE | names('assess_after_sale prepare_after_sale prepare_after_sale_cancel get_return_instructions prepare_return_shipment'),
     'refund_status': SALE,
     'exchange': SALE | PRODUCT | names('assess_after_sale prepare_exchange get_return_instructions prepare_return_shipment'),
@@ -38,6 +38,15 @@ TASK_TOOLS = {
     'conversation': frozenset(),
     'discovery': PRODUCT | ORDER | names('get_my_account get_membership list_points find_after_sales get_after_sale_status get_invoices'),
 }
+
+# Keep summary-to-detail navigation usable in every relevant task profile.
+# The global allowlist remains authoritative and is applied by for_task below.
+for _profile, _tools in TASK_TOOLS.items():
+    if _tools & {'get_logistics', 'get_after_sale_status'}:
+        _tools = _tools | {'get_shipment_items'}
+    if _tools & {'find_after_sales', 'get_after_sale_status'}:
+        _tools = _tools | {'get_after_sale_items'}
+    TASK_TOOLS[_profile] = frozenset(_tools)
 
 # Specialized engines can supply these labels. The live worker uses "others",
 # for which the current task goal, not the latest short answer, is used.
@@ -92,6 +101,14 @@ def task_profiles(intent=None, goal=''):
     if 'after_sale' in profiles and re.search(r'进度|状态|到账|status', text) and not re.search(r'申请|办理|撤销|撤回|退货', text):
         profiles.remove('after_sale')
         profiles.add('refund_status')
+    # Generic subjects can be independent parts of a compound goal. Preserve
+    # them even when another domain matched, without broadening profiles that
+    # already contain the corresponding discovery dependencies.
+    selected = frozenset().union(*(TASK_TOOLS[key] for key in profiles))
+    if re.search(r'订单|这单|\border\b', text) and not ORDER <= selected:
+        profiles.add('order')
+    if re.search(r'商品|推荐|对比|材质|尺码|颜色|\bproduct\b|\brecommend\b|\bcompare\b', text) and not PRODUCT <= selected:
+        profiles.add('product')
     if profiles:
         return frozenset(profiles)
     if re.search(r'订单|这单|order', text):

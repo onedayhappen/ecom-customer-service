@@ -428,16 +428,17 @@ def test_manual_resolution_releases_resource_and_keeps_private_notes_out_of_card
 
 
 def test_confirmation_rechecks_related_scheduling_evidence_not_just_own_version(store):
-    from tests.test_task_execution import Client, engine, request, response, order_result
+    from tests.test_task_execution import engine, request
     from app.tasks.execution_models import TaskExecutionInput
     from app.tasks.scheduling import TaskSchedule
     parent, source = task(store, "s")
-    from tests.test_coordinated_replies import ready as seed_evidence
-    receipt = {"job_id": seed_evidence(store, parent, source)}
+    from tests.test_task_scheduling import ProductQueryClient, product_result
+    receipt = engine(ProductQueryClient()).execute_task(store, "alice", request(parent, source), tools=product_result)
     child, source = task(store, "s", details=dict(order_id="ORD-B", reason="不想要了"))
     req = TaskExecutionInput.model_validate(request(child, source))
     TaskSchedule(store, "alice").enqueue(req.model_dump(), dependencies=[dict(
-        kind="query", job_id=receipt["job_id"], tool="query_order", field="order.status", value="已发货")])
+        kind="query", job_id=receipt["job_id"], tool="get_product_details",
+        field="data.items.0.inventory.available_qty", compare="gt", value=0)])
     service = TaskOperations(store, "alice", business=Business())
     reservation, _ = service.runs.begin(req)
     service.prepare("s", child.task_id, child.version, "apply_refund", fence=(req, reservation["payload"]))

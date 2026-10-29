@@ -2,11 +2,14 @@
 import json
 
 
-def find_evidence(tx, user, event_id, *, session_id=None, task_id=None):
+def find_evidence(tx, user, event_id, *, session_id=None, task_id=None, kind=None):
     conditions = ["c.user_id=?", "e.event_key=?",
                   "e.kind IN ('task_tool_result','task_operation_result','task_external_result')",
                   "e.visibility='internal'", "e.actor='system'"]
     args = [user, 'task-tool:' + event_id]
+    if kind is not None:
+        conditions.append('e.kind=?')
+        args.append(kind)
     if session_id is not None:
         conditions.append('e.session_id=?')
         args.append(session_id)

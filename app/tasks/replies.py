@@ -65,8 +65,13 @@ class ReplyCoordinator:
             and evidence.get('provenance', {}).get('media', []) == dependency_stamp(tx, self.user, [record.task_id])
             and not evidence.get('late')
             and isinstance(evidence.get('result'), dict) and evidence['result'].get('success') is True
+            and (evidence.get('tool') != 'recall_user_memory'
+                 or evidence['result'].get('data', {}).get('available') is not True
+                 or bool(evidence.get('provenance', {}).get('memory')))
             and evidence.get('observed_epoch', 0) >= clock(tx) - 60
             and self.runs.control_versions_valid(tx, evidence.get('controls'))
+            and ('memory' not in evidence.get('provenance', {})
+                 or self.runs._memory_current(tx, evidence['provenance']['memory']))
             and not any(invalid(tx, self.user, 'decision', did)
                 for did in evidence.get('provenance', {}).get('decisions', [])))
 

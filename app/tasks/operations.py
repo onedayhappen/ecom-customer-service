@@ -195,7 +195,8 @@ class TaskOperations:
             decisions = [r["decision_id"] for r in tx.all("""SELECT d.decision_id FROM association_decisions d
                 WHERE d.user_id=? AND d.task_id=? AND NOT EXISTS(SELECT 1 FROM task_invalid_sources i
                     WHERE i.user_id=d.user_id AND i.kind='decision' AND i.source_id=d.decision_id)""", (self.user, task_id))]
-            payload = dict(prepared=prepared, provenance=self.runs.guard.capture([task_id], decisions, tx=tx),
+            payload = dict(prepared=prepared, provenance=self.runs.guard.capture([task_id], decisions, tx=tx,
+                               memory=fence[1]['provenance'].get('memory') if fence else None),
                            controls=self.runs.controls(tx, SimpleNamespace(session_id=sid, task_id=task_id)),
                            resources=[json.dumps(["order", prepared["arguments"].get("platform_code", "pdd"), prepared["arguments"]["order_id"]])])
             if fence and fence[1].get("schedule"):

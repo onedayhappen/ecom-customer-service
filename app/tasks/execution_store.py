@@ -177,6 +177,20 @@ class TaskRuns:
             raise SupportError("事项已停止或等待用户")
         return record
 
+    def bind_memory(self, request, payload, snapshots):
+        """Persist dependencies before recalled facts can influence another step."""
+        from copy import deepcopy
+        from app.tasks.provenance import lock_input_user
+        with self.store.transaction() as tx:
+            lock_input_user(tx, self.user)
+            self.check(tx, request, payload, lock=True)
+            current = json.loads(self._row(tx, request.job_id)['payload'])
+            stamp = {**payload['provenance'], 'memory': deepcopy(snapshots)}
+            self.guard.require_current(stamp, tx=tx)
+            current['provenance'] = stamp
+            tx.execute('UPDATE runtime_jobs SET payload=? WHERE job_id=?', (json.dumps(current), request.job_id))
+            payload['provenance'] = stamp
+
     def save_tool(self, request, payload, call_index, name, arguments, result, *, original=None):
         with self.store.transaction() as tx:
             control = self.store._control(tx, request.session_id, self.user)
@@ -242,11 +256,19 @@ class TaskRuns:
             cutoff = clock(tx) - seconds
             return [e for r in reversed(rows) if (e := json.loads(r["payload"]))["object"] == object_key(record)
                     and not e.get("late")
-                    and e.get('tool') not in {'search_knowledge','search_policies'}
+                    # A new execution must explicitly recall preferences again;
+                    # neither their text nor a memory-dependent query is a
+                    # reusable business snapshot in a later model context.
+                    and e.get('tool') not in {'search_knowledge','search_policies','recall_user_memory'}
+                    and not e.get('provenance', {}).get('memory')
                     and e["observed_epoch"] >= cutoff and e["result"].get("success")
                     and self.control_versions_valid(tx, e.get("controls"))
                     and e.get('provenance', {}).get('media', []) == media
                     and not any(invalid(tx, self.user, "decision", did) for did in e["provenance"]["decisions"])]
+
+    def _memory_current(self, tx, snapshots):
+        from app.memory.task_recall import dependencies_current
+        return dependencies_current(tx, self.store, self.user, snapshots)
 
     def save_progress(self, request, payload, progress, index):
         with self.store.transaction() as tx:
@@ -261,7 +283,8 @@ class TaskRuns:
             else:
                 waiting = {"kind": "external", "reason": progress.wait_reason, "evidence_id": progress.evidence_id} if progress.state == "waiting_external" else None
                 record = self.repo.update(record.task_id, request.session_id, patch={"status": progress.state, "waiting_for": waiting}, **change)
-            payload = {**payload, "provenance": self.guard.capture([record.task_id], payload["provenance"]["decisions"], tx=tx)}
+            payload = {**payload, "provenance": self.guard.capture([record.task_id], payload["provenance"]["decisions"],
+                tx=tx, memory=payload['provenance'].get('memory'))}
             tx.execute("UPDATE runtime_jobs SET payload=? WHERE job_id=?", (json.dumps(payload), request.job_id))
             return record, payload
 

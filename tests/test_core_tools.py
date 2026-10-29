@@ -70,7 +70,7 @@ def commit(svc,name,args,oid=None):
     return svc.submit(name,p['arguments'],oid or uuid4().hex,p['business_version'])
 
 def test_catalog_and_strict_validation():
-    assert len(TOOLS)==50
+    assert len(TOOLS)==54
     token=set_current_user_id('alice')
     try:
         for t in TOOLS:

@@ -281,10 +281,15 @@ def run_inputs(inputs: Inputs, *, client, model, run_id, scenario_id, repetition
             if memory_observer is not None:
                 memory_observer.journal = journal
             # Change only deployment dependencies; keep actual production decision logic.
+            flow_tools = {"read_task_context", "ask_user", "handoff_to_human"}
+            if memory_observer is not None:
+                # Both paired arms expose the same tool. The observer gates
+                # actual reads, rather than making one arm's schema different.
+                flow_tools.add('recall_user_memory')
             overrides = dict(api_jwt_secret="evaluation-only-signing-key-"+run_id,
                 task_operations_enabled=True, reply_composition_enabled=True,
                 tool_allowlist=",".join(sorted({r.tool for r in [*inputs.reads, *inputs.writes]} |
-                    {"read_task_context", "ask_user", "handoff_to_human"})))
+                    flow_tools)))
             for key, value in overrides.items():
                 stack.enter_context(patch.object(settings, key, value))
             capture.metadata["configuration"] = dict(overrides, api_jwt_secret="[ephemeral]",

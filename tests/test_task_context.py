@@ -14,7 +14,7 @@ from tests.test_task_storage import empty_store, message
 def test_removed_tools_cannot_be_called_through_registry():
     from app.tools.registry import TOOL_DEFINITIONS, execute_tool
     names = {d['function']['name'] for d in TOOL_DEFINITIONS}
-    assert len(names) == 50 and {'read_task_context', 'inspect_image'} <= names
+    assert len(names) == 54 and {'read_task_context', 'inspect_image', 'recall_user_memory'} <= names
     for name in ('read_case_memory', 'save_case_context', 'text_to_sql'):
         assert name not in names
         assert json.loads(execute_tool(name, {}))['error_code'] == 'validation_error'

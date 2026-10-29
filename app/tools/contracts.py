@@ -14,6 +14,9 @@ class Input(BaseModel):
 class Empty(Input):
     pass
 
+class RecallMemory(Input):
+    query: str = Field(min_length=1, max_length=1000, description='当前事项需要核实的本人历史偏好、品类和用途；不查询订单实时状态或办理授权')
+
 class InspectImage(Input):
     attachment_id: str = Field(min_length=1, max_length=200)
     question: str = Field(min_length=1, max_length=1000)
@@ -21,6 +24,9 @@ class InspectImage(Input):
 
 class Page(Input):
     cursor: str | None = Field(None, max_length=4096, description='上一页返回的 next_cursor；省略查第一页')
+
+class Account(Page):
+    collection: Literal['contacts','platform_accounts'] | None = Field(None,description='省略返回账号摘要；指定集合后分页读取全部脱敏记录')
 
 class Money(Input):
     amount: str = Field(pattern=r'^\d{1,10}(\.\d{1,2})?$', description='非负十进制金额字符串')
@@ -60,6 +66,9 @@ class Product(Page):
 
 class Sku(Input):
     sku_id: Id
+
+class SkuPage(Sku, Page):
+    pass
 
 class Compare(Input):
     sku_ids: list[Id] = Field(min_length=2, max_length=5, description='待比较的 2–5 个不同 SKU')
@@ -241,6 +250,7 @@ class Handoff(Input):
 
 class Invoices(Page):
     target_ref: Id | None = None
+    view: Literal['requests','issued'] = Field('requests',description='requests 查开票申请；issued 按申请引用分页读取正式发票记录')
 
 class Delivery(Input):
     items: list[PurchaseItem] = Field(min_length=1,max_length=20)

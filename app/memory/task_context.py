@@ -74,6 +74,7 @@ class TaskMemory:
         self.manager = None
         self.shown = {}
         self.sources = []
+        self.snapshots = []
 
     def watch_sources(self, sources):
         known = {(s['session_id'], s['sequence']): s for s in self.sources}
@@ -82,16 +83,36 @@ class TaskMemory:
         self.sources = list(known.values())
 
     def recall(self, query):
+        from app.config.settings import settings
         from app.memory.runtime import build_memory_manager
         from app.memory.recall import recall_user_memory, set_memory_manager, reset_memory_manager
         try:
+            if not settings.memory_enabled:
+                return dict(success=False, error='历史偏好暂时不可用，请按当前要求继续。')
             if self.manager is None:
                 self.manager = build_memory_manager(self.user, store=self.store)
+            # The task-facing tool requires transactional v3 dependencies. Legacy
+            # adapters remain available to their existing callers, not as unfenced evidence.
+            if not hasattr(self.manager, 'repository'):
+                return dict(success=False, error='历史偏好暂时不可用，请按当前要求继续。')
+            expected_revision = self.manager.repository.revision()
             token = set_memory_manager(self.manager)
             try:
                 result = recall_user_memory(query)
             finally:
                 reset_memory_manager(token)
+            if not result.get('success'):
+                return result
+            from app.memory.query_router import temporal_query
+            from app.memory.task_recall import snapshot_current
+            history, as_of = temporal_query(query)
+            snapshot = dict(user_id=self.user, revision=expected_revision,
+                            facts=result.get('long_term_facts', []), history=history, as_of=as_of)
+            with self.store.transaction(read_only=True) as tx:
+                if not snapshot_current(tx, self.store, self.user, snapshot):
+                    return dict(success=False, error='历史偏好已变化，请重新查询。')
+            self.snapshots.append(snapshot)
+            result.update(view='historical' if history or as_of else 'current', as_of=as_of)
             for fact in result.get('long_term_facts', []):
                 self.shown[fact['memory_id']] = fact
             return result
@@ -101,6 +122,10 @@ class TaskMemory:
     def current(self):
         try:
             with self.store.transaction(read_only=True) as tx:
+                if self.snapshots:
+                    from app.memory.task_recall import dependencies_current
+                    if not dependencies_current(tx, self.store, self.user, self.snapshots):
+                        return False
                 for source in self.sources:
                     sid, sequence = source['session_id'], source['sequence']
                     row = tx.one("""SELECT e.payload FROM support_events e JOIN support_conversations c
@@ -110,7 +135,7 @@ class TaskMemory:
                     if (not row or not context_event_valid(tx, sid, sequence)
                             or safe_context(json.loads(row['payload']).get('content')) != source['text']):
                         return False
-            if not self.shown:
+            if not self.shown or self.snapshots:
                 return True
             # Include history so an intentional historical query still works;
             # updated validity windows/version data invalidate an old prompt.

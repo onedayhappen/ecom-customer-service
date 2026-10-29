@@ -205,7 +205,9 @@ python -m scripts.pipeline_rollout set all --operator local-dev --reason "本地
 
 ### Docker Compose 运行
 
-先完成上述环境配置、数据库表初始化和知识库准备。首次迁移按快速开始中的本机命令执行；当前 Dockerfile 未复制 `migrations/`，不要依赖空库容器独立完成首次迁移。镜像构建说明见[构建命令](#构建命令)。
+先完成上述环境配置和知识库准备。后端镜像包含 `migrations/mysql` 下的 SQL；Compose 在 MySQL 就绪后由 `order-init` 执行业务数据库迁移，成功后再启动后端。镜像构建说明见[构建命令](#构建命令)。
+
+新增 SQL 迁移并在迁移脚本中登记后，需要重新构建镜像，再执行 `docker compose up -d`。迁移脚本按版本跳过已完成的迁移；修改数据库中的业务数据无需重新构建镜像。
 
 本地应用进程与完整 Compose 部署选一种运行，避免重复占用端口或同时启动两套 Worker。
 

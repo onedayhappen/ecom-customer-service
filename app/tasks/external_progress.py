@@ -7,10 +7,11 @@ from uuid import uuid4
 from app.config.settings import settings
 from app.harness.bounded_call import bounded_calls
 from app.runtime.outbox import clock
+from app.services.commerce.common import BusinessError
 from app.support.store import SupportError, now
 from app.tasks.external_evidence import BusinessProgress, ExternalEvidenceError, finished, submission_only, timestamp, warehouse_goal
-from app.tasks.execution_store import TaskRuns, object_key
-from app.tasks.provenance import lock_input_user, revision, context_event_valid, invalid
+from app.tasks.execution_store import TaskRuns
+from app.tasks.provenance import lock_input_user, revision, context_event_valid
 from app.tools.request_context import set_current_user_id, reset_current_user_id
 
 
@@ -64,6 +65,18 @@ def binding_for(tx, runs, record):
             return dict(kind=kind,order_id=prepared['arguments']['order_id'],platform_code=prepared['arguments']['platform_code'],
                 operation_id=waiting['operation_id'],after_sale_id=receipt.get('after_sale_id'),invoice_id=receipt.get('invoice_id'),
                 completion='submission' if only_submission_requested(tx,record) else 'commerce_result')
+    if not waiting.get('operation_id'):
+        from app.tasks.external_queries import query_source, query_binding, validate_binding
+        current = tx.one('SELECT binding FROM task_external_waits WHERE task_id=?', (record.task_id,))
+        saved = json.loads(current['binding']) if current else {}
+        if saved.get('contract') == 2 and saved.get('evidence_id') == waiting['evidence_id']:
+            validate_binding(tx, runs, record, saved)
+            return saved
+        evidence = query_source(tx, runs, record, fresh=True)
+        binding = query_binding(evidence, record, original_requests(tx, runs.user, record.task_id))
+        if binding['kind'] == 'query_sale' and only_submission_requested(tx, record):
+            binding['completion'] = 'submission'
+        return binding
     if not details.get('order_id'):
         raise ExternalEvidenceError('外部等待没有明确订单')
     binding = {k: details[k] for k in ('order_id', 'platform_code', 'store_id', 'item_id', 'item_name', 'sku_id', 'product_id',
@@ -91,43 +104,6 @@ def binding_for(tx, runs, record):
                 completion='local_invoice' if '演示' in record.goal or '本地' in record.goal else 'manual')
         else:
             raise ExternalEvidenceError('业务操作尚无可跟进的查询接口')
-    else:
-        if evidence.get('object') != object_key(record):
-            raise ExternalEvidenceError('等待来源与当前事项对象不同')
-        if (not context_event_valid(tx, stored['session_id'], stored['sequence'])
-                or any(invalid(tx, runs.user, 'decision', did) for did in evidence['provenance']['decisions'])):
-            raise ExternalEvidenceError('等待来源已失效，须重新查询')
-        if evidence['tool'] == 'query_logistics':
-            entity = evidence.get('result', {}).get('logistics', {})
-            tracking = entity.get('tracking_number')
-            if not tracking or details.get('tracking_number') not in (None, tracking):
-                raise ExternalEvidenceError('物流来源无法对应当前运单')
-            binding.update(kind='logistics', tracking_number=tracking,
-                completion='tracking_delivered' if details.get('tracking_number') == tracking else 'manual')
-        elif evidence['tool'] == 'query_order':
-            order = evidence.get('result', {}).get('order') or {}
-            if order.get('refund_status'):
-                binding['kind'] = 'refund'
-            elif order.get('tracking_number'):
-                tracking = order['tracking_number']
-                if details.get('tracking_number') not in (None, tracking):
-                    raise ExternalEvidenceError('订单查询与当前运单不一致')
-                binding.update(kind='logistics', tracking_number=tracking,
-                    completion='tracking_delivered' if details.get('tracking_number') == tracking else 'manual')
-            else:
-                raise ExternalEvidenceError('当前订单查询不足以建立外部跟进，需要查询具体售后或运单')
-        elif evidence['tool'] == 'query_after_sale':
-            result = evidence.get('result', {})
-            kinds = {r.get('kind') for r in result.get('records', [])
-                if not binding.get('after_sale_id') or r.get('after_sale_id') == binding['after_sale_id']}
-            if len(kinds) == 1 and kinds <= {'refund', 'return'}:
-                binding['kind'] = next(iter(kinds))
-            elif not kinds and result.get('current_order_refund'):
-                binding['kind'] = 'refund'
-            else:
-                raise ExternalEvidenceError('需要明确当前跟进的售后申请')
-        else:
-            raise ExternalEvidenceError('当前查询不支持跟进外部结果')
     # A model-produced goal alone cannot turn an end-to-end refund into a
     # completed submission. Require the explicit same-task original request.
     originals = original_requests(tx, runs.user, record.task_id)
@@ -196,7 +172,7 @@ class ExternalProgress:
                     continue
                 try:
                     binding = binding_for(tx, runs, record)
-                except (ExternalEvidenceError, ValueError, KeyError, TypeError):
+                except (ExternalEvidenceError, BusinessError, ValueError, KeyError, TypeError):
                     self.store._handoff(tx, control, 'external_scope_unverified', 'system')
                     continue
                 current = tx.one('SELECT * FROM task_external_waits WHERE task_id=?', (record.task_id,))
@@ -223,6 +199,19 @@ class ExternalProgress:
                         last_observation=NULL,last_error=NULL''',
                         (record.task_id, runs.user, control['session_id'], record.version, encoded, clock(tx)))
 
+    def _query_current(self, tx, runs, record, saved, control):
+        binding = json.loads(saved['binding'])
+        if record.waiting_for.get('operation_id'):
+            return True
+        from app.tasks.external_queries import validate_binding
+        try:
+            validate_binding(tx, runs, record, binding)
+        except (ExternalEvidenceError, BusinessError, ValueError, KeyError, TypeError):
+            tx.execute("UPDATE task_external_waits SET state='human',last_error='external_scope_unverified',lease_owner=NULL,lease_until=NULL WHERE task_id=?", (record.task_id,))
+            self.store._handoff(tx, control, 'external_scope_unverified', 'system')
+            return False
+        return True
+
     def claim(self, task_id, user):
         runs = TaskRuns(self.store, user)
         with self.store.transaction() as tx:
@@ -243,6 +232,8 @@ class ExternalProgress:
             except SupportError:
                 tx.execute('UPDATE task_external_waits SET next_check=? WHERE task_id=?',
                     (at + settings.task_external_interval_seconds, task_id))
+                return None
+            if not self._query_current(tx, runs, record, saved, control):
                 return None
             if saved['attempts'] >= settings.task_external_max_attempts:
                 tx.execute("UPDATE task_external_waits SET state='human',lease_owner=NULL,lease_until=NULL WHERE task_id=?", (task_id,))
@@ -272,6 +263,8 @@ class ExternalProgress:
                 if record.version != lease['task_version'] or current['lease_until'] < at:
                     return 'stale'
             except SupportError:
+                return 'stale'
+            if not self._query_current(tx, runs, record, current, control):
                 return 'stale'
             if error:
                 return 'retry'
@@ -324,7 +317,7 @@ class ExternalProgress:
             if value['phase']=='business_rejected':
                 tx.execute("UPDATE task_external_waits SET state='human' WHERE task_id=?", (tid,))
                 self.store._handoff(tx, control, 'business_request_rejected', 'system')
-            elif binding['completion'] == 'manual' and value['phase'] in {'delivered', 'issued_local'}:
+            elif binding['completion'] == 'manual' and value['phase'] in {'delivered', 'issued_local', 'refund_channel_succeeded'}:
                 tx.execute("UPDATE task_external_waits SET state='human' WHERE task_id=?", (tid,))
                 self.store._handoff(tx, control, 'external_scope_or_dispute', 'system')
             elif not completed and value.get('deadline') and timestamp(now()) >= value['deadline']:
