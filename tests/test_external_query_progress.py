@@ -123,8 +123,15 @@ def stored_read(svc, name, args):
 
 
 def create_sale(svc):
-    return commit(svc, 'prepare_after_sale', {'kind': 'refund_only',
-                  'items': [{'order_item_id': 'i-paid', 'quantity': 1}], 'reason': '不需要了'})['after_sale_id']
+    # A historical/imported application without a local operation or reserved
+    # refund. These tests deliberately inject partial/malformed channel records.
+    from uuid import uuid4
+    aid=uuid4().hex
+    with svc.store.transaction(write=True) as tx:
+        tx.execute('''INSERT INTO after_sale_requests(after_sale_id,platform_code,order_id,user_id,kind,status,reason,requested_amount,created_at,updated_at)
+            VALUES (%s,'shop','paid','alice','refund_only','pending_review','查询历史申请',10,%s,%s)''',(aid,utcnow(),utcnow()))
+        tx.execute("INSERT INTO after_sale_items(after_sale_id,order_item_id,quantity,requested_amount) VALUES (%s,'i-paid',1,10)",(aid,))
+    return aid
 
 
 @pytest.mark.parametrize('name', ['get_after_sale_status', 'get_refunds'])

@@ -131,6 +131,75 @@ class RuleService:
         return {'eligibility':'eligible','order_ref':ref('order',order['platform_code'],order['order_id']),'items':allocations,'quantity':sum(x['quantity'] for x in allocations),'amount':amount,'amount_kind':'refund_estimate','shipping_amount':shipping,'currency':order['currency'],'policy_id':p['policy_id'],'policy_version':p['version']}
     def assess_after_sale(self,tx,**args):
         return self.decision(lambda:self.sale_assessment(tx,args['kind'],args['items']))
+
+    def service_assessment(self, tx, kind, args):
+        """Shared read-only eligibility for consultation, preparation and locked submit."""
+        if kind not in {'exchange', 'repair'}:
+            raise ValueError('invalid service assessment kind')
+        item, order = self.item_order(tx, args['order_item_id'])
+        facts = dict(kind=kind, order_ref=ref('order', order['platform_code'], order['order_id']),
+            order_item_id=item['order_item_id'], quantity=args['quantity'], currency=order['currency'])
+        if kind == 'exchange':
+            facts['replacement_sku_id'] = args.get('replacement_sku_id')
+        try:
+            policy, rules = self.policy(tx, kind, order, items=[item])
+        except BusinessError as error:
+            if error.code == 'insufficient_data':
+                error.details.update(facts, missing_fields=['business_policy'])
+            raise
+        facts.update(policy_id=policy['policy_id'], policy_version=policy['version'])
+        try:
+            assessment = self.sale_assessment(tx, kind, [{'order_item_id':item['order_item_id'], 'quantity':args['quantity']}])
+            facts.update(eligibility='eligible', remaining_quantity=assessment['items'][0]['remaining_quantity'])
+            extra = {'assessment':assessment, 'policy':policy}
+            if kind == 'exchange':
+                if not args.get('replacement_sku_id'):
+                    raise BusinessError('insufficient_data', '需要明确希望更换的规格', missing_fields=['replacement_sku_id'])
+                replacement = self.sku(tx, args['replacement_sku_id'])
+                if (replacement['product_id'] != item['product_id'] or replacement['merchant_id'] != order['merchant_id']
+                        or replacement['currency'] != order['currency']):
+                    raise BusinessError('not_eligible', '换货规格须为同商家同商品同币种')
+                if replacement['status'] != 'active':
+                    raise BusinessError('not_eligible', '换货规格不可售')
+                if not replacement['inventory']:
+                    raise BusinessError('insufficient_data', '换货规格库存记录缺失，不能认定有货或缺货', missing_fields=['replacement_inventory'])
+                if replacement['inventory']['available_qty'] < args['quantity']:
+                    raise BusinessError('not_eligible', '换货规格库存不足')
+                difference = money(replacement['list_price']) * args['quantity'] - money(assessment['amount'])
+                if difference and not rules.allow_exchange_price_difference:
+                    raise BusinessError('not_eligible', '当前规则不支持有价差换货')
+                extra['replacement'] = {key:value for key,value in replacement.items() if key != 'inventory'}
+                facts.update(replacement_sku_id=args['replacement_sku_id'], price_difference=difference)
+            return facts, extra
+        except BusinessError as error:
+            if error.code in {'insufficient_data', 'not_eligible'}:
+                # Do not let a previously passed check override the final decision.
+                error.details.update({key:value for key,value in facts.items() if key != 'eligibility'})
+                if error.code == 'insufficient_data':
+                    error.details.setdefault('missing_fields', ['inspection_or_manual_review'] if rules.requires_reason_review else ['after_sale_evidence'])
+            raise
+
+    def assess_service(self, tx, kind, args):
+        result = self.decision(lambda:self.service_assessment(tx, kind, args)[0])
+        data = result['data']
+        data.pop('amount', None)  # The internal refund allocation is not a service price.
+        data.setdefault('missing_fields', [])
+        data.setdefault('reasons', [])
+        data['application_submitted'] = False
+        result['limitations'].append('仅核验当前记录与规则，不创建申请或预占库存；实际办理仍需确认、复核及处理渠道')
+        if kind == 'repair':
+            data.update(repair_fee=None, inspection_result=None)
+            result['limitations'].append('维修费用、故障原因和检测结论尚未核实，不代表免费维修或审核通过')
+        else:
+            result['limitations'].append('库存为当前记录，不保证确认提交时仍有库存；价差不代表已付款或退款')
+        return result
+
+    def assess_exchange(self, tx, **args):
+        return self.assess_service(tx, 'exchange', args)
+
+    def assess_repair(self, tx, **args):
+        return self.assess_service(tx, 'repair', args)
+
     def coupon_state(self,row):
         expired=at(row['expires_at'])<=utcnow(); raw=row['status']
         status='expired' if raw=='available' and expired else raw

@@ -160,10 +160,10 @@ def verify_sale(svc, binding, result):
     require(sale.get('status') in {'pending_review', 'approved', 'processing', 'completed', 'rejected', 'cancelled', 'closed'},
             '售后状态尚未核实')
     order_scope(binding, sale)
-    line_scope(binding['scope_details'], data.get('purchase_items', []))
+    line_scope(binding.get('scope_details',{}), data.get('purchase_items', []))
     with svc.store.transaction() as tx:
         order = svc.owned_order(tx, ref('order', binding['platform_code'], binding['order_id']))
-    require(binding['scope_details'].get('store_id') in (None, order.get('merchant_id')), '商家范围改变')
+    require(binding.get('scope_details',{}).get('store_id') in (None, order.get('merchant_id')), '商家范围改变')
     return data
 
 
@@ -197,8 +197,9 @@ def logistics_progress(svc, binding):
             require(any(e.get('status') == 'delivered' and e.get('source') and e.get('event_time')
                         and at(e['event_time']) <= at(result['observed_at'])
                         for e in row.get('events', [])), '退货签收缺少物流事件凭据')
-    return observation(binding, phase=phase, rank=rank, content=content, source='mysql',
-                       observed_at=result['observed_at'], reference=target[1])
+    return observation(binding, phase=phase, rank=rank, content=content,
+                       source='simulated_provider' if result.get('is_demo') else 'mysql',
+                       observed_at=result['observed_at'], reference=target[1], is_demo=bool(result.get('is_demo')))
 
 
 def refund_progress(svc, binding, sale_result):
@@ -218,6 +219,11 @@ def refund_progress(svc, binding, sale_result):
         phase, rank, content = 'business_rejected', 90, '售后申请已拒绝、撤回或关闭，需要人工核实。'
     elif any(r.get('status') == 'failed' for r in rows):
         phase, rank, content = 'business_rejected', 90, '退款渠道报告处理失败，需要人工核实。'
+    elif sale['kind']=='return_refund' and sale['status']!='completed' and data.get('return_authorization'):
+        if data.get('return_shipments'):
+            phase,rank,content='return_shipped',30,'已登记退货包裹，仍需按申请的商品和数量核实完整验收及退款。'
+        else:
+            phase,rank,content='awaiting_return',25,'已取得退货授权，等待登记寄回运单；退款尚未完成。'
     elif rows:
         phase, rank, content = 'refunding', 50, '退款正在核实，尚未确认本次申请的全部渠道退款成功。'
         expected = money(sale.get('requested_amount'))
@@ -238,5 +244,7 @@ def refund_progress(svc, binding, sale_result):
         phase, rank, content = 'awaiting_return', 25, '已取得退货授权，退货及退款结果仍待核实。'
     elif sale['status'] in {'approved', 'processing'}:
         phase, rank, content = 'approved', 20, '售后申请正在处理，退款结果仍待核实。'
-    return observation(binding, phase=phase, rank=rank, content=content, source='mysql',
-                       observed_at=result['observed_at'], reference=binding['after_sale_id'])
+    if result.get('is_demo') and phase=='refund_channel_succeeded':
+        content='本次售后申请的模拟退款处理完成，未发生真实资金流转。'
+    return observation(binding, phase=phase, rank=rank, content=content, source=result.get('source','mysql'),
+                       is_demo=result.get('is_demo') is True, observed_at=result['observed_at'], reference=binding['after_sale_id'])

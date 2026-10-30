@@ -20,9 +20,9 @@ from tests.test_task_execution import Client, engine, request, response, local_b
 
 def test_local_and_mcp_catalogues_match_supported_boundaries():
     from app.mcp.server import list_business_tools
-    assert len(TOOL_DEFINITIONS) == len(_TOOL_MAP) == 54
-    assert len(CAPABILITIES) == len(IMPLEMENTED_CAPABILITIES) == 54
-    assert len(asyncio.run(list_business_tools())) == 34
+    assert len(TOOL_DEFINITIONS) == len(_TOOL_MAP) == 56
+    assert len(CAPABILITIES) == len(IMPLEMENTED_CAPABILITIES) == 56
+    assert len(asyncio.run(list_business_tools())) == 36
 
 
 @pytest.mark.parametrize('name', [
@@ -56,7 +56,7 @@ def test_old_remote_server_cannot_restore_deleted_tools(monkeypatch):
     monkeypatch.setattr('app.mcp.MCPClient', OldServer)
     manager = ToolManager(use_mcp=True, mcp_server_url='http://unused')
     try:
-        assert len(manager.tool_definitions) == 54 and 'query_order' not in manager.tool_names
+        assert len(manager.tool_definitions) == 56 and 'query_order' not in manager.tool_names
         assert json.loads(manager.execute_tool('query_order', {}))['success'] is False
     finally:
         manager.close()

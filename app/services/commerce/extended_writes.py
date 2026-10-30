@@ -11,18 +11,25 @@ EXTENDED_PREPARES={'prepare_price_protection','prepare_exchange','prepare_return
 
 
 class ExtendedWriteService(WriteService):
-    def provider_required(self,kind):
+    def provider_required(self,kind,mode=None):
         from app.services.commerce.providers import gateway
-        provider=gateway(kind)
+        provider=gateway(kind,mode=mode,store=self.store,user=self.user)
         if provider is None: raise BusinessError('unsupported_capability','该业务的实际处理渠道尚未配置')
         return provider
 
     def queue_provider(self,tx,oid,kind,target_id,order,payload):
         self.provider_required(kind)
+        from app.services.commerce.providers import provider_mode
+        mode=provider_mode()
+        if mode=='simulator' and not order.get('is_demo'):
+            raise BusinessError('not_eligible','模拟渠道只允许显式标记的演示订单')
+        if mode=='http' and order.get('is_demo'):
+            raise BusinessError('not_eligible','演示订单不能发送到真实渠道')
+        payload=dict(payload,request_id=oid,user_id=self.user,platform_code=order['platform_code'],order_id=order['order_id'],target_id=target_id)
         tx.execute('''INSERT INTO commerce_provider_requests(request_id,user_id,platform_code,order_id,kind,target_id,
-            payload_ciphertext,key_version,status,created_at,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+            payload_ciphertext,key_version,status,created_at,updated_at,provider_mode) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
             (oid,self.user,order['platform_code'],order['order_id'],kind,target_id,
-             self.cipher.seal(dumps(payload),'provider:'+oid),self.cipher.version,'queued',utcnow(),utcnow()))
+             self.cipher.seal(dumps(payload),'provider:'+oid),self.cipher.version,'queued',utcnow(),utcnow(),mode))
 
     def extended_target(self,tx,action,args,lock=False):
         if action=='prepare_purchase':
@@ -67,6 +74,9 @@ class ExtendedWriteService(WriteService):
                 raise BusinessError('not_eligible','寄回商品或数量超过售后剩余可寄范围')
             extra={'authorization':json_binary(auth),'sale':sale,'remaining':remaining}
             review.update(after_sale_id=sale['after_sale_id'],carrier_code=args['carrier_code'],tracking_number=args['tracking_number'],items=items)
+            if sale.get('is_demo'):
+                from app.services.commerce.simulator import DEMO_NOTICE
+                review.update(is_demo=True,source='simulated_provider',impact=DEMO_NOTICE)
         elif kind=='invoice_reissue':
             self.provider_required(kind); invoice,_=self.issued_invoice(tx,args['issued_invoice_id'])
             policy,r=self.policy(tx,kind,order)
@@ -78,24 +88,16 @@ class ExtendedWriteService(WriteService):
             private={'invoice_title':args['title'],'tax_number':args.get('tax_number')}
         else:
             self.provider_required(kind)
-            item,_=self.item_order(tx,args['order_item_id'])
-            policy,r=self.policy(tx,kind,order,items=[item])
             if kind=='price_protection':
+                item,_=self.item_order(tx,args['order_item_id'])
+                policy,r=self.policy(tx,kind,order,items=[item])
                 assessment=self.price_protection(tx,args['order_item_id']); review.update(assessment,amount_kind='price_protection'); extra={'assessment':assessment,'policy':policy}
             else:
-                assessment=self.sale_assessment(tx,kind,[{'order_item_id':args['order_item_id'],'quantity':args['quantity']}])
-                item,_=self.item_order(tx,args['order_item_id']); extra={'assessment':assessment,'policy':policy}
+                assessment,extra=self.service_assessment(tx,kind,args)
+                item,_=self.item_order(tx,args['order_item_id'])
                 review.update(order_item_id=item['order_item_id'],items=[{'name':item['title_snapshot'],'quantity':args['quantity']}],quantity=args['quantity'],currency=order['currency'],amount=Decimal(0),amount_kind='service_request',reason=args.get('reason') or args.get('problem'))
                 if kind=='exchange':
-                    replacement=self.sku(tx,args['replacement_sku_id'])
-                    if replacement['product_id']!=item['product_id'] or replacement['merchant_id']!=order['merchant_id'] or replacement['currency']!=order['currency']:
-                        raise BusinessError('not_eligible','换货规格须为同商家同商品同币种')
-                    if replacement['status']!='active' or not replacement['inventory'] or replacement['inventory']['available_qty']<args['quantity']:
-                        raise BusinessError('not_eligible','换货规格不可售或库存不足')
-                    difference=money(replacement['list_price'])*args['quantity']-money(assessment['amount'])
-                    if difference and not r.allow_exchange_price_difference: raise BusinessError('not_eligible','当前规则不支持有价差换货')
-                    extra['replacement']={k:v for k,v in replacement.items() if k!='inventory'}
-                    review.update(replacement_sku_id=args['replacement_sku_id'],price_difference=difference)
+                    review.update(replacement_sku_id=assessment['replacement_sku_id'],price_difference=assessment['price_difference'])
         version=digest({'action':action,'args':args,'extra':extra,'order':None if kind=='purchase' else self.snapshot(tx,order)})
         return review,version,private
 
@@ -168,6 +170,7 @@ class ExtendedWriteService(WriteService):
                 self.queue_provider(tx,oid,kind,wid,order,dict(details,after_sale_id=aid,work_order_id=wid))
                 result.update(after_sale_id=aid,work_order_id=wid)
             tx.execute('INSERT INTO order_events(event_id,platform_code,order_id,operation_id,kind,payload,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s)',(uuid4().hex,order['platform_code'],order['order_id'],oid,kind,dumps({'status':result['status']}),now))
+            if review.get('is_demo'): result.update(is_demo=True,source='simulated_provider')
             self.record_receipt(tx,oid,action,args,result)
             return result
 

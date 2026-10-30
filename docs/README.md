@@ -12,6 +12,8 @@
 
 阅读每篇文档时先看职责与流程，再看失败边界和代码入口。**“已实现”以当前调用链为准；保留的目标设计会注明实现差异，未实现或部分实现的内容统一进入 [待改进](待改进.md)。** 已经实现而文档滞后的内容直接更新，不与未来设计混在一起。
 
+当前已实现按需记忆召回、MCP 默认 Worker 分流、新版查询依赖和外部等待绑定、结构化人工交接，以及 SQL 集合分页和完整明细入口。[待改进](待改进.md) 只保留未完成的设计、剩余缺口和部署验收；[本地演示闭环方案](售后与开票本地演示闭环方案.md) 已实现仅退款、退货退款和首次开票的持久模拟处理，真实供应商接入仍属生产扩展。
+
 ## 模块文档
 
 ### 系统与主链路
@@ -34,12 +36,13 @@
 | [工具设计](工具设计.md)                                     | 全局白名单、目标筛选、参数、副作用和完整工具目录      |
 | [业务数据访问设计](业务数据访问设计.md)                     | 业务服务组合、查询事务、结果契约、分页和旧 DAO 边界   |
 | [业务操作与交易设计](业务操作与交易设计.md)                 | 固定确认、资源占用、交易不变量、幂等和未知结果        |
+| [售后与开票本地演示闭环方案](售后与开票本地演示闭环方案.md) | 本地处理渠道实现、演示来源、启动步骤与验收范围        |
 | [数据库表设计](数据库表设计.md)                             | MySQL 领域关系、PostgreSQL 运行数据、图片与索引控制表 |
 | [政策检索设计](政策检索设计.md)                             | 适用范围、词法/向量融合、完整证据与版本发布           |
 | [图片处理与多模态上下文设计](图片处理与多模态上下文设计.md) | 附件、视觉观察、按需回看、来源、保留目标及当前差异    |
 | [短期上下文与摘要设计](短期上下文与摘要设计.md)             | 近期原话、引用摘要、历史召回与完整请求预算            |
 | [上下文与记忆设计](上下文与记忆设计.md)                     | v3 提取、更正、遗忘、迁移、归档与实际召回接入状态     |
-| [MCP工具服务设计](MCP工具服务设计.md)                       | 服务/用户双鉴权、范围签名、默认 Worker 接入与失败处理   |
+| [MCP工具服务设计](MCP工具服务设计.md)                       | 服务/用户双鉴权、范围签名、默认 Worker 接入与失败处理 |
 
 ### 协作、客户端与运行
 
@@ -60,7 +63,7 @@
 | [RAG评测说明](RAG评测说明.md)       | 题集、召回/排序、忠实度、回放与报告               |
 | [Agent评测设计](Agent评测设计.md)   | 静态/动态用户、三维度评分、延迟、多会话与记忆对照 |
 | [开源评测数据集](开源评测数据集.md) | 外部素材如何映射为本项目场景，哪些适配仍未完成    |
-| [待改进](待改进.md)                 | 所有已核实的文档超前设计、当前代码证据与验收条件  |
+| [待改进](待改进.md)                 | 未完成设计、代码依据与剩余验收条件                |
 
 所有文档直接放在 `docs/`，不以子目录划分实现阶段。
 
@@ -68,15 +71,15 @@
 
 例如“昨天买的黑色跑鞋到哪了”，先跟数据如何变化，而不是只跟模型提示词：
 
-| 顺序 | 入口                                                                                              | 观察内容                                       |
-| ---- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| 1    | [API 接收](../app/api/task_messages.py) → [MessageIntake](../app/tasks/intake.py)                 | 原话、请求去重、事件序号、关联待处理位置       |
-| 2    | [ConversationWorker](../app/tasks/conversation_worker.py)                                         | 领取批次，改写与关联如何分开运行               |
-| 3    | [CandidateService](../app/tasks/candidates.py) → [关联服务](../app/tasks/association.py)          | 如何发现订单/事项候选，什么时候必须澄清        |
-| 4    | [TaskSchedule/TaskWorker](../app/tasks/scheduling.py) → [TaskExecutor](../app/tasks/execution.py) | 当前事项、预算、工具筛选和有效执行资格         |
-| 5    | [工具分发](../app/tools/dispatch.py) → [业务查询](../app/services/commerce/queries.py)            | 哪个对象被读取、归属如何验证、缺失事实如何返回 |
-| 6    | [ReplyCoordinator](../app/tasks/replies.py) → [允许结论](../app/tasks/reply_claims.py)            | 草稿为何不直接发布，如何保留来源与限制         |
-| 7    | [SSE 接口](../app/api/support.py) → [前端状态](../frontend/src/conversationState.js)              | 历史、接收回执与回复乱序时如何合并             |
+| 顺序 | 入口                                                                                                                                    | 观察内容                                           |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 1    | [API 接收](../app/api/task_messages.py) → [MessageIntake](../app/tasks/intake.py)                                                       | 原话、请求去重、事件序号、关联待处理位置           |
+| 2    | [ConversationWorker](../app/tasks/conversation_worker.py)                                                                               | 领取批次，改写与关联如何分开运行                   |
+| 3    | [CandidateService](../app/tasks/candidates.py) → [关联服务](../app/tasks/association.py)                                                | 如何发现订单/事项候选，什么时候必须澄清            |
+| 4    | [TaskSchedule/TaskWorker](../app/tasks/scheduling.py) → [TaskExecutor](../app/tasks/execution.py)                                       | 当前事项、预算、工具筛选和有效执行资格             |
+| 5    | [本地/MCP 分流](../app/tools/task_dispatch.py) → [工具分发](../app/tools/dispatch.py) → [业务查询](../app/services/commerce/queries.py) | 哪个对象被读取、归属如何验证、摘要如何继续取得明细 |
+| 6    | [ReplyCoordinator](../app/tasks/replies.py) → [允许结论](../app/tasks/reply_claims.py)                                                  | 草稿为何不直接发布，如何保留来源与限制             |
+| 7    | [SSE 接口](../app/api/support.py) → [前端状态](../frontend/src/conversationState.js)                                                    | 历史、接收回执与回复乱序时如何合并                 |
 
 把问题换成“帮我取消这单”时，再沿 [TaskOperations](../app/tasks/operations.py) 和 [业务写入](../app/services/commerce/writes.py) 看确认前后，区分“准备”“用户确认”“申请登记”和“最终业务完成”。
 
@@ -96,4 +99,4 @@
 
 `app/api` 是协议边界；`app/tasks` 与 `app/support` 是持久运行层；`app/agents`、`app/execution`、`app/prompts` 与 `app/data_plan` 是模型阶段与工具执行边界；`app/tools`、`app/services/commerce`、`app/data` 是业务访问链；`app/session`、`app/memory`、`app/media`、`app/rag` 提供上下文与证据；`app/runtime`、`app/db.py`、`app/observability`、`app/config` 提供运行基础；`app/harness` 与 `app/reliability` 提供执行及测试保护；`app/evaluation` 是质量评测入口。
 
-`app/mcp` 提供可装配远程工具能力；`app/skills` 保留独立的技能加载器，当前 Worker 没有自动接入。目录或接口存在不等于主链路已经使用，接入状态见对应文档。
+`app/mcp` 已通过默认事项分发按配置接入，远程读取和本地事项流程分别处理；`app/skills` 保留独立的技能加载器，当前 Worker 没有自动加载。目录或接口存在不等于主链路已经使用，接入状态见对应文档。

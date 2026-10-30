@@ -286,7 +286,7 @@ class CollectionQueryService:
             clauses += ['i.platform_code=%s', 'i.order_id=%s']; values += [order['platform_code'], order['order_id']]
         elif target:
             clauses.append('i.invoice_id=%s'); values.append(target[1])
-        result = self.sql_page(tx, '''SELECT i.invoice_id,i.platform_code,i.order_id,i.invoice_type,i.status,i.created_at,i.issued_at
+        result = self.sql_page(tx, '''SELECT i.invoice_id,i.platform_code,i.order_id,i.invoice_type,i.status,i.created_at,i.issued_at,i.is_demo
             FROM invoice_requests i JOIN orders o ON o.platform_code=i.platform_code AND o.order_id=i.order_id WHERE ''' + ' AND '.join(clauses),
             values, 'get_invoices', args, keys=('created_at', 'invoice_id'), descending=('created_at',))
         if target and target[0] == 'invoice' and not result['data']['total']:

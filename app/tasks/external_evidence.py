@@ -119,6 +119,9 @@ def observation(binding, *, phase, rank, content, source, observed_at, reference
                  observed_at=timestamp(observed_at), reference=reference, is_demo=is_demo or binding.get('is_demo') is True,
                  deadline=timestamp(deadline) if deadline else None,
                  required_materials=list(required_materials), transaction_id=transaction_id)
+    if value['is_demo']:
+        from app.services.commerce.simulator import DEMO_NOTICE
+        value['content'] += ' ' + DEMO_NOTICE
     value['event_id'] = digest(value)
     # Repeated reads may have a new observation time, but unchanged progress is
     # not another customer notification.
@@ -134,7 +137,7 @@ def finished(binding, value):
                                   'warehouse_received', 'refunding', 'funds_settled', 'refund_channel_succeeded'}
     return (goal == 'refund_settled' and value['phase'] == 'funds_settled'
             or goal == 'refund_channel_result' and value['phase'] == 'refund_channel_succeeded'
-            or goal == 'commerce_result' and value['phase'] in {'service_completed','invoice_issued'}
+            or goal == 'commerce_result' and value['phase'] in {'service_completed','invoice_issued','refund_channel_succeeded'}
             or goal == 'warehouse_received' and value['phase'] == 'warehouse_received'
             or goal == 'tracking_delivered' and value['phase'] == 'delivered'
             or goal == 'local_invoice' and value['phase'] == 'issued_local')
@@ -162,12 +165,15 @@ class BusinessProgress:
             result=svc.read('get_invoices',dict(target_ref=ref('invoice',binding['invoice_id'])))
             row=result['data']['items'][0]
             if row['status']=='rejected': phase,rank,content='business_rejected',90,'开票申请被处理方拒绝，需要人工继续核实。'
-            elif row['status']=='issued' and any(i['status']=='issued' for i in row['issued_invoices']):
-                phase,rank,content='invoice_issued',60,'已记录正式发票，可查询发票文件。'
+            elif row['status']=='issued' and any(i['status']=='issued' and i.get('document_available') for i in row['issued_invoices']):
+                phase,rank,content='invoice_issued',60,('演示票据已生成，可查询授权下载文件。' if result.get('is_demo') else '已记录正式发票，可查询发票文件。')
             elif row['status']=='processing': phase,rank,content='approved',20,'开票申请正在处理，尚未取得正式发票。'
         else:
             result=svc.read('get_after_sale_status',dict(after_sale_id=binding['after_sale_id']))
             data=result['data']; sale=data['after_sale']; work=data.get('work_order') or {}
+            if binding['kind']=='commerce_sale' and sale['kind'] in {'refund_only','return_refund'}:
+                from app.tasks.external_queries import refund_progress
+                return refund_progress(svc,binding,result)
             if binding['kind'] == 'query_sale':
                 from app.tasks.external_queries import refund_progress, verify_sale
                 verify_sale(svc, binding, result)
@@ -196,4 +202,4 @@ class BusinessProgress:
                 phase,rank,content='awaiting_return',25,'已取得退货授权，请查询退货地址、期限和材料要求。'
             elif sale['status'] in {'approved','processing'}:
                 phase,rank,content='approved',20,'售后申请正在处理，最终结果仍待核实。'
-        return observation(binding,phase=phase,rank=rank,content=content,source='mysql',observed_at=result['observed_at'],reference=binding[key])
+        return observation(binding,phase=phase,rank=rank,content=content,source=result.get('source','mysql'),is_demo=result.get('is_demo') is True,observed_at=result['observed_at'],reference=binding[key])

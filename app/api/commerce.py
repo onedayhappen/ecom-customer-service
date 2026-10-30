@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Request, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from app.api.support import identity, request_budget
 from app.services.commerce import service
-from app.services.commerce.common import BusinessError
+from app.services.commerce.common import BusinessError, ref
 from app.services.commerce.customer_views import CustomerViews
 from app.services.commerce.providers import invoice_file
 
@@ -89,6 +89,20 @@ def download_invoice(issued_invoice_id: str, request: Request):
                 "X-Content-Type-Options": "nosniff",
             },
         )
+    except BusinessError as error:
+        raise HTTPException(
+            status_code=404 if error.code == "not_found" else 503, detail=error.message
+        ) from None
+
+
+@router.get("/invoice-requests/{invoice_id}")
+def invoice_request_status(invoice_id: str, request: Request, response: Response):
+    response.headers["Cache-Control"] = "private, no-store"
+    try:
+        result = service(identity(request)).read(
+            "get_invoices", {"target_ref": ref("invoice", invoice_id)}
+        )
+        return result["data"]["items"][0]
     except BusinessError as error:
         raise HTTPException(
             status_code=404 if error.code == "not_found" else 503, detail=error.message

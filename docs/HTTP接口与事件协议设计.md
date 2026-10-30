@@ -4,19 +4,19 @@
 
 API 负责认证、接收、查询、控制、确认及事件传输。模型执行由独立 Worker 推进，消息 HTTP 请求不等待整个 Agent 结束。应用与中间件装配见 [main.py](../app/api/main.py)，字段约束以对应 Pydantic 请求模型为准。
 
-| 接口组     | 主要路径                                                                               | 作用                                           |
-| ---------- | -------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| 登录身份   | `/api/v1/auth/register`、`login`、`logout`；`/api/v1/me`                               | 注册、登录、退出与当前用户                     |
-| 持续消息   | `POST /api/v1/task-messages`；`GET /api/v1/task-messages/{session_id}`                 | 持久化接收、幂等回执与关联进度                 |
-| 会话读取   | `/api/v1/sessions/{session_id}/transcript`、`messages`、`tasks`、`tasks/history`       | 分页历史、事件补拉及事项视图                   |
-| 实时更新   | `GET /api/v1/sessions/{session_id}/support-events`                                     | 按游标订阅 SSE                                 |
-| 业务确认   | `/api/v1/task-operations/{session_id}`；`/{operation_id}/confirm`、`cancel`、`refresh` | 卡片读取、固定确认、取消未开始操作与核实       |
-| 人工控制   | `/api/v1/sessions/{session_id}/handoff`、`resume-bot`、`support-state`                 | 转人工、恢复与当前控制权                       |
-| 客服工作台 | `/api/v1/support/me`、`staff`、`tickets`、`operations`                                 | 权限、领取、转派、回复、内部备注与未知结果处理 |
-| 客户数据   | `/api/commerce/profile`、`orders`、`coupons`                                           | 已鉴权的客户资料和业务列表                     |
-| 发票文件   | `/api/commerce/invoices/{issued_invoice_id}/document`                                  | 私有票据下载                                   |
-| 图片       | `/api/v1/attachments` 及附件编号下的子接口                                             | 上传、鉴权读取、撤回与识别重试                 |
-| 记忆归档   | `/api/v1/sessions/{session_id}/memory-archive`；`/api/v1/memory-archives/{archive_id}` | 固定截止点并查询处理状态                       |
+| 接口组         | 主要路径                                                                                             | 作用                                           |
+| -------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| 登录身份       | `/api/v1/auth/register`、`login`、`logout`；`/api/v1/me`                                             | 注册、登录、退出与当前用户                     |
+| 持续消息       | `POST /api/v1/task-messages`；`GET /api/v1/task-messages/{session_id}`                               | 持久化接收、幂等回执与关联进度                 |
+| 会话读取       | `/api/v1/sessions/{session_id}/transcript`、`messages`、`tasks`、`tasks/history`                     | 分页历史、事件补拉及事项视图                   |
+| 实时更新       | `GET /api/v1/sessions/{session_id}/support-events`                                                   | 按游标订阅 SSE                                 |
+| 业务确认       | `/api/v1/task-operations/{session_id}`；`/{operation_id}/confirm`、`cancel`、`refresh`               | 卡片读取、固定确认、取消未开始操作与核实       |
+| 人工控制       | `/api/v1/sessions/{session_id}/handoff`、`resume-bot`、`support-state`                               | 转人工、恢复与当前控制权                       |
+| 客服工作台     | `/api/v1/support/me`、`staff`、`tickets`、`operations`                                               | 权限、领取、转派、回复、内部备注与未知结果处理 |
+| 客户数据       | `/api/commerce/profile`、`orders`、`coupons`                                                         | 已鉴权的客户资料和业务列表                     |
+| 发票进度与文件 | `/api/commerce/invoice-requests/{invoice_id}`；`/api/commerce/invoices/{issued_invoice_id}/document` | 本人开票申请进度及私有票据下载                 |
+| 图片           | `/api/v1/attachments` 及附件编号下的子接口                                                           | 上传、鉴权读取、撤回与识别重试                 |
+| 记忆归档       | `/api/v1/sessions/{session_id}/memory-archive`；`/api/v1/memory-archives/{archive_id}`               | 固定截止点并查询处理状态                       |
 
 表中同组短路径均接在前述前缀后，不能把例如 `cancel` 当作无操作编号的独立入口。完整路由见 [support.py](../app/api/support.py)、[commerce.py](../app/api/commerce.py) 和 [task_operations.py](../app/api/task_operations.py)。
 
@@ -41,6 +41,12 @@ API 负责认证、接收、查询、控制、确认及事件传输。模型执�
 Redis 通知只唤醒查询，不携带唯一的消息事实。定时数据库补拉覆盖通知遗漏；客户端以稳定编号、序号与覆盖范围合并，不能用“最后到达的响应”覆盖新状态。SSE 的 `id` 是批次游标，不代表每次推送恰好只有一条事件。
 
 客服读取携带 `staff` 与 `ticket_id` 时仍由服务端检查角色、负责范围和工单历史上限。内部事件不会因为共用连接协议而变成客户可见内容。
+
+## 开票进度与文件
+
+`GET /api/commerce/invoice-requests/{invoice_id}` 核验登录用户及申请归属，返回申请状态和已开票据摘要，包含演示来源及文件可用性。确认卡片据此轮询后续开票进度；原业务操作提交成功不表示票据已经生成。
+
+文件下载按 `issued_invoice_id` 再核验本人申请、文件状态、私有路径范围及摘要。接口不接受任意文件 URL，模拟 PDF 明确标为演示票据；文件生成与恢复见 [本地演示闭环方案](售后与开票本地演示闭环方案.md)。
 
 ## 错误、健康与兼容边界
 

@@ -16,7 +16,8 @@ from app.tasks.tool_facts import STATES
 LOGISTICS = {"get_logistics", "get_shipments", "get_shipment_tracking"}
 REFUNDS = {"get_refunds", "get_after_sale_status", "get_after_sale"}
 SEARCHES = {"find_orders", "find_after_sales"}
-TOOLS = LOGISTICS | REFUNDS | SEARCHES | {"get_order", "query_order", "query_logistics", "query_after_sale"}
+INVOICES = {'get_invoices','get_invoice_document'}
+TOOLS = LOGISTICS | REFUNDS | SEARCHES | INVOICES | {"get_order", "query_order", "query_logistics", "query_after_sale"}
 
 
 def _target(receipt):
@@ -195,6 +196,24 @@ def project(record, receipts):
         tool, result = receipt["tool"], receipt["result"]
         if tool not in TOOLS or result.get("success") is not True:
             continue
+        if tool in INVOICES:
+            data=result.get('data', {})
+            texts=[]
+            for row in data.get('items', [data] if tool=='get_invoice_document' else []):
+                if not isinstance(row,dict): continue
+                if row.get('order_id') and (record.details.get('order_id') not in (None,'',row['order_id'])
+                    or record.details.get('platform_code') not in (None,'',row.get('platform_code'))):
+                    continue
+                demo=bool(row.get('is_demo')) or result.get('is_demo') is True
+                subject='演示票据' if demo else '发票'
+                ready=row.get('document_available') or bool(row.get('download_url')) or any(d.get('document_available') for d in row.get('issued_invoices',[]))
+                texts.append(subject+' '+label(row.get('invoice_id') or row.get('issued_invoice_id'),80)+('：文件已就绪，可通过本人授权接口下载。' if ready else '：当前状态为“'+label(row.get('status','未核实'),30)+'”，可下载文件尚未核实。'))
+            text=' '.join(texts) or '本次查询未载入发票记录，不代表没有开票申请。'
+            if result.get('is_demo'):
+                from app.services.commerce.simulator import DEMO_NOTICE
+                text+=' '+DEMO_NOTICE
+            blocks.append(dict(evidence_id=receipt['event_id'],target=None,observation={'invoice_records':len(texts)},uncertainty={'paginated':bool(result.get('next_cursor'))},text=text))
+            continue
         if tool in SEARCHES:
             data = result.get("data", {})
             rows = data.get("items") if isinstance(data, dict) else None
@@ -290,6 +309,9 @@ def project(record, receipts):
             text += "数据截至 " + _date(uncertainty["data_as_of"]) + "。"
         if uncertainty["paginated"]:
             text += "本次仅返回部分记录，需要时可继续查询。"
+        if result.get('is_demo'):
+            from app.services.commerce.simulator import DEMO_NOTICE
+            text += DEMO_NOTICE
         blocks.append(dict(evidence_id=receipt["event_id"], target=target, observation=observation,
                            uncertainty=uncertainty, text=_subject(target, orders) + "：" + text))
     return blocks

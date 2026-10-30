@@ -369,6 +369,16 @@ docker compose build backend frontend
 
 后端直接运行 Python 源码，无单独的前端式打包步骤；后端构建入口为根目录 `Dockerfile`。
 
+### 隔离容器部署验收
+
+```powershell
+python scripts/check_container_deployment.py
+# Docker Hub 镜像代理不可用时，改用 Docker 官方镜像的公共 ECR 地址
+python scripts/check_container_deployment.py --public-mirror
+```
+
+该命令构建完整前后端镜像，以独立 Compose 项目和临时数据卷验证空库迁移、重复迁移、迁移失败阻止后端启动、服务就绪、共享票据目录和加密密钥、重启恢复。它不载入 `.env` 中的服务凭证、不挂载现有数据、不占用宿主端口，结束时清理本次容器与数据卷。验收使用离线模型配置，不验证真实模型效果或真实供应商联调。MySQL 迁移的 `--check` 在缺少版本时返回非零退出码，可用于部署门禁。
+
 ## 常见问题与文档
 
 | 现象                     | 检查方向                                                            |

@@ -162,7 +162,7 @@ def describe(name, data, query=""):
             lines.append(prefix + "本次暂未查到催单登记记录。")
         lines.append("催单受理或处理完成不等于已经发货，实际发货情况仍需查询物流。")
         partial = len(items) > 3
-    elif name in {"check_coupon", "assess_order_action", "assess_after_sale", "assess_price_protection"}:
+    elif name in {"check_coupon", "assess_order_action", "assess_after_sale", "assess_price_protection", "assess_exchange", "assess_repair"}:
         lines.append("本次核验结果：" + state(data.get("eligibility")) + "。")
         lines += _money_fields(data, [("requested_amount", "可申请金额为"), ("discount_amount", "已核实优惠金额为"), ("threshold_gap", "距离使用门槛还差")])
         if name in {"assess_after_sale", "assess_price_protection"}:
@@ -179,6 +179,20 @@ def describe(name, data, query=""):
                 lines.append(rules[check["rule"]] + ("不满足要求。" if check["status"] == "fail" else "尚未核实。"))
         if name == "assess_after_sale":
             lines.append("这是资格核验，尚未提交售后申请或退款。")
+        if name in {"assess_exchange", "assess_repair"}:
+            if type(data.get("quantity")) is int:
+                lines.append("本次核验数量为" + str(data["quantity"]) + "件，不代表整单数量。")
+            if name == "assess_exchange":
+                difference = data.get("price_difference")
+                if not isinstance(difference, bool) and isinstance(difference, (str, int, float, Decimal)) and len(str(difference)) <= 64:
+                    try:
+                        value = Decimal(str(difference))
+                        price = amount(value.copy_abs(), data.get("currency"))
+                        if price:
+                            lines.append(("目标规格按记录比原商品分摊金额低" if value < 0 else "按记录计算的换货价差为") + price + "。")
+                    except InvalidOperation:
+                        pass
+            lines.append("这是申请资格核验，尚未提交换货或维修申请，不代表审核通过。")
     elif name in {"estimate_purchase", "quote_checkout", "quote_delivery"}:
         lines += _money_fields(data, [("goods_amount", "商品金额为"), ("discount_amount", "优惠金额为"),
             ("goods_after_discount", "优惠后商品金额为"), ("shipping_amount", "运费为"), ("payable_amount", "应付金额为")])

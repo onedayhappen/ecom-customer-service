@@ -1,3 +1,5 @@
+import InvoiceDocuments from './InvoiceDocuments'
+
 export default function OperationConfirmation({
   operation,
   enabled = false,
@@ -51,6 +53,7 @@ export default function OperationConfirmation({
               order_reference: '订单金额（参考，非承诺退款金额）',
               purchase_total: '订单应付金额（含运费）',
               price_protection: '申请价保金额（待审核）',
+              invoice_total: '开票金额',
             }[review.amount_kind] || '开票参考金额'}
             ：{review.currency || 'CNY'} {money}
           </p>
@@ -122,6 +125,9 @@ export default function OperationConfirmation({
         )}
         {review.original_invoice_id && <p>原发票：{review.original_invoice_id}</p>}
         <p>{review.impact}</p>
+        {operation.status === 'succeeded' && operation.result?.invoice_id && (
+          <InvoiceDocuments invoiceId={operation.result.invoice_id} />
+        )}
         {operation.status === 'prepared' && (
           <p>确认有效期至 {new Date(operation.expires_at * 1000).toLocaleTimeString()}</p>
         )}

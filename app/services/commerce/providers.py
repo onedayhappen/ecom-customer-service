@@ -52,6 +52,9 @@ class IssuedInvoice(ProviderModel):
     mime_type: Literal['application/pdf','application/xml','application/ofd']
     sha256: str=Field(pattern=r'^[a-f0-9]{64}$')
     issued_at: datetime
+    amount: Decimal | None=None
+    currency: str | None=None
+    title_digest: str | None=None
 
 class ReplacementShipment(ProviderModel):
     tracking_number: str=Field(min_length=1,max_length=64)
@@ -85,6 +88,12 @@ class ProviderResponse(ProviderModel):
     invoice: IssuedInvoice | None=None
     original_voided: bool=False
     replacement_shipment: ReplacementShipment | None=None
+    request_id: str | None=None
+    user_id: str | None=None
+    platform_code: str | None=None
+    order_id: str | None=None
+    target_id: str | None=None
+    items: list[dict]=Field(default_factory=list,max_length=100)
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):
@@ -110,9 +119,25 @@ class HttpGateway:
         except Exception:
             raise BusinessError('result_unknown','处理渠道结果暂未核实，将按原请求编号查询') from None
 
-def gateway(kind):
+def provider_mode():
+    from app.config.settings import settings
+    mode=settings.commerce_provider_mode or ('http' if settings.commerce_provider_config.strip() not in {'', '{}'} else 'disabled')
+    if mode not in {'disabled','simulator','http'}:
+        raise BusinessError('temporarily_unavailable','COMMERCE_PROVIDER_MODE 配置无效')
+    return mode
+
+
+def gateway(kind, *, mode=None, store=None, user=None):
     if _override.get(): return _override.get()(kind)
     from app.config.settings import settings
+    selected=provider_mode()
+    if mode is not None and mode!=selected:
+        raise BusinessError('provider_mode_mismatch','任务绑定渠道与当前模式不同，已阻止切换处理来源')
+    if selected=='disabled': return None
+    if selected=='simulator':
+        if kind not in {'refund_only','return_refund','invoice'}: return None
+        from app.services.commerce.simulator import Simulator
+        return Simulator(store,user)
     try:
         config=json.loads(settings.commerce_provider_config or '{}').get(kind)
         return HttpGateway(config) if config else None

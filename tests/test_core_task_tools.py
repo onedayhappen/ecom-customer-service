@@ -7,7 +7,7 @@ from app.services.commerce import service_factory, CommerceService
 from app.services.commerce.common import ref
 from app.tasks.operations import TaskOperations
 from app.tools.request_context import set_current_user_id,reset_current_user_id
-from tests.test_core_tools import database,svc
+from tests.test_core_tools import database,svc,standard_provider
 from tests.test_task_candidates import task
 from tests.test_message_association import store
 from tests.test_task_storage import empty_store
@@ -24,7 +24,7 @@ def business(svc,monkeypatch):
 def test_mcp_only_exposes_read_tools():
     from app.mcp.server import list_business_tools,call_business_tool
     tools=asyncio.run(list_business_tools())
-    assert len(tools)==34
+    assert len(tools)==36
     assert all(t.annotations.readOnlyHint for t in tools)
     assert 'prepare_invoice' not in {t.name for t in tools}
     assert not asyncio.run(call_business_tool('claim_coupon',{}))['ok']
@@ -74,7 +74,7 @@ def test_read_tool_records_owned_evidence(store,business):
     out=engine(client).execute_task(store,'alice',request(rec,source))
     assert out['state']=='ready' and out['tool_calls']==1 and out['evidence_ids']
 
-def test_prepare_confirm_and_repeat_via_real_adapter(store,business):
+def test_prepare_confirm_and_repeat_via_real_adapter(store,business,standard_provider):
     rec,source=task(store,'s',goal='申请退款',details={'order_id':'paid','platform_code':'shop'})
     args={'kind':'refund_only','items':[{'order_item_id':'i-paid','quantity':1}],'reason':'不需要了'}
     client=Client(response(calls=[('prepare_after_sale',args)]))
@@ -105,7 +105,7 @@ def test_claim_always_requires_bound_confirmation(store,business,text):
     assert operations.confirm('s',card['operation_id'],card['confirmation_token'])==result
     with business.store.transaction() as tx: assert tx.one('SELECT COUNT(*) AS n FROM user_coupons')['n']==1
 
-def test_invoice_card_is_private_and_prepare_replay_stays_masked(store,business):
+def test_invoice_card_is_private_and_prepare_replay_stays_masked(store,business,standard_provider):
     rec,source=task(store,'s',goal='申请发票',details={'order_id':'paid','platform_code':'shop'})
     args={'order_ref':ref('order','shop','paid'),'invoice_type':'company','title':'示例公司','tax_number':'SECRET-TAX'}
     operations=TaskOperations(store,'alice')

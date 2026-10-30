@@ -254,6 +254,10 @@ class Settings(BaseSettings):
     context_window_margin_tokens: int = Field(default=1024, ge=0)
 
     commerce_provider_config: str = "{}"
+    # Empty keeps existing configured HTTP installations working; no implicit simulation.
+    commerce_provider_mode: str = ""
+    commerce_simulator_scenario: str = "success"
+    commerce_simulator_step_seconds: int = Field(default=10, ge=0, le=86400)
     commerce_invoice_root: str = ""
 
     model_config = {"env_file": ".env", "extra": "ignore"}

@@ -9,6 +9,7 @@ from app.services.commerce.extensions import ExtendedService
 from app.services.commerce.fulfillment import FulfillmentService
 from app.services.commerce.order_changes import OrderChangeService
 from app.services.commerce.queries import QueryService
+from app.services.commerce.standard_fulfillment import StandardFulfillment
 
 
 def _missing_fields(data, limit=100):
@@ -44,6 +45,7 @@ def _no_match(data):
 
 
 class CommerceService(
+    StandardFulfillment,
     OrderChangeService,
     FulfillmentService,
     ExtendedWriteService,
@@ -68,6 +70,21 @@ class CommerceService(
             )
             result["completeness"] = "partial"
             data = result.get("data", {})
+            from app.services.commerce.simulator import DEMO_NOTICE
+            from itertools import islice
+            def demo_source(value, depth=0):
+                if depth>10: return False
+                if isinstance(value, list):
+                    return any([demo_source(child,depth+1) for child in islice(value,100)])
+                if not isinstance(value, dict): return False
+                own = bool(value.get('is_demo')) or value.get('source') == 'simulated_provider' or value.get('provider') == 'simulated_provider'
+                if own: value.update(is_demo=True, source='simulated_provider')
+                nested = any([demo_source(child,depth+1) for child in islice(value.values(),100) if isinstance(child, (dict, list))])
+                return own or nested
+            if demo_source(data):
+                result.update(is_demo=True, source='simulated_provider')
+                result['sources'].append({'kind': 'simulated_provider'})
+                result['limitations'].append(DEMO_NOTICE)
             result["status"] = "no_match" if _no_match(data) else "ok"
             result["missing_fields"] = _missing_fields(data)
             return result

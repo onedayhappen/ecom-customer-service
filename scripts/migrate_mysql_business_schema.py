@@ -19,7 +19,7 @@ from app.data.order_dao import MySqlOrderDAO, parse_mysql_dsn  # noqa: E402
 from app.data.product_dao import MySqlProductDAO  # noqa: E402
 
 
-VERSIONS = ("001_business_schema", "002_remove_legacy_commerce", "003_core_tools", "004_extended_tools", "005_merchant_store_type", "006_order_statuses", "007_pending_receipt", "008_after_sale_fulfillment", "009_coupon_eligibility", "010_membership_programs", "011_order_changes")
+VERSIONS = ("001_business_schema", "002_remove_legacy_commerce", "003_core_tools", "004_extended_tools", "005_merchant_store_type", "006_order_statuses", "007_pending_receipt", "008_after_sale_fulfillment", "009_coupon_eligibility", "010_membership_programs", "011_order_changes", "012_local_provider")
 SQL_FILE = ROOT / "migrations" / "mysql" / f"{VERSIONS[0]}.sql"
 LEGACY_SQL_FILE = ROOT / "migrations" / "mysql" / f"{VERSIONS[1]}.sql"
 LEGACY_ORDER_COLUMNS = (
@@ -279,6 +279,19 @@ def _apply_010(conn) -> None:
     conn.commit()
 
 
+def _apply_012(conn):
+    # MySQL DDL commits individually: resume safely after any interrupted ALTER.
+    with conn.cursor() as cur:
+        for statement in (ROOT / 'migrations/mysql/012_local_provider.sql').read_text(encoding='utf-8').split(';'):
+            statement=statement.strip()
+            if not statement: continue
+            if statement.startswith('ALTER TABLE'):
+                parts=statement.split()
+                if _column_exists(cur,parts[2],parts[5]): continue
+            cur.execute(statement)
+    conn.commit()
+
+
 def _apply_011(conn) -> None:
     with conn.cursor() as cur:
         for statement in (ROOT / 'migrations/mysql/011_order_changes.sql').read_text(encoding='utf-8').split(';'):
@@ -328,7 +341,7 @@ def migrate(dsn: str, *, check: bool = False) -> bool:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""")
                 cur.execute("SELECT version FROM schema_migrations WHERE version IN (" + ",".join(["%s"] * len(VERSIONS)) + ")", VERSIONS)
                 applied = {row["version"] for row in cur.fetchall()}
-            for version, operation in ((VERSIONS[0], _apply_001), (VERSIONS[1], _apply_002), (VERSIONS[2], _apply_003), (VERSIONS[3], _apply_004), (VERSIONS[4], _apply_005), (VERSIONS[5], _apply_006), (VERSIONS[6], _apply_007), (VERSIONS[7], _apply_008), (VERSIONS[8], _apply_009), (VERSIONS[9], _apply_010), (VERSIONS[10], _apply_011)):
+            for version, operation in ((VERSIONS[0], _apply_001), (VERSIONS[1], _apply_002), (VERSIONS[2], _apply_003), (VERSIONS[3], _apply_004), (VERSIONS[4], _apply_005), (VERSIONS[5], _apply_006), (VERSIONS[6], _apply_007), (VERSIONS[7], _apply_008), (VERSIONS[8], _apply_009), (VERSIONS[9], _apply_010), (VERSIONS[10], _apply_011), (VERSIONS[11], _apply_012)):
                 if version in applied:
                     continue
                 if version == VERSIONS[0]:
@@ -356,6 +369,8 @@ def main() -> None:
         parser.error("Provide --dsn or ORDER_DB_DSN")
     applied = migrate(args.dsn, check=args.check)
     print(f"MySQL business schema: {'applied' if applied else 'pending'}")
+    if not applied:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -64,6 +64,7 @@ def binding_for(tx, runs, record):
             kind='commerce_invoice' if receipt.get('invoice_id') else 'commerce_sale'
             return dict(kind=kind,order_id=prepared['arguments']['order_id'],platform_code=prepared['arguments']['platform_code'],
                 operation_id=waiting['operation_id'],after_sale_id=receipt.get('after_sale_id'),invoice_id=receipt.get('invoice_id'),
+                is_demo=receipt.get('is_demo') is True,
                 completion='submission' if only_submission_requested(tx,record) else 'commerce_result')
     if not waiting.get('operation_id'):
         from app.tasks.external_queries import query_source, query_binding, validate_binding

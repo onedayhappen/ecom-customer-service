@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS simulated_provider_requests (
+ request_id VARCHAR(128) PRIMARY KEY, user_id VARCHAR(64) NOT NULL,
+ kind VARCHAR(32) NOT NULL, target_id VARCHAR(64) NOT NULL,
+ payload_digest CHAR(64) NOT NULL, scenario VARCHAR(32) NOT NULL,
+ phase INT NOT NULL, next_at DATETIME(6) NOT NULL, step_seconds INT NOT NULL,
+ result JSON NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+ALTER TABLE orders ADD COLUMN is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE commerce_provider_requests ADD COLUMN provider_mode VARCHAR(16) NOT NULL DEFAULT 'http';
+ALTER TABLE commerce_provider_requests ADD COLUMN error_code VARCHAR(64) NULL;
+ALTER TABLE after_sale_requests ADD COLUMN is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE invoice_requests ADD COLUMN is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE refund_transactions ADD COLUMN is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE issued_invoices ADD COLUMN is_demo BOOLEAN NOT NULL DEFAULT FALSE;

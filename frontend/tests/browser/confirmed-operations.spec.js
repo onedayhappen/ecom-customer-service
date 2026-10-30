@@ -1,9 +1,13 @@
 import { test, expect } from '@playwright/test'
 
-async function prepare(page, { status = 'prepared', canConfirm = true, confirm, review } = {}) {
+async function prepare(
+  page,
+  { status = 'prepared', canConfirm = true, confirm, review, result } = {},
+) {
   const operation = {
     operation_id: '9b581291-86dc-46e9-a7d8-44a16d5cbb52',
     status,
+    result,
     can_confirm: canConfirm,
     confirmation_token: 'server-bound-confirmation-token',
     expires_at: Date.now() / 1000 + 600,
@@ -63,6 +67,47 @@ async function prepare(page, { status = 'prepared', canConfirm = true, confirm, 
   await expect(page.getByRole('region', { name: '操作确认' })).toBeVisible()
   return { operation, calls, messages }
 }
+
+test('demo invoice shows processing then an authenticated download; missing files have no link', async ({
+  page,
+}, testInfo) => {
+  let issued = false,
+    available = true
+  await page.route('**/api/commerce/invoice-requests/*', (route) =>
+    route.fulfill({
+      json: {
+        invoice_id: 'demo-request',
+        status: issued ? 'issued' : 'processing',
+        is_demo: true,
+        issued_invoices: issued
+          ? [{ issued_invoice_id: 'demo-document', document_available: available, is_demo: true }]
+          : [],
+      },
+    }),
+  )
+  await page.clock.install()
+  await prepare(page, {
+    status: 'succeeded',
+    result: { invoice_id: 'demo-request', is_demo: true },
+    review: {
+      title: '提交开票申请',
+      order_id: 'DEMO-ORDER',
+      is_demo: true,
+      impact: '本地模拟演示，非正式开票',
+    },
+  })
+  await expect(page.getByText('申请处理中，文件尚未生成。')).toBeVisible()
+  issued = true
+  await page.clock.fastForward(5000)
+  const link = page.getByRole('link', { name: '下载演示票据' })
+  await expect(link).toHaveAttribute('href', /\/api\/commerce\/invoices\/demo-document\/document$/)
+  await expect(page.getByText('演示票据，非正式发票')).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('demo-invoice.png'), fullPage: true })
+  available = false
+  await page.reload()
+  await expect(page.getByText('票据文件当前不可下载，请联系人工客服核实。')).toBeVisible()
+  await expect(page.getByRole('link', { name: '下载演示票据' })).toHaveCount(0)
+})
 
 test('review binds fixed details; confirmation in flight allows new input and reload shows receipt', async ({
   page,
@@ -153,6 +198,9 @@ test('private invoice and address reviews show the exact requested destination',
       invoice_type: 'company',
       invoice_title: '示例公司',
       tax_number: 'TEST-TAX',
+      amount: '30.00',
+      currency: 'CNY',
+      amount_kind: 'invoice_total',
       address: {
         region: ['省', '市', '区'],
         detail: '新地址',
@@ -162,6 +210,7 @@ test('private invoice and address reviews show the exact requested destination',
     },
   })
   await expect(page.getByText('抬头：示例公司；类型：企业；税号：TEST-TAX')).toBeVisible()
+  await expect(page.getByText('开票金额：CNY 30.00')).toBeVisible()
   await expect(page.getByText(/目标收货地址：省 \/ 市 \/ 区 新地址/)).toBeVisible()
   await expect(page.getByText(/共.*件/)).toHaveCount(0)
 })

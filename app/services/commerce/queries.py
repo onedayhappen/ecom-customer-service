@@ -160,6 +160,7 @@ class QueryService(ItemQueryService, CollectionQueryService, ReadService, RuleSe
             auth=tx.one('SELECT after_sale_id FROM return_authorizations WHERE authorization_id=%s',(ship['authorization_id'],))
             sale,order=self.sale(tx,auth['after_sale_id'])
             ship=dict(ship,after_sale_id=sale['after_sale_id'],platform_code=order['platform_code'],order_id=order['order_id'])
+            if sale.get('is_demo'): ship.update(is_demo=True,source='simulated_provider')
         else:
             order=self.owned_order(tx,ref('order',ship['platform_code'],ship['order_id']))
         key='return_shipment_id' if reverse else 'shipment_id'

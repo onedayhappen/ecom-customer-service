@@ -10,7 +10,7 @@ services:
     volumes:
       - ./.docker-data/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ecom_agent"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d ecom_agent"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -35,13 +35,21 @@ services:
       MYSQL_USER: ecom
       MYSQL_PASSWORD: ecom_dev_password
       MYSQL_ROOT_PASSWORD: root_dev_password
-    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    command:
+      [
+        "--character-set-server=utf8mb4",
+        "--collation-server=utf8mb4_unicode_ci",
+      ]
     ports:
       - "3307:3306"
     volumes:
       - ./.docker-data/mysql:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -proot_dev_password"]
+      test:
+        [
+          "CMD-SHELL",
+          'MYSQL_PWD="$$MYSQL_PASSWORD" mysql --protocol=TCP -h 127.0.0.1 -u "$$MYSQL_USER" "$$MYSQL_DATABASE" -e ''SELECT 1'' >/dev/null',
+        ]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -90,7 +98,13 @@ services:
       order-init:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=3)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=3)",
+        ]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -210,7 +224,17 @@ services:
     environment:
       API_CONCURRENCY_REDIS_URL: redis://redis:6379/0
       RETRIEVAL_SERVICE_URL: ""
-    command: ["python", "-m", "uvicorn", "app.services.retrieval:app", "--host", "0.0.0.0", "--port", "8020"]
+    command:
+      [
+        "python",
+        "-m",
+        "uvicorn",
+        "app.services.retrieval:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8020",
+      ]
     volumes:
       - ./.docker-data/app:/app/data
       - ${MODEL_DIR:-./model}:/app/model:ro
@@ -218,7 +242,13 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8020/health', timeout=3)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8020/health', timeout=3)",
+        ]
       interval: 10s
       timeout: 5s
       retries: 12

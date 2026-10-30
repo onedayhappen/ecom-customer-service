@@ -149,6 +149,7 @@ export default function TaskHandover({ entries = [], ticketId, editable, onSaved
               <p>
                 {evidenceKinds[item.evidence_kind] || '历史业务查询'} · {item.tool} ·
                 {item.success ? '当时查询成功' : '查询未成功'} · {item.observed_at}
+                {item.is_demo && ' · 本地模拟演示（无真实交易）'}
               </p>
               <p>{item.note}</p>
               <p>查询范围：{JSON.stringify(item.query_scope || item.object || {})}</p>
@@ -179,6 +180,7 @@ export default function TaskHandover({ entries = [], ticketId, editable, onSaved
           {(value.operations || []).map((item) => (
             <p key={item.operation_id}>
               {item.tool} · {item.status}
+              {item.result?.is_demo && ' · 本地模拟演示（无真实交易）'}
               <br />
               {JSON.stringify(item.result)}
               <br />

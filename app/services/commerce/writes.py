@@ -31,8 +31,8 @@ class WriteService:
         if body['user_id']!=self.user or body['action']!=prepared['action']:
             raise BusinessError('invalid_arguments','确认内容绑定不匹配')
         return {**prepared['review'],**body.get('private_review',{})}
-    def receipt(self,tx,oid):
-        r=tx.one('SELECT * FROM business_operation_receipts WHERE operation_id=%s AND user_id=%s',(oid,self.user))
+    def receipt(self,tx,oid,*,lock=False):
+        r=tx.one('SELECT * FROM business_operation_receipts WHERE operation_id=%s AND user_id=%s'+(' FOR UPDATE' if lock else ''),(oid,self.user))
         return r
     def record_receipt(self,tx,oid,action,args,result):
         tx.execute('INSERT INTO business_operation_receipts(operation_id,user_id,action,arguments_digest,result,created_at) VALUES (%s,%s,%s,%s,%s,%s)',(oid,self.user,action,digest(args),dumps(result),utcnow()))
@@ -117,11 +117,13 @@ class WriteService:
             events=tx.all('SELECT * FROM after_sale_events WHERE after_sale_id=%s ORDER BY created_at,event_id',(sale['after_sale_id'],))
             if not events or any(e['source']!='local' or e['kind']!='submitted' for e in events): raise BusinessError('insufficient_data','缺少可核实的本地售后过程')
             refunds=tx.all('SELECT * FROM refund_transactions WHERE after_sale_id=%s',(sale['after_sale_id'],))
-            if any(r['status'] not in {'failed','cancelled'} for r in refunds): raise BusinessError('not_eligible','已有退款处理，不可撤回')
+            if any(r['status'] not in {'pending','failed','cancelled'} for r in refunds): raise BusinessError('not_eligible','已有退款处理，不可撤回')
             work=tx.one('SELECT work_order_id FROM service_work_orders WHERE after_sale_id=%s',(sale['after_sale_id'],))
             if work:
-                jobs=tx.all('SELECT status FROM commerce_provider_requests WHERE target_id=%s',(work['work_order_id'],))
-                if any(j['status']!='queued' for j in jobs): raise BusinessError('not_eligible','业务已提交处理方，不能本地撤回')
+                jobs=tx.all('SELECT status,attempts FROM commerce_provider_requests WHERE target_id=%s',(work['work_order_id'],))
+                if any(j['status']!='queued' or j['attempts'] for j in jobs): raise BusinessError('not_eligible','业务已提交处理方，不能本地撤回')
+            if any(r['status']=='pending' for r in refunds) and (not work or not jobs):
+                raise BusinessError('not_eligible','待处理退款缺少未发出任务证明，不能本地撤回')
             extra={'sale':sale,'events':events,'refunds':refunds,'work':work}; review.update(title='撤销售后申请',after_sale_id=sale['after_sale_id'],reason=args.get('reason'))
         elif action=='prepare_order_update':
             policy,changes,extra=self.order_update_plan(tx,order,args)
@@ -155,6 +157,8 @@ class WriteService:
                     if not args.get('reason'): raise BusinessError('invalid_arguments','已付款取消需要退款原因')
                     self.provider_required('order_cancel')
                     review.update(title='申请取消已付款订单',reason=args['reason'],cancellation_mode=facts['mode'],refund_amount=facts['amount'],shipping_deduction=facts['shipping_deduction'],currency=facts['currency'],impact='审核通过后全额原路退款' if facts['mode']=='paid_unshipped' else '拒收并退回商家验货后扣除订单运费原路退款；申请不等于已经取消')
+        if action in {'prepare_after_sale','prepare_invoice'}:
+            extra['processing']=self.processing_plan(tx,order,args['kind'] if action=='prepare_after_sale' else 'invoice',review)
         version=digest({'order':self.snapshot(tx,order),'policy':policy,'extra':extra,'args':args})
         return review,version
     def preview(self,action,args):
@@ -180,8 +184,13 @@ class WriteService:
         if action=='claim_coupon': return self.claim_coupon(args,oid,version=version)
         if action=='request_dispatch': return self.request_dispatch(args,oid,version=version,enqueue_only=True)
         with self.store.transaction(write=True) as tx:
-            order=self.target_order(tx,action,args,lock=True)
-            prior=self.receipt(tx,oid)
+            # Establish the repeatable-read snapshot only after acquiring the
+            # parent lock; item lookup before it can retain a pre-wait snapshot.
+            order=self.owned_order(tx,ref('order',arguments['platform_code'],arguments['order_id']),lock=True)
+            target=self.target_order(tx,action,args)
+            if (target['platform_code'],target['order_id'])!=(order['platform_code'],order['order_id']):
+                raise BusinessError('invalid_arguments','确认对象与密封申请内容不一致')
+            prior=self.receipt(tx,oid,lock=True)
             if prior:
                 if prior['action']!=action or prior['arguments_digest']!=digest(args): raise BusinessError('invalid_arguments','操作编号冲突')
                 return decoded(prior['result'])
@@ -195,12 +204,17 @@ class WriteService:
                     tx.execute('INSERT INTO after_sale_items(after_sale_id,order_item_id,quantity,requested_amount) VALUES (%s,%s,%s,%s)',(aid,item['order_item_id'],item['quantity'],item['amount']))
                 tx.execute("UPDATE after_sale_requests SET stage='awaiting_review' WHERE after_sale_id=%s",(aid,))
                 self.sale_event(tx,aid,oid,'submitted',{}); result['after_sale_id']=aid
+                details=self.processing_plan(tx,order,args['kind'],review)
+                result['work_order_id']=self.enqueue_standard_sale(tx,order,oid,aid,args,details)
             elif action=='prepare_invoice':
                 iid=uuid4().hex
                 title=self.cipher.seal(args['title'],'invoice-title:'+self.user)
                 tax=self.cipher.seal(args['tax_number'],'invoice-tax:'+self.user) if args.get('tax_number') else None
                 tx.execute('INSERT INTO invoice_requests(invoice_id,platform_code,order_id,user_id,invoice_type,title_ciphertext,tax_number_ciphertext,key_version,status,request_id,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',(iid,order['platform_code'],order['order_id'],self.user,args['invoice_type'],title,tax,self.cipher.version,'pending',oid,now))
                 result['invoice_id']=iid
+                details=self.processing_plan(tx,order,'invoice',review)
+                tx.execute('UPDATE invoice_requests SET is_demo=%s WHERE invoice_id=%s',(review['is_demo'],iid))
+                self.queue_provider(tx,oid,'invoice',iid,order,dict(details,invoice_id=iid,title=args['title'],invoice_type=args['invoice_type'],tax_number=args.get('tax_number')))
             elif action=='prepare_order_update':
                 self.save_order_update(tx,order,args,oid)
                 result['status']='updated'
@@ -234,10 +248,13 @@ class WriteService:
                     self.release_service_inventory(tx,work['work_order_id'])
                     tx.execute("UPDATE service_work_orders SET status='cancelled',updated_at=%s WHERE work_order_id=%s",(now,work['work_order_id']))
                     tx.execute("UPDATE commerce_provider_requests SET status='cancelled',updated_at=%s WHERE target_id=%s AND status='queued'",(now,work['work_order_id']))
+                    tx.execute("UPDATE refund_transactions SET status='cancelled' WHERE after_sale_id=%s AND status='pending'",(args['after_sale_id'],))
                 self.sale_event(tx,args['after_sale_id'],oid,'cancelled',{'reason':args.get('reason')});result.update(after_sale_id=args['after_sale_id'],status='cancelled')
             if action in {'prepare_after_sale','prepare_after_sale_cancel'}:
                 self.sync_order_after_sale(tx,order)
             tx.execute('INSERT INTO order_events(event_id,platform_code,order_id,operation_id,kind,payload,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s)',(uuid4().hex,order['platform_code'],order['order_id'],oid,action.removeprefix('prepare_'),dumps({'status':result['status']}),now))
+            if review.get('is_demo'):
+                result.update(is_demo=True,source='simulated_provider')
             result=decoded(dumps(result))
             self.record_receipt(tx,oid,action,args,result)
             return result

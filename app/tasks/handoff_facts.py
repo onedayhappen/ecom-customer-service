@@ -114,7 +114,7 @@ def metadata(result, omitted):
             if isinstance(source, dict):
                 sources.append({k: project(v, omitted, 'sources.' + k, free_map=True)
                                 for k, v in source.items() if k in {'kind', 'tables', 'source', 'version'}})
-    return dict(sources=sources, result_observed_at=project(result.get('observed_at'), omitted, 'observed_at'),
+    return dict(is_demo=result.get('is_demo') is True, sources=sources, result_observed_at=project(result.get('observed_at'), omitted, 'observed_at'),
                 data_as_of=project(result.get('data_as_of'), omitted, 'data_as_of'),
                 completeness=project(result.get('completeness', 'unknown'), omitted, 'completeness'),
                 limitations=project(result.get('limitations', []), omitted, 'limitations'),

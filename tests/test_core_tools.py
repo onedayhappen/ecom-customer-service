@@ -69,8 +69,20 @@ def commit(svc,name,args,oid=None):
     p=svc.preview(name,args)
     return svc.submit(name,p['arguments'],oid or uuid4().hex,p['business_version'])
 
+
+@pytest.fixture
+def standard_provider(svc,monkeypatch):
+    """Application-only tests configure a channel but never send HTTP requests."""
+    from app.config.settings import settings
+    monkeypatch.setattr(settings,'commerce_provider_mode','http')
+    monkeypatch.setattr(settings,'commerce_provider_config',json.dumps({k:{'url':'https://unused.invalid','token':'test'} for k in ('refund_only','return_refund','invoice')}))
+    with svc.store.transaction(write=True) as tx:
+        tx.execute('''INSERT INTO payment_transactions(payment_id,platform_code,order_id,user_id,provider,provider_txn_id,amount,currency,status,created_at)
+            VALUES ('payment-standard','shop','paid','alice','test','test-paid',30,'CNY','succeeded',%s)''',(utcnow(),))
+    return svc
+
 def test_catalog_and_strict_validation():
-    assert len(TOOLS)==54
+    assert len(TOOLS)==56
     token=set_current_user_id('alice')
     try:
         for t in TOOLS:
@@ -128,7 +140,7 @@ def test_coupon_used_and_expired_are_distinct(svc):
     assert len(wallet)==1 and wallet[0]['is_expired']
     assert read(svc,'list_my_coupons',status='expired')['data']['total']==0
 
-def test_assessment_has_no_write_and_partial_refund_reservation(svc):
+def test_assessment_has_no_write_and_partial_refund_reservation(svc,standard_provider):
     args={'kind':'refund_only','items':[{'order_item_id':'i-paid','quantity':1}]}
     assert read(svc,'assess_after_sale',**args)['data']['amount']==10
     with svc.store.transaction() as tx: assert tx.one('SELECT COUNT(*) AS n FROM after_sale_requests')['n']==0
@@ -146,7 +158,7 @@ def test_unknown_policy_is_not_eligible_and_does_not_prepare(svc):
     assert read(svc,'assess_after_sale',**args)['data']['eligibility']=='unknown'
     with pytest.raises(BusinessError): svc.preview('prepare_after_sale',dict(args,reason='退款'))
 
-def test_prepared_version_changes_and_duplicate_submission(svc):
+def test_prepared_version_changes_and_duplicate_submission(svc,standard_provider):
     args={'kind':'refund_only','items':[{'order_item_id':'i-paid','quantity':1}],'reason':'退款'}
     p=svc.preview('prepare_after_sale',args)
     with svc.store.transaction(write=True) as tx: tx.execute("UPDATE orders SET status='pending_receipt' WHERE order_id='paid'")
@@ -156,7 +168,7 @@ def test_prepared_version_changes_and_duplicate_submission(svc):
     a=svc.submit('prepare_after_sale',p['arguments'],'op',p['business_version'])
     assert a==svc.submit('prepare_after_sale',p['arguments'],'op',p['business_version'])
 
-def test_invoice_is_encrypted_application_only(svc):
+def test_invoice_is_encrypted_application_only(svc,standard_provider):
     assert read(svc,'assess_order_action',order_ref=ref('order','shop','paid'),action='invoice')['data']['eligibility']=='eligible'
     result=commit(svc,'prepare_invoice',{'order_ref':ref('order','shop','paid'),'invoice_type':'company','title':'测试公司','tax_number':'TEST-TAX'})
     assert read(svc,'list_invoice_requests')['data']['total']==1

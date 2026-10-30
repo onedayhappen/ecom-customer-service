@@ -373,8 +373,8 @@ class TaskOperations:
                         "prepare_invoice_reissue":"：发票更正申请已登记，原票作废及新票开具仍待核实。",
                         "apply_refund": "：退款申请已登记，审核结果和实际到账仍待确认。"}
             content = subject + messages.get(row["tool"], "：业务操作已处理，请查看回执。")
-            if prepared["review"].get("is_demo") and row["tool"] == "apply_refund":
-                content += "本次使用演示业务数据。"
+            if prepared["review"].get("is_demo") or result.get('is_demo'):
+                content += "本次为本地模拟演示，未发生真实资金流转、发货或正式开票。"
         elif status == "failed":
             content = subject + "：业务系统拒绝了这次操作，请重新核实办理条件。"
         else:

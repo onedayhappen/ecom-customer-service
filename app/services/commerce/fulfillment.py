@@ -59,7 +59,12 @@ class FulfillmentService:
             row=tx.one('SELECT * FROM commerce_provider_requests WHERE request_id=%s FOR UPDATE',(request_id,))
             if row['status'] in {'completed','rejected','cancelled'}: return
             if row['lease_until'] and at(row['lease_until'])>utcnow(): return
-            provider=self.provider_required(row['kind']); lease=uuid4().hex
+            try:
+                provider=self.provider_required(row['kind'],mode=row['provider_mode'])
+            except BusinessError as error:
+                tx.execute('UPDATE commerce_provider_requests SET error_code=%s,updated_at=%s WHERE request_id=%s',(error.code,utcnow(),request_id))
+                return
+            lease=uuid4().hex
             tx.execute('UPDATE commerce_provider_requests SET lease_token=%s,lease_until=%s,attempts=attempts+1,updated_at=%s WHERE request_id=%s',(lease,utcnow()+timedelta(seconds=30),utcnow(),request_id))
             payload=decoded(self.cipher.open(row['payload_ciphertext'],'provider:'+request_id,row['key_version']))
             if payload.get('after_sale_id'):
@@ -74,12 +79,16 @@ class FulfillmentService:
             if response['status']=='not_found' or not response['reference']: raise ValueError('missing provider receipt')
         except Exception:
             with self.store.transaction(write=True) as tx:
-                tx.execute("UPDATE commerce_provider_requests SET status='unknown',lease_until=NULL,updated_at=%s WHERE request_id=%s AND lease_token=%s",(utcnow(),request_id,lease))
+                tx.execute("UPDATE commerce_provider_requests SET status='unknown',error_code='result_unknown',lease_until=NULL,updated_at=%s WHERE request_id=%s AND lease_token=%s",(utcnow(),request_id,lease))
             return
         with self.store.transaction(write=True) as tx:
             order=self.owned_order(tx,ref('order',row['platform_code'],row['order_id']),lock=True)
             locked=tx.one('SELECT * FROM commerce_provider_requests WHERE request_id=%s FOR UPDATE',(request_id,))
             if locked['lease_token']!=lease or locked['status'] in {'completed','rejected','cancelled'}: return
+            previous=decoded(locked['result']) or {}
+            if previous.get('status')=='processing' and response['status']=='accepted':
+                tx.execute('UPDATE commerce_provider_requests SET lease_until=NULL WHERE request_id=%s',(request_id,))
+                return
             stored_response=deepcopy(response)
             if stored_response.get('return_authorization'):
                 # The warehouse contact/address is stored only in its encrypted
@@ -87,14 +96,24 @@ class FulfillmentService:
                 address=stored_response['return_authorization']['address']
                 stored_response['return_authorization']['address']={'digest':digest(address)}
             if decoded(locked['result'])!=stored_response:
-                applied_status=self.apply_provider_response(tx,locked,order,response)
+                tx.execute('SAVEPOINT provider_apply')
+                try:
+                    applied_status=self.apply_provider_response(tx,locked,order,response)
+                except BusinessError as error:
+                    if locked['kind'] not in {'refund_only','return_refund','invoice'}:
+                        raise
+                    tx.execute('ROLLBACK TO SAVEPOINT provider_apply')
+                    tx.execute("UPDATE commerce_provider_requests SET status='unknown',error_code=%s,lease_until=NULL,updated_at=%s WHERE request_id=%s",(error.code,utcnow(),request_id))
+                    return
                 if applied_status:
                     response['status']=stored_response['status']=applied_status
-            tx.execute('UPDATE commerce_provider_requests SET status=%s,provider_reference=%s,result=%s,lease_until=NULL,updated_at=%s WHERE request_id=%s',
+            tx.execute('UPDATE commerce_provider_requests SET status=%s,provider_reference=%s,result=%s,error_code=NULL,lease_until=NULL,updated_at=%s WHERE request_id=%s',
                 (response['status'],response['reference'],dumps(stored_response),utcnow(),request_id))
 
     def apply_provider_response(self,tx,job,order,response):
         now=utcnow(); kind=job['kind']; status=response['status']; target=job['target_id']
+        if kind in {'refund_only','return_refund','invoice'}:
+            return self.apply_standard_response(tx,job,order,response)
         if kind=='order_cancel': return self.apply_cancellation_response(tx,job,order,response)
         if kind=='dispatch': return
         if kind=='invoice_reissue':

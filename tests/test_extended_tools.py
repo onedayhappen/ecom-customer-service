@@ -7,7 +7,7 @@ import pytest
 from app.services.commerce.common import BusinessError, dumps, ref, utcnow
 from app.services.commerce.providers import provider_factory, invoice_file
 from app.services.commerce import CommerceService
-from tests.test_core_tools import database, svc, read, commit
+from tests.test_core_tools import database, svc, read, commit, standard_provider
 from tests.test_message_association import store
 from tests.test_task_storage import empty_store
 
@@ -380,7 +380,7 @@ def test_price_protection_requires_payment_and_prevents_duplicate_difference(ext
     assert read(svc,'assess_price_protection',order_item_id='i-paid')['data']['eligibility']=='unknown'
 
 
-def test_invoice_reissue_and_private_file(extended,tmp_path,monkeypatch):
+def test_invoice_reissue_and_private_file(extended,tmp_path,monkeypatch,standard_provider):
     from app.config.settings import settings
     svc=extended; now=utcnow(); content=b'%PDF-1.7 test receipt'; checksum=hashlib.sha256(content).hexdigest()
     (tmp_path/'receipt.pdf').write_bytes(content)
@@ -388,7 +388,7 @@ def test_invoice_reissue_and_private_file(extended,tmp_path,monkeypatch):
     original=commit(svc,'prepare_invoice',dict(order_ref=ref('order','shop','paid'),invoice_type='personal',title='张三'))
     with svc.store.transaction(write=True) as tx:
         tx.execute("UPDATE invoice_requests SET status='issued'")
-        tx.execute("INSERT INTO issued_invoices VALUES ('original',%s,'old-number','issued','receipt.pdf','application/pdf',%s,'erp',%s,%s)",(original['invoice_id'],checksum,now,now))
+        tx.execute("INSERT INTO issued_invoices(issued_invoice_id,invoice_id,invoice_number,status,document_key,mime_type,sha256,provider,issued_at,updated_at) VALUES ('original',%s,'old-number','issued','receipt.pdf','application/pdf',%s,'erp',%s,%s)",(original['invoice_id'],checksum,now,now))
     assert read(svc,'get_invoice_document',issued_invoice_id='original')['data']['download_url'].endswith('/original/document')
     bob=CommerceService(svc.store,'bob',scope=svc.scope)
     with pytest.raises(BusinessError): read(bob,'get_invoice_document',issued_invoice_id='original')

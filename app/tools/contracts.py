@@ -268,6 +268,15 @@ class OrderItem(Input):
 class PriceProtection(OrderItem):
     reason: Reason | None = None
 
+class AssessExchange(OrderItem):
+    quantity: Count
+    replacement_sku_id: Id | None = Field(None,description='用户希望更换的规格；未明确时返回缺项，不代选')
+    reason: Reason | None = None
+
+class AssessRepair(OrderItem):
+    quantity: Count
+    problem: str | None = Field(None,min_length=1,max_length=500,description='用户描述的故障，不作为检测结论')
+
 class Exchange(OrderItem):
     replacement_sku_id: Id
     quantity: Count

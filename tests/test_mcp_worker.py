@@ -24,7 +24,7 @@ from tests.test_task_candidates import store, task
 from tests.test_task_execution import Client, engine, local_budgets, request, response
 from tests.test_task_scheduling import drain
 from tests.test_task_storage import empty_store, message
-from tests.test_core_tools import database, svc
+from tests.test_core_tools import database, svc, standard_provider
 from tests.test_core_task_tools import business
 
 
@@ -213,7 +213,7 @@ def test_task_only_flow_stays_local_with_mcp_enabled(store, monkeypatch, mcp_set
     assert result['state'] == 'waiting_user'
 
 
-def test_confirmation_preparation_stays_local_with_mcp_enabled(store, business, monkeypatch, mcp_settings):
+def test_confirmation_preparation_stays_local_with_mcp_enabled(store, business, standard_provider, monkeypatch, mcp_settings):
     from app.tasks.operations import TaskOperations
     monkeypatch.setattr('app.mcp.MCPClient', lambda *a: pytest.fail('preparation must not open MCP'))
     current, source = task(store, 's', goal='申请退款', details={'order_id': 'paid', 'platform_code': 'shop'})

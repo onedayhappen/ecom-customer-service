@@ -82,6 +82,7 @@ test('staff handover update retries with the same id; resolving does not enable 
                   tool: 'find_orders',
                   evidence_kind: 'candidates',
                   success: true,
+                  is_demo: true,
                   observed_at: '2026-10-29T01:00:00Z',
                   result_observed_at: '2026-10-29T00:59:59Z',
                   session_id: sid,
@@ -100,7 +101,7 @@ test('staff handover update retries with the same id; resolving does not enable 
                   operation_id: 'op1',
                   tool: 'prepare_after_sale',
                   status: 'succeeded',
-                  result: { status: 'submitted', after_sale_id: 'SALE-A' },
+                  result: { status: 'submitted', after_sale_id: 'SALE-A', is_demo: true },
                   note: '申请提交不代表退款到账。',
                 },
               ],
@@ -143,6 +144,7 @@ test('staff handover update retries with the same id; resolving does not enable 
   await page.getByRole('button', { name: '领取工单' }).click()
   await expect(page.getByRole('region', { name: '事项交接记录' })).toContainText('ORD-A')
   await page.getByText('查询依据与操作回执', { exact: true }).click()
+  await expect(page.getByText('本地模拟演示（无真实交易）', { exact: false })).toHaveCount(2)
   await expect(page.getByText('候选记录（尚未选定）', { exact: false })).toBeVisible()
   await expect(page.getByText('本摘要仅覆盖部分结果，请核对分页、截断和缺失范围。')).toBeVisible()
   await expect(

@@ -145,7 +145,8 @@ class ExtendedService:
         from app.services.commerce.providers import invoice_file
         # A configured private storage root is validated before issuing the authenticated URL.
         invoice_file(invoice)
-        return ok({'issued_invoice_id':invoice['issued_invoice_id'],'invoice_number':invoice['invoice_number'],
+        return ok({'issued_invoice_id':invoice['issued_invoice_id'],'invoice_number':invoice['invoice_number'],'is_demo':bool(invoice.get('is_demo')),
+            'order_id':invoice['order_id'],'platform_code':invoice['platform_code'],
             'mime_type':invoice['mime_type'],'sha256':invoice['sha256'],
             'download_url':'/api/commerce/invoices/'+invoice['issued_invoice_id']+'/document'})
 
