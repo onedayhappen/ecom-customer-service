@@ -1,3 +1,4 @@
+# 文件说明：维护事项人工接管、版本化交接更新及显式恢复后的执行上下文。
 """Durable task handovers on top of the existing support ticket permissions."""
 import json
 from typing import get_args

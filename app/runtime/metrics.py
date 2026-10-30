@@ -1,3 +1,4 @@
+# 文件说明：暴露 API 和后台角色的基础设施指标，限制标签维度数量。
 """Bounded-label infrastructure metrics, available in API and background roles."""
 from prometheus_client import Counter, Histogram, Gauge, REGISTRY, start_http_server
 from prometheus_client.core import GaugeMetricFamily

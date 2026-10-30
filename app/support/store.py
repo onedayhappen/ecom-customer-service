@@ -1,3 +1,4 @@
+# 文件说明：持久保存会话、人工工单、事件和操作，提供事务及权限校验。
 """Transactional support store. PostgreSQL in deployment, SQLite for local tests.
 
 Every conversation mutation locks its control row. Messages and lifecycle events

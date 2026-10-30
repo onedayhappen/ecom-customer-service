@@ -1,3 +1,4 @@
+# 文件说明：读取会员和订阅事实，核验会员券资格、周期额度并维护展示投影。
 """Membership facts and derived users summary. All timestamps are UTC."""
 from datetime import datetime, timezone, timedelta
 import json

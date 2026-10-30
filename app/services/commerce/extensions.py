@@ -1,3 +1,4 @@
+# 文件说明：提供扩展业务读取、配送费用计算与固定结算报价。
 """Extended read models, delivery calculation and immutable checkout quotes."""
 import math
 from datetime import timedelta

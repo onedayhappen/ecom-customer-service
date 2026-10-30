@@ -1,3 +1,4 @@
+# 文件说明：保存请求级用户和远端工具范围，防止模型参数决定调用身份。
 """工具调用的请求级身份上下文，禁止由模型参数决定当前用户。"""
 
 from contextvars import ContextVar, Token

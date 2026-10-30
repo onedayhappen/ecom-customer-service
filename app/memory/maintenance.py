@@ -1,3 +1,4 @@
+# 文件说明：消费来源更正与删除产生的记忆失效任务，并清理旧派生记录。
 """Consume correction/deletion work without blocking message acceptance."""
 from dataclasses import replace
 import json

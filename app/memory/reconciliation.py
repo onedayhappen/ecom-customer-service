@@ -1,3 +1,4 @@
+# 文件说明：按来源时间与原子事实身份确定更新、冲突、撤回及版本关系。
 """Deterministic updates over atomic facts; the ledger keeps all versions.
 
 Event time orders knowledge. Optional valid intervals describe explicitly dated

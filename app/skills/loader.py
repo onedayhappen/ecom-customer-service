@@ -1,3 +1,4 @@
+# 文件说明：发现技能文件、匹配路由关键词并按需加载正文，供独立加载器使用。
 """Skill 加载器：扫描 SKILL.md 文件，提供发现（catalog）和激活（load）能力。
 
 遵循 Anthropic Agent Skills 开放标准（agentskills.io/specification）：

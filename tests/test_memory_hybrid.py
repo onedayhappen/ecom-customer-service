@@ -1,3 +1,4 @@
+# 文件说明：测试结构化与词法混合召回、缓存向量及来源约束的派生视图。
 """Hybrid recall, cached embeddings and evidence-backed derived views."""
 from copy import deepcopy
 from datetime import datetime, timezone

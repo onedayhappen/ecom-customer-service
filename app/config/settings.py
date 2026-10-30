@@ -1,3 +1,4 @@
+# 文件说明：集中定义环境变量、配置默认值及类型校验，供各进程读取。
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings
 

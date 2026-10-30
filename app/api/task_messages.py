@@ -1,3 +1,4 @@
+# 文件说明：校验并持久接收用户消息，返回幂等回执和异步处理进度。
 """Durable message admission; database rollout controls automatic processing."""
 import asyncio
 from typing import Literal

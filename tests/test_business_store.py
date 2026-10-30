@@ -1,3 +1,4 @@
+# 文件说明：测试业务数据库查询异常时的事务回滚、连接关闭与原始错误保留。
 """Failed database cleanup must preserve the original query error."""
 import pymysql
 import pytest

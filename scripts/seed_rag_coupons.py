@@ -1,3 +1,4 @@
+# 文件说明：初始化与政策说明对应的演示活动和优惠券，支持预览与幂等应用。
 """Seed RAG-aligned demo campaigns. Preview by default; --apply is repeatable.
 
 Existing wallets keep their frozen rules. Claims use the production transaction

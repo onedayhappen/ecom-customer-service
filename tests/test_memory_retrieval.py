@@ -1,3 +1,4 @@
+# 文件说明：测试按查询检索相关用户事实，避免无关偏好进入上下文。
 """长期记忆按 Query 检索回归测试，无需 LLM 或本地向量模型。"""
 
 from __future__ import annotations

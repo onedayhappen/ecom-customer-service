@@ -1,3 +1,4 @@
+# 文件说明：结合结构化槽位、中文词法匹配和缓存向量检索本人记忆。
 """User-filtered fact retrieval: structured slots, Chinese BM25 and cached vectors.
 
 Embeddings are generated only during writes. Reads encode the query once and

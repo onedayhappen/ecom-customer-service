@@ -1,3 +1,4 @@
+# 文件说明：跨真实 API 进程测试消息接收、回复发布与 SSE 重连补拉。
 """Real HTTP/SSE replay across API processes using isolated PostgreSQL and Redis."""
 import asyncio
 import json

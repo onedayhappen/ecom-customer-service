@@ -1,3 +1,4 @@
+# 文件说明：签发并校验 API 与 MCP 服务之间绑定用户及调用范围的可信令牌。
 """API 与 MCP Server 间的可信用户上下文 Token。"""
 
 from __future__ import annotations

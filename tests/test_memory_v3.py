@@ -1,3 +1,4 @@
+# 文件说明：测试 v3 记忆命令、公开来源、归档重启、更正及遗忘重放隔离。
 """New memory commands through authenticated events, jobs, archives and reloads."""
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone

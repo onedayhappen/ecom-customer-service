@@ -1,3 +1,4 @@
+# 文件说明：把持久确认记录转换为规范业务参数，衔接业务预检和提交。
 """Adapter from the durable confirmation ledger to normalized MySQL operations."""
 from app.services.commerce import service
 from app.services.commerce.common import BusinessError,decoded,failure

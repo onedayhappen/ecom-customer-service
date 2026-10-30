@@ -1,3 +1,4 @@
+# 文件说明：启动专用记忆后台循环，增量处理公开消息和归档任务。
 """Dedicated memory worker; does not wait for the general maintenance interval."""
 import argparse
 import logging

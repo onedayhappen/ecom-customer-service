@@ -1,3 +1,4 @@
+# 文件说明：通过真实 MCP HTTP 测试默认 Worker 分流、身份范围和超时关闭。
 """Default Worker dispatch over real Streamable HTTP and scoped identities."""
 import asyncio
 from contextlib import asynccontextmanager

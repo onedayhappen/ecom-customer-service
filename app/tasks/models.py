@@ -1,3 +1,4 @@
+# 文件说明：定义事项内容、消息来源、工具来源与持久状态的严格模型。
 """Validated storage contracts. Identity is supplied by the authenticated caller."""
 from typing import Annotated, Literal
 

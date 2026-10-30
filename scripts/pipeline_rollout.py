@@ -1,3 +1,4 @@
+# 文件说明：通过命令行查询、暂停、放量或导入数据库控制的事项流程。
 """Inspect, stop, selectively enable, or import the single task pipeline."""
 import argparse
 import hashlib

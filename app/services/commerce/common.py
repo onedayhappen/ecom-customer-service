@@ -1,3 +1,4 @@
+# 文件说明：定义业务错误、结果契约、金额时间转换及加密序列化工具。
 """Business errors, result contracts, serialization and encryption primitives."""
 
 import base64

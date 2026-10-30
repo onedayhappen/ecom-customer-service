@@ -1,3 +1,4 @@
+# 文件说明：按有效业务规则核验资格，计算优惠、金额分摊及售后可用额度。
 """Deterministic policy evaluation. Unknown rules never imply eligibility."""
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP

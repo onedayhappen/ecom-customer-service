@@ -1,3 +1,4 @@
+# 文件说明：提供跨平台进程文件锁，协调 JSON 记忆状态的并发访问。
 """跨平台进程文件锁，供 JSON 状态的多 worker 访问使用。"""
 
 from __future__ import annotations

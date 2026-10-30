@@ -1,3 +1,4 @@
+# 文件说明：按需创建进程内复用的模型客户端，供后台与维护路径使用。
 """Lazy process-local model client shared by worker and maintenance code."""
 import threading
 from typing import Any

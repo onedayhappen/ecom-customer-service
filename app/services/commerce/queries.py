@@ -1,3 +1,4 @@
+# 文件说明：组合业务读取与规则服务，为工具返回有来源的领域事实。
 """Resource queries for the tool contract; projections contain recorded facts only."""
 from decimal import Decimal
 import json

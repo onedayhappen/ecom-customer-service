@@ -1,3 +1,4 @@
+# 文件说明：绑定请求级机器人身份与支持库，保护机器人和人工控制范围。
 """Request-scoped bot ownership, also propagated through asyncio.to_thread."""
 from contextlib import contextmanager
 from contextvars import ContextVar

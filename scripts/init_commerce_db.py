@@ -1,3 +1,4 @@
+# 文件说明：保留旧演示记录供兼容测试使用，并拒绝退役的业务初始化路径。
 """Retired legacy commerce demo seeder; demo_records remains for old tests only."""
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal

@@ -1,3 +1,4 @@
+# 文件说明：测试请求轨迹、JSONL 输出、客户端插桩与确认令牌摘要保护。
 """业务链日志监控（第11期）测试：BusinessTracer 写 JSONL / client 插桩 / 幂等 / Token 摘要。"""
 
 from __future__ import annotations

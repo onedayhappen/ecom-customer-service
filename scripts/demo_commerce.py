@@ -1,3 +1,4 @@
+# 文件说明：初始化隔离演示业务对象，并按显式参数演练确认提交和渠道推进。
 """Seed isolated demo objects and exercise real confirmed submissions and the worker.
 
 Uses ORDER_DB_DSN after normal migrations. It never relabels existing orders.

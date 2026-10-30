@@ -1,3 +1,4 @@
+# 文件说明：计算政策检索的召回、排序指标及题集汇总结果。
 """Policy retrieval metrics and aggregation.
 
 Relevance unit: (source_id, version, section). Duplicate hits consume rank slots

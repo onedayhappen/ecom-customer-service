@@ -1,3 +1,4 @@
+# 文件说明：在隔离 MySQL 中测试账号、密码凭据和可撤销登录会话。
 """Opt-in MySQL integration test: AUTH_TEST_MYSQL_DSN points to an isolated database."""
 
 from __future__ import annotations

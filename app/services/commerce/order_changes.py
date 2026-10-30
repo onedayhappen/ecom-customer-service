@@ -1,3 +1,4 @@
+# 文件说明：核验并办理订单修改与取消，处理确认、退款和履约状态。
 """Order edits and reviewed cancellation, bound to confirmed order evidence."""
 from decimal import Decimal
 from uuid import uuid4

@@ -1,3 +1,4 @@
+# 文件说明：校验模型关联提案，并原子保存事项归属、来源和消息处理位置。
 """Validate and atomically apply the Agent's message-to-task proposals."""
 from dataclasses import dataclass
 import json

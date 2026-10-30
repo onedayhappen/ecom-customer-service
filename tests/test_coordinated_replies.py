@@ -1,3 +1,4 @@
+# 文件说明：测试多事项结果合并、快速回复、输入屏障与原子发布。
 """Publication boundaries on SQLite and isolated PostgreSQL, without a live LLM."""
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from multiprocessing import get_context

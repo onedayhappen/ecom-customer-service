@@ -1,3 +1,4 @@
+# 文件说明：封装远程或本地向量模型，统一文本嵌入与模型标识。
 """向量化封装：支持 OpenAI API 与本地 Sentence Transformers 模型。"""
 
 from pathlib import Path

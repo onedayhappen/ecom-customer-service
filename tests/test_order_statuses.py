@@ -1,3 +1,4 @@
+# 文件说明：测试订单、售后和数据库状态约束之间的有效流转。
 """Order-state transitions against the existing disposable MySQL fixture."""
 import pytest
 import pymysql

@@ -1,3 +1,4 @@
+# 文件说明：使用合成客服对话和真实模型，评测结构化事项关联流程。
 """Opt-in live association smoke evaluation using synthetic retail conversations.
 
 Run: python -m scripts.eval_association --live

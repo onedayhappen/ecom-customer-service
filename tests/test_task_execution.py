@@ -1,3 +1,4 @@
+# 文件说明：测试单事项执行的工具白名单、预算、上下文与受控停止。
 from concurrent.futures import ThreadPoolExecutor
 import json
 import threading

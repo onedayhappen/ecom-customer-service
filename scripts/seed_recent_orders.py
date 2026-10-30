@@ -1,3 +1,4 @@
+# 文件说明：按当前时间生成本地演示订单及关联数据，不发起外部采购。
 """Create recent local demo orders against the real clock; no external purchases.
 
 Default prints a plan. --apply updates 12 sample timelines and inserts seven

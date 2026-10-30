@@ -1,3 +1,4 @@
+# 文件说明：测试偏好过期、再次确认续期及过期内容从上下文中排除。
 """长期记忆偏好 TTL 的无网络单元测试。"""
 
 from datetime import datetime, timedelta

@@ -1,3 +1,4 @@
+# 文件说明：以受限 HTTP 请求调用独立检索服务，校验返回结构与大小。
 """Bounded HTTP client for independently deployed retrieval replicas."""
 from functools import lru_cache
 import time

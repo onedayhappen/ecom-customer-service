@@ -1,3 +1,4 @@
+# 文件说明：测试 ReAct 工具调用、计划白名单、写入阻断及执行证据校验。
 """ReAct tool boundaries, business-write blocking and evidence checks."""
 
 from __future__ import annotations

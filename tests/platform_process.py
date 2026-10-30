@@ -1,3 +1,4 @@
+# 文件说明：为显式启用的隔离集成测试提供 API、Worker 等子进程入口。
 """Processes used ONLY by explicit isolated integration tests.
 
 API/queue/transactions/SSE/HTTP are real. Business and model data are synthetic.

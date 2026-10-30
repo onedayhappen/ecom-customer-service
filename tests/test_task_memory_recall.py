@@ -1,3 +1,4 @@
+# 文件说明：测试按需 v3 记忆工具、执行依赖与基于有效来源的回复发布。
 """Real v3 recall through the task tool, execution fences and reply publication."""
 import asyncio
 import json

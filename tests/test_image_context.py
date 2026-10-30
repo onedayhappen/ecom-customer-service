@@ -1,3 +1,4 @@
+# 文件说明：测试图片字节校验、消息绑定、识别排队及上下文来源保护。
 import io
 import json
 from types import SimpleNamespace

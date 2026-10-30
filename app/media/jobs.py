@@ -1,3 +1,4 @@
+# 文件说明：管理持久图片识别队列、租约领取和事务外识别后的受控提交。
 """Separate durable image queue: calls outside transactions, leased fenced commits."""
 import json
 import logging

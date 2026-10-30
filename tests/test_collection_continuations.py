@@ -1,3 +1,4 @@
+# 文件说明：测试公开摘要到完整明细的工具续查、边界和空集合。
 """Public summary-to-detail paths against a disposable real MySQL database."""
 import asyncio
 import json

@@ -1,3 +1,4 @@
+# 文件说明：使用临时技能文件测试发现、目录生成、按需加载和禁用行为。
 """Exercise the optional loader using temporary skills, not retired business SOPs."""
 import pytest
 

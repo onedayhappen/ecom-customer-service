@@ -1,3 +1,4 @@
+# 文件说明：将固定版本 mall 示例商品转换并导入多商家模拟目录。
 """Import a pinned mall example catalog into simulated competing shops.
 
 Dry run by default. --apply inserts once, never overwrites existing seed rows.

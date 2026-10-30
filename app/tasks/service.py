@@ -1,3 +1,4 @@
+# 文件说明：提供历史事项的审计与兼容读取，供迁移和历史视图使用。
 """Historical task views for audit and migration; new work uses TaskRepository."""
 import json
 

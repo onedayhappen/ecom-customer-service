@@ -1,3 +1,4 @@
+# 文件说明：保存并复核偏好召回的版本与来源依赖，供执行、确认和发布使用。
 """Durable preference dependencies; validation performs no retrieval or model I/O."""
 import json
 

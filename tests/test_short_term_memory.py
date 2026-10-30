@@ -1,3 +1,4 @@
+# 文件说明：测试会话摘要、原话证据、范围、处理位置和失败恢复不变量。
 """Evidence, scope, cursor and failure invariants for support short-term memory."""
 from tests.intake_fixtures import receive_message
 from tests.legacy_fixtures import create_legacy_task

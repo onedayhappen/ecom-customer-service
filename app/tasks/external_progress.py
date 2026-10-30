@@ -1,3 +1,4 @@
+# 文件说明：持久跟踪外部业务进度，有限轮询并依据新证据更新事项。
 """Finite, durable business polling on the maintenance process, without an LLM."""
 import json
 import re

@@ -1,3 +1,4 @@
+# 文件说明：测试退役工具不能通过本地注册、MCP 或模型调用重新获得执行能力。
 """The new catalog never restores retired tools through local or remote entry points."""
 import asyncio
 import json

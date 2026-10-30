@@ -1,3 +1,4 @@
+# 文件说明：启动通知发布循环，将持久会话通知投递为跨进程唤醒。
 """Publish durable conversation notifications; never deliver old chat jobs."""
 import logging
 import signal

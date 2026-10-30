@@ -1,3 +1,4 @@
+# 文件说明：将业务结果投影为小型客户事实，保留对象、金额及状态语义。
 """Small typed customer answers, never a recursive dump of a tool payload.
 
 Only explicit business fields enter prose. Raw receipts and identifiers remain

@@ -1,3 +1,4 @@
+# 文件说明：为本地和 HTTP 检索路径提供统一入口及政策证据重验。
 """Internal knowledge retrieval service shared by HTTP retrieval and evidence checks."""
 from pathlib import Path
 from typing import Optional

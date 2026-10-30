@@ -1,3 +1,4 @@
+# 文件说明：保存执行租约、回执和工具事件，维护对象依赖与执行有效性。
 """Execution receipts in the existing Outbox; Tool evidence lives in the task event log."""
 import json
 from uuid import uuid4
@@ -259,7 +260,8 @@ class TaskRuns:
                     # A new execution must explicitly recall preferences again;
                     # neither their text nor a memory-dependent query is a
                     # reusable business snapshot in a later model context.
-                    and e.get('tool') not in {'search_knowledge','search_policies','recall_user_memory'}
+                    and e.get('tool') not in {'search_knowledge','search_policies','recall_user_memory',
+                                              'read_task_context','save_task_progress'}
                     and not e.get('provenance', {}).get('memory')
                     and e["observed_epoch"] >= cutoff and e["result"].get("success")
                     and self.control_versions_valid(tx, e.get("controls"))

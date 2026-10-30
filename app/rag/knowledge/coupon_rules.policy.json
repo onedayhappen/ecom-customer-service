@@ -1,0 +1,16 @@
+{
+  "source_id": "project_service_coupon_rules",
+  "source_uri": "repo:app/rag/knowledge/coupon_rules.md",
+  "version": "2026-10-30.1",
+  "rule_key": "project_service_coupon_rules",
+  "platform_code": "*",
+  "store_id": "*",
+  "channel": "*",
+  "category": "*",
+  "audience": "public",
+  "selection_basis": "request_at",
+  "selection_reference": "本项目当前服务能力按咨询时适用，不替代历史订单权益或业务资格规则。源码核对记录见 docs/knowledge_review.json。",
+  "effective_from": "2026-10-30T00:00:00+08:00",
+  "effective_until": null,
+  "reviewed": true
+}

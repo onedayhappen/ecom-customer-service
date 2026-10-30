@@ -1,3 +1,4 @@
+# 文件说明：读取当前客户拥有的订单、支付、物流及关联业务记录。
 """Customer-owned reads over the normalized business schema."""
 from datetime import timedelta
 from decimal import Decimal

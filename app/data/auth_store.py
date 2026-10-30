@@ -1,3 +1,4 @@
+# 文件说明：使用 MySQL 保存账号凭据、登录失败记录及可撤销认证会话。
 """MySQL-backed local identities and revocable login sessions."""
 
 from __future__ import annotations

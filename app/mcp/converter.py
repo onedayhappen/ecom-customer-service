@@ -1,3 +1,4 @@
+# 文件说明：将 MCP 工具元数据转换为模型函数调用使用的工具定义。
 """MCP 工具 schema → OpenAI function calling 格式转换。"""
 
 

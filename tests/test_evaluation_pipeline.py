@@ -1,3 +1,4 @@
+# 文件说明：测试 RAG 评测指标、政策版本标注、采集回放与实时调用约束。
 """Evaluation correctness, current-policy integration and explicit live-call guards."""
 import json
 from math import log2

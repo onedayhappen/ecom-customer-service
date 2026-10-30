@@ -1,3 +1,4 @@
+# 文件说明：测试业务游标格式、查询范围绑定及数据变化后的翻页行为。
 """Cursor compatibility, isolation and bounded-query regression checks."""
 
 import base64

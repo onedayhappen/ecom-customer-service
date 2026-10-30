@@ -1,3 +1,4 @@
+# 文件说明：只读构建已确定事项的跨会话原话、操作历史和工作上下文。
 """Read-only cross-session context for an already identified task."""
 import json
 
@@ -5,7 +6,7 @@ from app.memory.source_policy import safe_context
 from app.tasks.provenance import context_event_valid
 
 
-def task_history(runs, record):
+def task_history(runs, record, *, recent_sources=()):
     with runs.store.transaction(read_only=True) as tx:
         runs._scope(tx, record.task_id)
         rows = tx.all("""SELECT e.session_id,e.sequence,e.payload FROM support_task_messages m
@@ -24,6 +25,9 @@ def task_history(runs, record):
             (runs.user, record.task_id))
         from app.tasks.handoffs import handoff_context
         human = handoff_context(tx, runs.user, record.task_id)
+        handoffs = tx.all('''SELECT t.ticket_id,t.status,t.assignee,t.created_at,t.resolved_at
+            FROM task_handoffs h JOIN support_tickets t ON t.ticket_id=h.ticket_id
+            WHERE h.user_id=? AND h.task_id=? ORDER BY t.created_at DESC LIMIT 20''', (runs.user, record.task_id))
         from app.media.context import task_images
         visual = task_images(tx, runs.user, record.task_id)
         summaries = []
@@ -61,7 +65,12 @@ def task_history(runs, record):
             receipt={key: receipt[key] for key in (
                 'success', 'order_id', 'status', 'request_id', 'refund_id', 'invoice_id')
                 if key in receipt and isinstance(receipt[key], (str, bool, int, float))}))
-    return safe_context(dict(sources=sources, historical_sources=summaries, operations=progress, human_handoff=human,
+    covered = {(s['session_id'], s['sequence']) for s in recent_sources}
+    source_refs = [dict(session_id=s['session_id'], sequence=s['sequence']) for s in sources
+                   if (s['session_id'], s['sequence']) in covered]
+    sources = [s for s in sources if (s['session_id'], s['sequence']) not in covered]
+    summaries = [s for s in summaries if (s['session_id'], s['sequence']) not in covered]
+    return safe_context(dict(sources=sources, source_refs=source_refs, historical_sources=summaries, operations=progress, human_handoff=human, handoffs=handoffs,
         visual_context=visual,
         note='事项记录是沟通进度；操作回执只表示当时办理结果。查询最新订单和退款状态后再答复。'
              'prepared 不代表已授权；新会话不恢复确认，不重放已提交操作。'))
@@ -128,12 +137,17 @@ class TaskMemory:
                         return False
                 for source in self.sources:
                     sid, sequence = source['session_id'], source['sequence']
-                    row = tx.one("""SELECT e.payload FROM support_events e JOIN support_conversations c
+                    row = tx.one("""SELECT e.payload,e.actor FROM support_events e JOIN support_conversations c
                         ON c.session_id=e.session_id WHERE e.session_id=? AND e.sequence=? AND c.user_id=?
-                        AND e.visibility='public' AND e.kind='message' AND e.actor=?""",
-                        (sid, sequence, self.user, self.user))
+                        AND e.visibility='public' AND e.kind='message'""",
+                        (sid, sequence, self.user))
+                    from app.memory.source_policy import message_content
+                    payload = json.loads(row['payload']) if row else {}
+                    role = 'assistant' if payload.get('role') == 'agent' else payload.get('role')
                     if (not row or not context_event_valid(tx, sid, sequence)
-                            or safe_context(json.loads(row['payload']).get('content')) != source['text']):
+                            or role != source.get('role', 'user')
+                            or (role == 'user' and row['actor'] != self.user)
+                            or safe_context(message_content(payload)) != source['text']):
                         return False
             if not self.shown or self.snapshots:
                 return True

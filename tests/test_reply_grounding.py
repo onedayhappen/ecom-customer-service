@@ -1,3 +1,4 @@
+# 文件说明：测试最终发布时的对象、金额及业务状态核验和局部保守修正。
 """Final-publication grounding, including captured customer conversations."""
 from copy import deepcopy
 import json

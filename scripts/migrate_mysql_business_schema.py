@@ -1,3 +1,4 @@
+# 文件说明：按登记版本升级 MySQL 业务结构，并检查迁移状态和旧表清理。
 """Apply versioned MySQL business schema and remove retired legacy structures."""
 
 from __future__ import annotations

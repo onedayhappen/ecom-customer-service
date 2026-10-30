@@ -1,3 +1,4 @@
+# 文件说明：提供业务对象归属、可信范围、快照和通用读取能力。
 """Shared ownership, scope and business snapshot operations."""
 
 import base64

@@ -1,3 +1,4 @@
+# 文件说明：将留出业务回执送入真实发布流程，导出可检查的客户答复。
 """Replay held-out receipts through publication and export inspectable answers.
 
 Run: .venv/Scripts/python.exe scripts/eval_customer_reply_format.py

@@ -1,0 +1,288 @@
+Isolated deployment acceptance: ecom-accept-c803f62d8c
+ Image ecom-accept-1ead32452e-backend:local Building 
+ Image ecom-accept-c803f62d8c-frontend:local Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.36kB 0.0s done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 449B 0.0s done
+#2 DONE 0.1s
+
+#3 [internal] load metadata for public.ecr.aws/docker/library/nginx:1.27-alpine
+#3 DONE 0.1s
+
+#4 [internal] load metadata for public.ecr.aws/docker/library/node:20-alpine
+#4 DONE 0.1s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 107B done
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 DONE 0.0s
+
+#7 [build 1/6] FROM public.ecr.aws/docker/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+#7 resolve public.ecr.aws/docker/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 0.1s done
+#7 DONE 0.1s
+
+#8 [stage-1 1/3] FROM public.ecr.aws/docker/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+#8 resolve public.ecr.aws/docker/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10 0.1s done
+#8 DONE 0.1s
+
+#6 [internal] load build context
+#6 transferring context: 2.78kB 0.0s done
+#6 DONE 0.0s
+
+#9 [build 3/6] COPY package*.json ./
+#9 CACHED
+
+#10 [stage-1 2/3] COPY nginx.conf /etc/nginx/conf.d/default.conf
+#10 CACHED
+
+#11 [build 2/6] WORKDIR /frontend
+#11 CACHED
+
+#12 [build 4/6] RUN npm ci
+#12 CACHED
+
+#13 [build 5/6] COPY . ./
+#13 CACHED
+
+#14 [build 6/6] RUN npm run build
+#14 CACHED
+
+#15 [stage-1 3/3] COPY --from=build /frontend/dist /usr/share/nginx/html
+#15 CACHED
+
+#16 exporting to image
+#16 exporting layers done
+#16 exporting manifest sha256:a51dbe5aee4e1c524aa840b426d6e7a60b75045265b5ccbf3bfa893f62938067 0.0s done
+#16 exporting config sha256:b5a53e3358a42f419065c946d513529bc97604c2422e6628a5dd87f0cd3e9035
+#16 exporting config sha256:b5a53e3358a42f419065c946d513529bc97604c2422e6628a5dd87f0cd3e9035 0.0s done
+#16 exporting attestation manifest sha256:05ec16f4b3fc6ccdd334d1f2b21165c8c0ee2558c3c2a59faaa343530b9660ec 0.1s done
+#16 exporting manifest list sha256:b0bed297bea404d341d5ceec294280219e08d159220bafbf6b03a9e6f5e56348
+#16 exporting manifest list sha256:b0bed297bea404d341d5ceec294280219e08d159220bafbf6b03a9e6f5e56348 0.0s done
+#16 naming to docker.io/library/ecom-accept-c803f62d8c-frontend:local done
+#16 unpacking to docker.io/library/ecom-accept-c803f62d8c-frontend:local 0.0s done
+#16 DONE 0.3s
+
+#17 resolving provenance for metadata file
+#17 DONE 0.0s
+ Image ecom-accept-c803f62d8c-frontend:local Built 
+ Network ecom-accept-c803f62d8c_default Creating 
+ Network ecom-accept-c803f62d8c_default Created 
+ Volume ecom-accept-c803f62d8c_mysql Creating 
+ Volume ecom-accept-c803f62d8c_mysql Created 
+ Volume ecom-accept-c803f62d8c_app Creating 
+ Volume ecom-accept-c803f62d8c_app Created 
+ Container ecom-accept-c803f62d8c-order-init-run-18b7d9273334 Creating 
+ Container ecom-accept-c803f62d8c-order-init-run-18b7d9273334 Created 
+No broken requirements found.
+ Volume ecom-accept-c803f62d8c_postgres Creating 
+ Volume ecom-accept-c803f62d8c_postgres Created 
+ Volume ecom-accept-c803f62d8c_redis Creating 
+ Volume ecom-accept-c803f62d8c_redis Created 
+ Container ecom-accept-c803f62d8c-redis-1 Creating 
+ Container ecom-accept-c803f62d8c-mysql-1 Creating 
+ Container ecom-accept-c803f62d8c-postgres-1 Creating 
+ Container ecom-accept-c803f62d8c-mysql-1 Created 
+ Container ecom-accept-c803f62d8c-postgres-1 Created 
+ Container ecom-accept-c803f62d8c-redis-1 Created 
+ Container ecom-accept-c803f62d8c-mysql-1 Starting 
+ Container ecom-accept-c803f62d8c-postgres-1 Starting 
+ Container ecom-accept-c803f62d8c-redis-1 Starting 
+ Container ecom-accept-c803f62d8c-redis-1 Started 
+ Container ecom-accept-c803f62d8c-mysql-1 Started 
+ Container ecom-accept-c803f62d8c-postgres-1 Started 
+ Container ecom-accept-c803f62d8c-postgres-1 Waiting 
+ Container ecom-accept-c803f62d8c-redis-1 Waiting 
+ Container ecom-accept-c803f62d8c-mysql-1 Waiting 
+ Container ecom-accept-c803f62d8c-redis-1 Healthy 
+ Container ecom-accept-c803f62d8c-postgres-1 Healthy 
+ Container ecom-accept-c803f62d8c-mysql-1 Healthy 
+ Container ecom-accept-c803f62d8c-order-init-run-490ec4ed5df5 Creating 
+ Container ecom-accept-c803f62d8c-order-init-run-490ec4ed5df5 Created 
+MySQL business schema: pending
+
+ Container ecom-accept-c803f62d8c-order-init-run-ec4fa9e8afc4 Creating 
+ Container ecom-accept-c803f62d8c-order-init-run-ec4fa9e8afc4 Created 
+MySQL business schema: applied
+ Container ecom-accept-c803f62d8c-order-init-run-4568988fa05a Creating 
+ Container ecom-accept-c803f62d8c-order-init-run-4568988fa05a Created 
+MySQL business schema: applied
+ Container ecom-accept-c803f62d8c-order-init-run-ff7efb97a7fd Creating 
+ Container ecom-accept-c803f62d8c-order-init-run-ff7efb97a7fd Created 
+MySQL business schema: applied
+ Volume ecom-accept-c803f62d8c_logs Creating 
+ Volume ecom-accept-c803f62d8c_logs Created 
+ Container ecom-accept-c803f62d8c-redis-1 Running 
+ Container ecom-accept-c803f62d8c-postgres-1 Running 
+ Container ecom-accept-c803f62d8c-mysql-1 Running 
+ Container ecom-accept-c803f62d8c-order-init-1 Creating 
+ Container ecom-accept-c803f62d8c-order-init-1 Created 
+ Container ecom-accept-c803f62d8c-backend-1 Creating 
+ Container ecom-accept-c803f62d8c-backend-1 Created 
+ Container ecom-accept-c803f62d8c-mysql-1 Waiting 
+ Container ecom-accept-c803f62d8c-mysql-1 Healthy 
+ Container ecom-accept-c803f62d8c-order-init-1 Starting 
+ Container ecom-accept-c803f62d8c-order-init-1 Started 
+ Container ecom-accept-c803f62d8c-postgres-1 Waiting 
+ Container ecom-accept-c803f62d8c-redis-1 Waiting 
+ Container ecom-accept-c803f62d8c-mysql-1 Waiting 
+ Container ecom-accept-c803f62d8c-order-init-1 Waiting 
+ Container ecom-accept-c803f62d8c-redis-1 Healthy 
+ Container ecom-accept-c803f62d8c-mysql-1 Healthy 
+ Container ecom-accept-c803f62d8c-order-init-1 Error service "order-init" didn't complete successfully: exit 17
+ Container ecom-accept-c803f62d8c-postgres-1 Error dependency postgres failed to start
+service "order-init" didn't complete successfully: exit 17
+ Container ecom-accept-c803f62d8c-redis-1 Running 
+ Container ecom-accept-c803f62d8c-postgres-1 Running 
+ Container ecom-accept-c803f62d8c-mysql-1 Running 
+ Container ecom-accept-c803f62d8c-order-init-1 Recreate 
+ Container ecom-accept-c803f62d8c-order-init-1 Recreated 
+ Container ecom-accept-c803f62d8c-commerce-worker-1 Creating 
+ Container ecom-accept-c803f62d8c-gateway-1 Creating 
+ Container ecom-accept-c803f62d8c-maintenance-1 Creating 
+ Container ecom-accept-c803f62d8c-worker-1 Creating 
+ Container ecom-accept-c803f62d8c-memory-worker-1 Creating 
+ Container ecom-accept-c803f62d8c-dispatcher-1 Creating 
+ Container ecom-accept-c803f62d8c-commerce-worker-1 Created 
+ Container ecom-accept-c803f62d8c-memory-worker-1 Created 
+ Container ecom-accept-c803f62d8c-dispatcher-1 Created 
+ Container ecom-accept-c803f62d8c-worker-1 Created 
+ Container ecom-accept-c803f62d8c-maintenance-1 Created 
+ Container ecom-accept-c803f62d8c-gateway-1 Created 
+ Container ecom-accept-c803f62d8c-frontend-1 Creating 
+ Container ecom-accept-c803f62d8c-frontend-1 Created 
+ Container ecom-accept-c803f62d8c-mysql-1 Waiting 
+ Container ecom-accept-c803f62d8c-mysql-1 Healthy 
+ Container ecom-accept-c803f62d8c-order-init-1 Starting 
+ Container ecom-accept-c803f62d8c-order-init-1 Started 
+ Container ecom-accept-c803f62d8c-order-init-1 Waiting 
+ Container ecom-accept-c803f62d8c-postgres-1 Waiting 
+ Container ecom-accept-c803f62d8c-redis-1 Waiting 
+ Container ecom-accept-c803f62d8c-mysql-1 Waiting 
+ Container ecom-accept-c803f62d8c-postgres-1 Healthy 
+ Container ecom-accept-c803f62d8c-redis-1 Healthy 
+ Container ecom-accept-c803f62d8c-mysql-1 Healthy 
+ Container ecom-accept-c803f62d8c-order-init-1 Exited 
+ Container ecom-accept-c803f62d8c-backend-1 Starting 
+ Container ecom-accept-c803f62d8c-backend-1 Started 
+ Container ecom-accept-c803f62d8c-backend-1 Waiting 
+ Container ecom-accept-c803f62d8c-backend-1 Waiting 
+ Container ecom-accept-c803f62d8c-backend-1 Waiting 
+ Container ecom-accept-c803f62d8c-backend-1 Waiting 
+ Container ecom-accept-c803f62d8c-backend-1 Waiting 
+ Container ecom-accept-c803f62d8c-backend-1 Waiting 
+ Container ecom-accept-c803f62d8c-backend-1 Healthy 
+ Container ecom-accept-c803f62d8c-memory-worker-1 Starting 
+ Container ecom-accept-c803f62d8c-backend-1 Healthy 
+ Container ecom-accept-c803f62d8c-backend-1 Healthy 
+ Container ecom-accept-c803f62d8c-worker-1 Starting 
+ Container ecom-accept-c803f62d8c-commerce-worker-1 Starting 
+ Container ecom-accept-c803f62d8c-backend-1 Healthy 
+ Container ecom-accept-c803f62d8c-maintenance-1 Starting 
+ Container ecom-accept-c803f62d8c-backend-1 Healthy 
+ Container ecom-accept-c803f62d8c-gateway-1 Starting 
+ Container ecom-accept-c803f62d8c-backend-1 Healthy 
+ Container ecom-accept-c803f62d8c-dispatcher-1 Starting 
+ Container ecom-accept-c803f62d8c-worker-1 Started 
+ Container ecom-accept-c803f62d8c-commerce-worker-1 Started 
+ Container ecom-accept-c803f62d8c-dispatcher-1 Started 
+ Container ecom-accept-c803f62d8c-memory-worker-1 Started 
+ Container ecom-accept-c803f62d8c-maintenance-1 Started 
+ Container ecom-accept-c803f62d8c-gateway-1 Started 
+ Container ecom-accept-c803f62d8c-gateway-1 Waiting 
+ Container ecom-accept-c803f62d8c-gateway-1 Healthy 
+ Container ecom-accept-c803f62d8c-frontend-1 Starting 
+ Container ecom-accept-c803f62d8c-frontend-1 Started 
+ Container ecom-accept-c803f62d8c-mysql-1 Waiting 
+ Container ecom-accept-c803f62d8c-worker-1 Waiting 
+ Container ecom-accept-c803f62d8c-postgres-1 Waiting 
+ Container ecom-accept-c803f62d8c-memory-worker-1 Waiting 
+ Container ecom-accept-c803f62d8c-commerce-worker-1 Waiting 
+ Container ecom-accept-c803f62d8c-gateway-1 Waiting 
+ Container ecom-accept-c803f62d8c-order-init-1 Waiting 
+ Container ecom-accept-c803f62d8c-maintenance-1 Waiting 
+ Container ecom-accept-c803f62d8c-backend-1 Waiting 
+ Container ecom-accept-c803f62d8c-redis-1 Waiting 
+ Container ecom-accept-c803f62d8c-frontend-1 Waiting 
+ Container ecom-accept-c803f62d8c-dispatcher-1 Waiting 
+ Container ecom-accept-c803f62d8c-backend-1 Healthy 
+ Container ecom-accept-c803f62d8c-worker-1 Healthy 
+ Container ecom-accept-c803f62d8c-redis-1 Healthy 
+ Container ecom-accept-c803f62d8c-mysql-1 Healthy 
+ Container ecom-accept-c803f62d8c-maintenance-1 Healthy 
+ Container ecom-accept-c803f62d8c-order-init-1 Exited 
+ Container ecom-accept-c803f62d8c-memory-worker-1 Healthy 
+ Container ecom-accept-c803f62d8c-frontend-1 Healthy 
+ Container ecom-accept-c803f62d8c-postgres-1 Healthy 
+ Container ecom-accept-c803f62d8c-dispatcher-1 Healthy 
+ Container ecom-accept-c803f62d8c-commerce-worker-1 Healthy 
+ Container ecom-accept-c803f62d8c-gateway-1 Healthy 
+ Container ecom-accept-c803f62d8c-commerce-worker-1 Restarting 
+ Container ecom-accept-c803f62d8c-backend-1 Restarting 
+ Container ecom-accept-c803f62d8c-backend-1 Started 
+ Container ecom-accept-c803f62d8c-commerce-worker-1 Started 
+PASS: full images, clean schema, repeat migrations, failure gate, services, shared files/keys and restart
+ Container ecom-accept-c803f62d8c-commerce-worker-1 Stopping 
+ Container ecom-accept-c803f62d8c-worker-1 Stopping 
+ Container ecom-accept-c803f62d8c-frontend-1 Stopping 
+ Container ecom-accept-c803f62d8c-memory-worker-1 Stopping 
+ Container ecom-accept-c803f62d8c-maintenance-1 Stopping 
+ Container ecom-accept-c803f62d8c-dispatcher-1 Stopping 
+ Container ecom-accept-c803f62d8c-frontend-1 Stopped 
+ Container ecom-accept-c803f62d8c-frontend-1 Removing 
+ Container ecom-accept-c803f62d8c-frontend-1 Removed 
+ Container ecom-accept-c803f62d8c-gateway-1 Stopping 
+ Container ecom-accept-c803f62d8c-maintenance-1 Stopped 
+ Container ecom-accept-c803f62d8c-maintenance-1 Removing 
+ Container ecom-accept-c803f62d8c-memory-worker-1 Stopped 
+ Container ecom-accept-c803f62d8c-memory-worker-1 Removing 
+ Container ecom-accept-c803f62d8c-maintenance-1 Removed 
+ Container ecom-accept-c803f62d8c-dispatcher-1 Stopped 
+ Container ecom-accept-c803f62d8c-dispatcher-1 Removing 
+ Container ecom-accept-c803f62d8c-worker-1 Stopped 
+ Container ecom-accept-c803f62d8c-worker-1 Removing 
+ Container ecom-accept-c803f62d8c-memory-worker-1 Removed 
+ Container ecom-accept-c803f62d8c-dispatcher-1 Removed 
+ Container ecom-accept-c803f62d8c-gateway-1 Stopped 
+ Container ecom-accept-c803f62d8c-gateway-1 Removing 
+ Container ecom-accept-c803f62d8c-worker-1 Removed 
+ Container ecom-accept-c803f62d8c-gateway-1 Removed 
+ Container ecom-accept-c803f62d8c-commerce-worker-1 Stopped 
+ Container ecom-accept-c803f62d8c-commerce-worker-1 Removing 
+ Container ecom-accept-c803f62d8c-commerce-worker-1 Removed 
+ Container ecom-accept-c803f62d8c-backend-1 Stopping 
+ Container ecom-accept-c803f62d8c-backend-1 Stopped 
+ Container ecom-accept-c803f62d8c-backend-1 Removing 
+ Container ecom-accept-c803f62d8c-backend-1 Removed 
+ Container ecom-accept-c803f62d8c-order-init-1 Stopping 
+ Container ecom-accept-c803f62d8c-postgres-1 Stopping 
+ Container ecom-accept-c803f62d8c-redis-1 Stopping 
+ Container ecom-accept-c803f62d8c-order-init-1 Stopped 
+ Container ecom-accept-c803f62d8c-order-init-1 Removing 
+ Container ecom-accept-c803f62d8c-order-init-1 Removed 
+ Container ecom-accept-c803f62d8c-mysql-1 Stopping 
+ Container ecom-accept-c803f62d8c-redis-1 Stopped 
+ Container ecom-accept-c803f62d8c-redis-1 Removing 
+ Container ecom-accept-c803f62d8c-redis-1 Removed 
+ Container ecom-accept-c803f62d8c-postgres-1 Stopped 
+ Container ecom-accept-c803f62d8c-postgres-1 Removing 
+ Container ecom-accept-c803f62d8c-postgres-1 Removed 
+ Container ecom-accept-c803f62d8c-mysql-1 Stopped 
+ Container ecom-accept-c803f62d8c-mysql-1 Removing 
+ Container ecom-accept-c803f62d8c-mysql-1 Removed 
+ Volume ecom-accept-c803f62d8c_mysql Removing 
+ Volume ecom-accept-c803f62d8c_redis Removing 
+ Volume ecom-accept-c803f62d8c_logs Removing 
+ Volume ecom-accept-c803f62d8c_app Removing 
+ Volume ecom-accept-c803f62d8c_postgres Removing 
+ Network ecom-accept-c803f62d8c_default Removing 
+ Volume ecom-accept-c803f62d8c_redis Removed 
+ Volume ecom-accept-c803f62d8c_mysql Removed 
+ Volume ecom-accept-c803f62d8c_logs Removed 
+ Volume ecom-accept-c803f62d8c_postgres Removed 
+ Volume ecom-accept-c803f62d8c_app Removed 
+ Network ecom-accept-c803f62d8c_default Removed 

@@ -1,3 +1,4 @@
+# 文件说明：执行有预算的单事项 ReAct 循环，校验工具范围并保存调用证据。
 """Bounded ReAct loop for one task; business writes use TaskOperations.
 
 Both sync and async callers share the same tool whitelist, evidence checks,
@@ -64,6 +65,7 @@ class ReactExecutor:
         chat_completion_options: dict | None = None,
         convergence_detector=None,
         checkpoint=None,
+        reference_cached_results: bool = False,
     ):
         self.client = client
         self.model = model
@@ -75,6 +77,8 @@ class ReactExecutor:
         # CONVERGENCE_REPLY（不经过 LLM，保证语义稳定）。
         self.convergence_detector = convergence_detector
         self.checkpoint = checkpoint
+        # Only opt in when the provider keeps prior tool messages intact.
+        self.reference_cached_results = reference_cached_results
         # 第12期：若传入 LlmClient，绑定 react 场景（与查询改写/主生成分开统计 token）
         if hasattr(client, "bind_scene"):
             from app.observability.llm_client import SCENE_REACT
@@ -183,6 +187,7 @@ class ReactExecutor:
         working: list[dict] = [{"role": "system", "content": system_prompt}, *messages]
         steps: list[ToolStep] = []
         any_replayed = False
+        result_messages: dict[tuple[str, str], str] = {}
 
         def make_result(reply: str, **kwargs: Any) -> ExecutionResult:
             """终点出口：Evidence Pack 校验后构造 ExecutionResult。"""
@@ -238,6 +243,7 @@ class ReactExecutor:
                     await call_sync(self.checkpoint)
                 name = tc.function.name
                 args = self._safe_arguments(tc.function.arguments)
+                result_key = (name, json.dumps(args, sort_keys=True, ensure_ascii=False))
 
                 if name not in allowed_tool_names:
                     blocked = {
@@ -265,16 +271,21 @@ class ReactExecutor:
                     if report is not None:
                         return make_result(CONVERGENCE_REPLY)
 
-                # 重复调用拦截：同工具+同参数不再次执行，反馈已有结果
+                # Reuse the original tool message instead of copying its body.
                 pre = policy.before_call(name, args)
                 if pre.action is Action.RETURN_CACHED:
                     cached = dict(pre.cached_result or {})
                     cached["note"] = "重复调用：已返回上次结果，请基于已有结果继续，勿重复调用"
                     steps.append(ToolStep(name=name, arguments=args, result=cached, replayed=True))
+                    original_id = result_messages.get(result_key) if self.reference_cached_results else None
+                    visible = (dict(reused=True, result_tool_call_id=original_id,
+                                    note="相同调用未重新执行；结果正文见该 tool_call_id 的已有工具消息，时效不变。")
+                               if original_id else cached)
                     working.append({
                         "role": "tool", "tool_call_id": tc.id,
-                        "content": json.dumps(cached, ensure_ascii=False),
+                        "content": json.dumps(visible, ensure_ascii=False),
                     })
+                    any_replayed = True
                     continue
                 if pre.action is Action.STOP_WITH_EVIDENCE:
                     return await self._finalize_impl(
@@ -319,6 +330,7 @@ class ReactExecutor:
                 working.append({
                     "role": "tool", "tool_call_id": tc.id, "content": result_str,
                 })
+                result_messages[result_key] = tc.id
 
                 from app.services.commerce.writes import PREPARES
                 if result.get("success") and name in PREPARES | {"ask_user", "handoff_to_human"}:

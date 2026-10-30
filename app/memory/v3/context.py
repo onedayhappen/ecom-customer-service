@@ -1,3 +1,4 @@
+# 文件说明：按截止点加载有界的公开用户原话及已有记忆提取上下文。
 """Bounded incremental evidence with authenticated previous user messages."""
 import json
 

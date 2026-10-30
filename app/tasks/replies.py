@@ -1,3 +1,4 @@
+# 文件说明：合并就绪结果并在校验来源和状态的同一事务中去重发布回复。
 """Publish ready pieces once, in the transaction that checks their freshness.
 
 Policy checks run before the transaction; no model or network call holds its

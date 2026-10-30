@@ -1,3 +1,4 @@
+# 文件说明：测试事项并行、持久依赖、执行唤醒及数据库授予工作资格。
 """Task scheduling contracts, on SQLite and opt-in isolated PostgreSQL/Redis."""
 from concurrent.futures import ProcessPoolExecutor
 import json

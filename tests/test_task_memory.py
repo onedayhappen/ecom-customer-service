@@ -1,3 +1,4 @@
+# 文件说明：测试记忆来源撤回、即时遗忘、用户隔离和后台清理重试。
 """Source-aware memory against SQLite and isolated real PostgreSQL."""
 from datetime import datetime, timezone
 import json

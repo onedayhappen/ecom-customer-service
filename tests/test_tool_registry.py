@@ -1,3 +1,4 @@
+# 文件说明：测试显式工具白名单同时约束模型定义与实际分发。
 """Explicit manager whitelists bound both schemas and dispatch."""
 import json
 

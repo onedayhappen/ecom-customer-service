@@ -1,3 +1,4 @@
+# 文件说明：测试鉴权消息经持久提取后，在新会话按需读取长期记忆。
 """Authenticated API -> durable extraction -> a new chat's bounded memory."""
 from datetime import datetime, timezone
 import json

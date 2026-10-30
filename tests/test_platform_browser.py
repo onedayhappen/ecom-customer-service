@@ -1,3 +1,4 @@
+# 文件说明：在隔离服务进程上运行浏览器验收，覆盖工作台、分页和实时更新。
 """Opt-in browser acceptance against real isolated API/Worker/DB/Redis processes."""
 import os
 from pathlib import Path

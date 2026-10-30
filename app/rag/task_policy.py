@@ -1,3 +1,4 @@
+# 文件说明：从已核验的事项业务证据构造政策查询的可信适用上下文。
 """Trusted request context for the existing single-Agent knowledge tool."""
 from contextlib import contextmanager
 from contextlib import nullcontext

@@ -1,3 +1,4 @@
+# 文件说明：测试记忆版本与证据增长、迟到更新和时间线计算的一致性。
 """Memory growth and timeline semantics, without timing-sensitive assertions."""
 from datetime import datetime, timedelta, timezone
 

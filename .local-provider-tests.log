@@ -1,0 +1,146 @@
+......F..............................................s....s....s.s.s.s.s [ 26%]
+...sss.s.s.s..............s...sss....s................ssssssssssssss..ss [ 53%]
+.s.s..ss..ss.s.....sssss...sss.s.s.s.s.s.s.s.s.s........s.sss..ss.s.s.s. [ 80%]
+s.s.s.s....ss...............................ssss..ss                     [100%]
+================================== FAILURES ===================================
+____________ test_invoice_download_api_ownership_and_missing_file _____________
+tests\test_local_provider.py:159: in test_invoice_download_api_ownership_and_missing_file
+    with service_factory(factory), TestClient(app) as client:
+                                   ^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\starlette\testclient.py:572: in __enter__
+    portal.call(self.wait_startup)
+.venv\Lib\site-packages\anyio\from_thread.py:340: in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramData\anaconda3\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\ProgramData\anaconda3\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+.venv\Lib\site-packages\anyio\from_thread.py:265: in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\starlette\testclient.py:608: in wait_startup
+    await receive()
+.venv\Lib\site-packages\starlette\testclient.py:599: in receive
+    self.task.result()
+D:\ProgramData\anaconda3\Lib\concurrent\futures\_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\ProgramData\anaconda3\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+.venv\Lib\site-packages\anyio\from_thread.py:265: in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\starlette\testclient.py:589: in lifespan
+    await self.app(scope, self.stream_receive.receive, self.stream_send.send)
+.venv\Lib\site-packages\fastapi\applications.py:1181: in __call__
+    await lifespan(
+.venv\Lib\site-packages\fastapi\telemetry\_runtime.py:238: in lifespan
+    await app(scope, wrapped_receive, wrapped_send)
+.venv\Lib\site-packages\starlette\applications.py:96: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv\Lib\site-packages\starlette\middleware\errors.py:151: in __call__
+    await self.app(scope, receive, send)
+.venv\Lib\site-packages\fastapi\telemetry\_asgi.py:151: in __call__
+    await self.app(scope, receive, send)
+.venv\Lib\site-packages\starlette\middleware\cors.py:79: in __call__
+    await self.app(scope, receive, send)
+app\api\middleware.py:41: in __call__
+    await self.app(scope, receive, send)
+app\media\upload_limit.py:14: in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\starlette\middleware\exceptions.py:49: in __call__
+    await self.app(scope, receive, send)
+.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+.venv\Lib\site-packages\starlette\routing.py:678: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:2800: in app
+    await self.lifespan(scope, receive, send)
+.venv\Lib\site-packages\starlette\routing.py:656: in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramData\anaconda3\Lib\contextlib.py:214: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\fastapi\routing.py:249: in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramData\anaconda3\Lib\contextlib.py:214: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\fastapi\routing.py:249: in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramData\anaconda3\Lib\contextlib.py:214: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\fastapi\routing.py:249: in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramData\anaconda3\Lib\contextlib.py:214: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\fastapi\routing.py:249: in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramData\anaconda3\Lib\contextlib.py:214: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\fastapi\routing.py:249: in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramData\anaconda3\Lib\contextlib.py:214: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\fastapi\routing.py:249: in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramData\anaconda3\Lib\contextlib.py:214: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\fastapi\routing.py:249: in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramData\anaconda3\Lib\contextlib.py:214: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+app\api\main.py:50: in lifespan
+    await asyncio.to_thread(get_store().initialize)
+D:\ProgramData\anaconda3\Lib\asyncio\threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\ProgramData\anaconda3\Lib\concurrent\futures\thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\support\store.py:136: in initialize
+    with self._connection() as tx:
+         ^^^^^^^^^^^^^^^^^^
+D:\ProgramData\anaconda3\Lib\contextlib.py:141: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+app\support\store.py:109: in _connection
+    with get_connection_pool(self.dsn).connection() as conn:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\db.py:87: in connection
+    return _PooledConnection(self, self._acquire())
+                                   ^^^^^^^^^^^^^^^
+app\db.py:162: in _acquire
+    raise PoolTimeout(
+E   app.db.PoolTimeout: PostgreSQL 连接池等待超时（5.0s，最大 10 条连接）
+============================== warnings summary ===============================
+tests/test_local_provider.py::test_refund_worker_idempotence_restart_and_notifications
+tests/test_core_tools.py::test_public_and_owned_reads
+tests/test_extended_tools.py::test_sale_window_uses_requested_original_item[request-1-False-eligible]
+tests/test_core_task_tools.py::test_dispatch_task_confirmation_queues_once[sqlite]
+tests/test_after_sale_fulfillment.py::test_exchange_waits_for_receipt_and_reuses_parcel
+tests/test_external_query_progress.py::test_real_query_refund_wait_uses_no_operation_id_and_only_full_channel_receipt_completes[sqlite-get_after_sale_status]
+  D:\GitHub\ecom-customer-service\app\data\order_dao.py:127: DeprecationWarning: The 'reconnect' argument is deprecated. Create a new connection if you want to reconnect.
+    conn.ping(reconnect=True)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_local_provider.py::test_invoice_download_api_ownership_and_missing_file
+1 failed, 188 passed, 79 skipped, 6 warnings in 277.70s (0:04:37)

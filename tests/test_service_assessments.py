@@ -1,3 +1,4 @@
+# 文件说明：测试换货维修只读资格与确认办理共用规则且不产生业务副作用。
 """Read-only exchange/repair eligibility shares the confirmed-operation rules."""
 import asyncio
 import json

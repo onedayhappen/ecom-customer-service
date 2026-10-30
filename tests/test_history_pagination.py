@@ -1,3 +1,4 @@
+# 文件说明：测试会话历史快照、向前分页、事件游标与历史工单读取边界。
 """Bounded history, cursor continuity, and historical ticket access boundaries."""
 from tests.legacy_fixtures import create_legacy_task
 import pytest

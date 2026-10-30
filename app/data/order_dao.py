@@ -1,3 +1,4 @@
+# 文件说明：封装旧订单查询接口、MySQL 访问与显式模拟实现。
 """订单 DAO：唯一执行 SQL 的代码层。
 
 - :class:`MySqlOrderDAO`：pymysql 参数化查询本地业务库

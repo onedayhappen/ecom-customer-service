@@ -1,3 +1,4 @@
+# 文件说明：核验商品查询结论与筛选范围，防止把空结果泛化为商品不存在。
 """Query-scoped product observations for the local final-reply guard.
 
 A successful empty search proves only a lack of matches for that query. It

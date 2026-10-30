@@ -1,3 +1,4 @@
+# 文件说明：绑定账号、地址、会员和积分等本人数据查询工具。
 """Typed tool adapters; business logic lives in commerce services."""
 from app.tools.dispatch import bind
 

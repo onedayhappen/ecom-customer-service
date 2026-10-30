@@ -1,3 +1,4 @@
+# 文件说明：启动交易后台循环，处理持久渠道请求与未付款订单到期关闭。
 """Process durable provider requests and expire unpaid local orders. No payment execution."""
 import argparse
 import time

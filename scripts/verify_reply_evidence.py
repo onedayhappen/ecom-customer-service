@@ -1,3 +1,4 @@
+# 文件说明：离线回放回复证据用例，比较发布校验结果和本地耗时。
 """Offline replay and local cost probe; never calls a model or commerce database.
 
 python scripts/verify_reply_evidence.py --baseline 7b65437 \

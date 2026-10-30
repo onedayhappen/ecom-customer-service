@@ -1,3 +1,4 @@
+# 文件说明：从服务端事件日志读取与当前用户、事项和会话匹配的工具证据。
 """Read server-recorded task evidence from the conversation event log."""
 import json
 

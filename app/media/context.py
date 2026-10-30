@@ -1,3 +1,4 @@
+# 文件说明：为事项关联与执行构造经过来源、归属和状态校验的图片上下文。
 """The same validated visual view for association and task working memory."""
 import json
 

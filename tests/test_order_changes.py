@@ -1,3 +1,4 @@
+# 文件说明：在隔离 MySQL 中测试订单取消、退款回执及履约拒收后的恢复。
 """Document-aligned order changes against an isolated MySQL database."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta

@@ -1,3 +1,4 @@
+# 文件说明：提供 Agent 评测命令行，管理子进程隔离、轨迹回放与报告输出。
 """Dynamic user simulation and paired memory evaluation; static v3 replay supported."""
 import argparse
 from datetime import datetime, timezone

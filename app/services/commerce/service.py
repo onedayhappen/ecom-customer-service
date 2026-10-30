@@ -1,3 +1,4 @@
+# 文件说明：组装商务查询与写入服务，统一回执并支持请求级工厂替换。
 """Business service assembly and request-local factory overrides."""
 
 from contextlib import contextmanager

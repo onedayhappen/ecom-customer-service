@@ -1,3 +1,4 @@
+# 文件说明：在真实 HTTP、PostgreSQL 和 Redis 多进程环境中测试平台协作。
 """Real HTTP, PostgreSQL, Redis and multiple OS processes; synthetic business data."""
 import asyncio
 import json

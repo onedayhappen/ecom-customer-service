@@ -1,3 +1,4 @@
+# 文件说明：测试 rubric 契约、证据引用、事实优先级和评测示例可执行性。
 """Rubric protocol, scoring, evidence validation and executable dataset examples."""
 import json
 from pathlib import Path

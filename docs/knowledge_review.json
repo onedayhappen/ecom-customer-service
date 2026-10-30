@@ -1,0 +1,380 @@
+{
+  "version": "2026-10-30.1",
+  "reviewed_by": "Codex，按用户委托进行源码一致性核对",
+  "review_scope": "本项目当前服务能力说明；非官方电商平台政策、法律审核或商户权益承诺",
+  "scope_basis": "所有正文均限定为本项目服务说明；通用能力对接入本项目的各业务对象适用，具体资格、时限、金额仍由业务记录核实。request_at 仅选择当前服务说明，不选择历史订单权益。",
+  "documents": {
+    "account_security.md": {
+      "source_id": "project_service_account_security",
+      "version": "2026-10-30.1",
+      "sha256": "d6937db395147c28837cda468d95110f780530ea598fbb7d94f73c4f98ffca6d",
+      "review_basis": {
+        "app/api/auth.py": "135a8f08b6344d26e35d9863dd95812c8dd20deacdccd0fc902607ce73c955f2",
+        "app/data/auth_store.py": "9fffbcbf5abc73cba94d26cbef640287558bb7720a1e0940b629210ac49152f6"
+      },
+      "metadata_sha256": "9ab8e3463a0e59425eb6af526807aeb27ef3c35073fc938ac8146156408bebc1"
+    },
+    "after_sale_status.md": {
+      "source_id": "project_service_after_sale_status",
+      "version": "2026-10-30.1",
+      "sha256": "b4c36252ad3f0715c860c1078225299825ad0431d746e998b19eea0a7911aaa7",
+      "review_basis": {
+        "app/services/commerce/rules.py": "7a0b64bb3b0f38260c91274027e6131dc06d4b69cdd08f00f0d1cced3344e8ca",
+        "app/services/commerce/standard_fulfillment.py": "10ae28d9518590c6f782115c9f37b186c1c3d4113225df2249f1cf27fbd33d2c",
+        "app/services/commerce/writes.py": "c6e12ab71b1df4bc302e17cb7c46a2a7dd46fe95086b494fc08ac662a3aab522"
+      },
+      "metadata_sha256": "74d45ad927548e5723f471a45f7052b3edad453920091d7af007d57775c81f5e"
+    },
+    "cancel_order.md": {
+      "source_id": "project_service_cancel_order",
+      "version": "2026-10-30.1",
+      "sha256": "574bb96d2062bb8809108e84c5d36b7ac02b12660d941fb0ee91f89417fcbf23",
+      "review_basis": {
+        "app/services/commerce/order_changes.py": "70d593a87942bca4284cd17d9000fce01e4c6680809281c847fa1caf60a49290",
+        "app/services/commerce/writes.py": "c6e12ab71b1df4bc302e17cb7c46a2a7dd46fe95086b494fc08ac662a3aab522",
+        "app/services/commerce/fulfillment.py": "86eaf109b9fae297d74d91c6db1b1b251f19ffffd761821f44f19f98499c81e1",
+        "app/tools/selection.py": "836d84a538931b129c2b9a8451008595b384be88d2c61845f25c34ea6a9d774b"
+      },
+      "metadata_sha256": "c7534c74f8ffed3a65efd5a59ac62efaf710a627f2be139d4e4fc4f24cea8f98"
+    },
+    "clothing_size.md": {
+      "source_id": "project_service_clothing_size",
+      "version": "2026-10-30.1",
+      "sha256": "5f7f7bc8456a36d78491c11eeb4f44f3d85c00e6a6395616dbb3ed288a8a91e9",
+      "review_basis": {
+        "app/tools/catalog.py": "aa481d494ae1abd6000d6c6391ac8438cb19cd850565e9ccf2ef119c0d57c0eb",
+        "app/services/commerce/queries.py": "dbba2c8e8e267c7da0097343bbf1109ddf89fca71749c3b6ad16a06e6ba0d9bc",
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41"
+      },
+      "metadata_sha256": "cbc8d1d85df74fc6ae2bc02346a7fb90128cb4e97cd06029a44d153bf2be1a4c"
+    },
+    "complaint.md": {
+      "source_id": "project_service_complaint",
+      "version": "2026-10-30.1",
+      "sha256": "5a16e2effacc7dfe5197058af000cc5868086754eea147f8686350243f85f9bb",
+      "review_basis": {
+        "frontend/src/CustomerWorkspace.jsx": "dc401f57d19c847442084ef46ba708f685f222ab5248ae8b130955b6163d6be5",
+        "app/tasks/operations.py": "b8df2aa3a93dcc6d567257a0191a3de97258715eee1747acffbe81e1106ce3d3",
+        "app/tools/catalog.py": "aa481d494ae1abd6000d6c6391ac8438cb19cd850565e9ccf2ef119c0d57c0eb"
+      },
+      "metadata_sha256": "429d54dca9c01f5895d8f61a3aed1f8ae01bf3251a7dbb42c81fd9e2594f57a3"
+    },
+    "coupon_rules.md": {
+      "source_id": "project_service_coupon_rules",
+      "version": "2026-10-30.1",
+      "sha256": "3e9f52ad052634b27523da0037944e230b41d2cccdf4d75d3da7ec211eb85752",
+      "review_basis": {
+        "app/data/membership_store.py": "e9d7df737eb1cbfe6ed8b055d9b288ccd119514d04ea28444bd15fa6cc9428ec",
+        "app/services/commerce/rules.py": "7a0b64bb3b0f38260c91274027e6131dc06d4b69cdd08f00f0d1cced3344e8ca",
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41",
+        "app/services/commerce/writes.py": "c6e12ab71b1df4bc302e17cb7c46a2a7dd46fe95086b494fc08ac662a3aab522"
+      },
+      "metadata_sha256": "f6015c9b764c377412d3107c2da7e4ccb271b061b117cc97e4987a62279c9ca0"
+    },
+    "customer_guide.md": {
+      "source_id": "project_service_customer_guide",
+      "version": "2026-10-30.1",
+      "sha256": "8867a156eef0177d359db9df7e853cc08f96d1cbecb135828b002b4e5da85b5f",
+      "review_basis": {
+        "frontend/src/CustomerWorkspace.jsx": "dc401f57d19c847442084ef46ba708f685f222ab5248ae8b130955b6163d6be5",
+        "app/tasks/operations.py": "b8df2aa3a93dcc6d567257a0191a3de97258715eee1747acffbe81e1106ce3d3",
+        "app/tools/catalog.py": "aa481d494ae1abd6000d6c6391ac8438cb19cd850565e9ccf2ef119c0d57c0eb"
+      },
+      "metadata_sha256": "4d33d4e6c8f77ef3501e39bebd570bf7c482bb79178d7ed8cea489bab981ad30"
+    },
+    "delivery_quote.md": {
+      "source_id": "project_service_delivery_quote",
+      "version": "2026-10-30.1",
+      "sha256": "8047dacb7be0de0625a57e6d7f4d4815f2061a034a542bd8e998e131bfed9a84",
+      "review_basis": {
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41",
+        "app/services/commerce/collection_queries.py": "81be070de7616e423a4f9cbc4a8a7c1ee9cc9676c1b012907c3c5d615c01ac63",
+        "app/services/commerce/providers.py": "0f2b68c7b05ffb9d78a396ddb5c4defa20b8e843b44578020a4f3797100a07b7"
+      },
+      "metadata_sha256": "9bd821bc563198f7d0a2760ec04c80a55bb7b5daed9a0ff6dee70cafda12d35b"
+    },
+    "demo_service.md": {
+      "source_id": "project_service_demo_service",
+      "version": "2026-10-30.1",
+      "sha256": "34db8f93442d8ef09cec39c8741095fbd874dfe849a20d665643bb10f07facc5",
+      "review_basis": {
+        "app/services/commerce/providers.py": "0f2b68c7b05ffb9d78a396ddb5c4defa20b8e843b44578020a4f3797100a07b7",
+        "app/services/commerce/simulator.py": "25ccf6bdfd3e159a7019425564ab92188dbc95738e6c0d0ca42500e6d0aeccd9",
+        "migrations/mysql/012_local_provider.sql": "3a4880d603ac221d67df2ed354beeb07094e7b1939e8cbdf394e1c0ac0ccbc02"
+      },
+      "metadata_sha256": "274bc1c2bac8724c1f593e4586788b6f048e80a71f4f65fd9e17acf0ee92f063"
+    },
+    "exchange.md": {
+      "source_id": "project_service_exchange",
+      "version": "2026-10-30.1",
+      "sha256": "0f7e1a256de4048a7fea3a14936bdfe781e8e6b201b357cc82d314410461a7b9",
+      "review_basis": {
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41",
+        "app/services/commerce/extended_writes.py": "f3552372cf648252ebabaa3437390ef3765aec33f6976f9fa054b9b1bc8adc77",
+        "app/services/commerce/providers.py": "0f2b68c7b05ffb9d78a396ddb5c4defa20b8e843b44578020a4f3797100a07b7",
+        "app/services/commerce/standard_fulfillment.py": "10ae28d9518590c6f782115c9f37b186c1c3d4113225df2249f1cf27fbd33d2c"
+      },
+      "metadata_sha256": "aa24d81d763c9a7c5f0f8f0532cc729533a11f2897ce6479ef7fdee2e049ec28"
+    },
+    "fabric_care.md": {
+      "source_id": "project_service_fabric_care",
+      "version": "2026-10-30.1",
+      "sha256": "6c5e397aa18e8aa6ed40bea41f079a48bc6753c553fc7a438f5dc9e0abb7a5d1",
+      "review_basis": {
+        "app/tools/catalog.py": "aa481d494ae1abd6000d6c6391ac8438cb19cd850565e9ccf2ef119c0d57c0eb",
+        "app/services/commerce/queries.py": "dbba2c8e8e267c7da0097343bbf1109ddf89fca71749c3b6ad16a06e6ba0d9bc",
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41"
+      },
+      "metadata_sha256": "9b3a74cb7f165ecea0ad475a9f338b7732ea370c93cad22b4c61450da52c3b3d"
+    },
+    "image_evidence.md": {
+      "source_id": "project_service_image_evidence",
+      "version": "2026-10-30.1",
+      "sha256": "0fea4988bca6a1247c12cbeb2f8e1c29846479f700f9a62fa361c32d2a413efb",
+      "review_basis": {
+        "app/media/service.py": "25421e19952459a71e2603a3a80f4e8b96e1c1672233fc03f7926a99578780cc",
+        "app/media/schema.py": "db87c7c1fb33b612239ab3e5931004ca5a6df3fbac280bc3f1399830412a1295"
+      },
+      "metadata_sha256": "52ea4a02eaf8388936161232e6ee7f91f50a758a4ad10c5c3d2529892fbd761f"
+    },
+    "invoice.md": {
+      "source_id": "project_service_invoice",
+      "version": "2026-10-30.1",
+      "sha256": "3399432260eb36f4759545ef7f22c0589ad6822bc2c7d039e0ce41c7136fc55a",
+      "review_basis": {
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41",
+        "app/services/commerce/extended_writes.py": "f3552372cf648252ebabaa3437390ef3765aec33f6976f9fa054b9b1bc8adc77",
+        "app/services/commerce/providers.py": "0f2b68c7b05ffb9d78a396ddb5c4defa20b8e843b44578020a4f3797100a07b7",
+        "app/services/commerce/standard_fulfillment.py": "10ae28d9518590c6f782115c9f37b186c1c3d4113225df2249f1cf27fbd33d2c"
+      },
+      "metadata_sha256": "2f7e68882f3e6690920ce987fabf12587e0a13d7630c6f0aae6eebc5d587ae30"
+    },
+    "limited_offers.md": {
+      "source_id": "project_service_limited_offers",
+      "version": "2026-10-30.1",
+      "sha256": "8de414141b4de0e6e56de715f208aece3c70101c546a5404b7e91c03b68c7f8d",
+      "review_basis": {
+        "app/tools/catalog.py": "aa481d494ae1abd6000d6c6391ac8438cb19cd850565e9ccf2ef119c0d57c0eb",
+        "app/services/commerce/queries.py": "dbba2c8e8e267c7da0097343bbf1109ddf89fca71749c3b6ad16a06e6ba0d9bc",
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41"
+      },
+      "metadata_sha256": "096527f267badd21cfa7ddc16307fbc5001b1d4a3cca0c2a075fc5d1b7403320"
+    },
+    "membership.md": {
+      "source_id": "project_service_membership",
+      "version": "2026-10-30.1",
+      "sha256": "e5653b17bcc0e52fbb0cbdb416a4831c117d1cb6dc8a9810ad61792ea4ed2410",
+      "review_basis": {
+        "app/data/membership_store.py": "e9d7df737eb1cbfe6ed8b055d9b288ccd119514d04ea28444bd15fa6cc9428ec",
+        "app/services/commerce/rules.py": "7a0b64bb3b0f38260c91274027e6131dc06d4b69cdd08f00f0d1cced3344e8ca",
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41",
+        "app/services/commerce/writes.py": "c6e12ab71b1df4bc302e17cb7c46a2a7dd46fe95086b494fc08ac662a3aab522"
+      },
+      "metadata_sha256": "652551172963078b9637df43a077108864323fd7123c4bb93ebd4bea39ca0cd3"
+    },
+    "modify_order.md": {
+      "source_id": "project_service_modify_order",
+      "version": "2026-10-30.1",
+      "sha256": "4fbb542c39d256159534b32ff809bf9e56c15b9cae25a473d6cbefc6e8aa5ab4",
+      "review_basis": {
+        "app/services/commerce/order_changes.py": "70d593a87942bca4284cd17d9000fce01e4c6680809281c847fa1caf60a49290",
+        "app/services/commerce/writes.py": "c6e12ab71b1df4bc302e17cb7c46a2a7dd46fe95086b494fc08ac662a3aab522",
+        "app/services/commerce/fulfillment.py": "86eaf109b9fae297d74d91c6db1b1b251f19ffffd761821f44f19f98499c81e1",
+        "app/tools/selection.py": "836d84a538931b129c2b9a8451008595b384be88d2c61845f25c34ea6a9d774b"
+      },
+      "metadata_sha256": "86e9ba94ea74842518f3f25c189b406cfc3cdd52b12f76d4357fa0a187dbf881"
+    },
+    "new_arrivals.md": {
+      "source_id": "project_service_new_arrivals",
+      "version": "2026-10-30.1",
+      "sha256": "9276f7ea44badec22d7624a77cfb810ba2c14fdf0be16b9494ee980c712df06d",
+      "review_basis": {
+        "app/tools/catalog.py": "aa481d494ae1abd6000d6c6391ac8438cb19cd850565e9ccf2ef119c0d57c0eb",
+        "app/services/commerce/queries.py": "dbba2c8e8e267c7da0097343bbf1109ddf89fca71749c3b6ad16a06e6ba0d9bc",
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41"
+      },
+      "metadata_sha256": "f29f6b29cfcc3d1236debcf5684379a4d61cafc6e91531a1bd241eb4bd68f40d"
+    },
+    "operation_confirmation.md": {
+      "source_id": "project_service_operation_confirmation",
+      "version": "2026-10-30.1",
+      "sha256": "026fba98a2a18aac376d259dcc4229632cb2d5c4381c331e6b0c92c8284c7133",
+      "review_basis": {
+        "frontend/src/CustomerWorkspace.jsx": "dc401f57d19c847442084ef46ba708f685f222ab5248ae8b130955b6163d6be5",
+        "app/tasks/operations.py": "b8df2aa3a93dcc6d567257a0191a3de97258715eee1747acffbe81e1106ce3d3",
+        "app/tools/catalog.py": "aa481d494ae1abd6000d6c6391ac8438cb19cd850565e9ccf2ef119c0d57c0eb"
+      },
+      "metadata_sha256": "b09b20ae11f3013f9a3f454e355b36e889c5531a55309d062116a307ce70e99f"
+    },
+    "order_status.md": {
+      "source_id": "project_service_order_status",
+      "version": "2026-10-30.1",
+      "sha256": "81211bd19f5dca6eb5885c413646c87ee9d9d310e3bf3d0860a4b962cdc76187",
+      "review_basis": {
+        "app/services/commerce/order_changes.py": "70d593a87942bca4284cd17d9000fce01e4c6680809281c847fa1caf60a49290",
+        "app/services/commerce/writes.py": "c6e12ab71b1df4bc302e17cb7c46a2a7dd46fe95086b494fc08ac662a3aab522",
+        "app/services/commerce/fulfillment.py": "86eaf109b9fae297d74d91c6db1b1b251f19ffffd761821f44f19f98499c81e1",
+        "app/tools/selection.py": "836d84a538931b129c2b9a8451008595b384be88d2c61845f25c34ea6a9d774b"
+      },
+      "metadata_sha256": "36b22e09a489e0f81a041ec71b551ed161bad3fb780de890b1a583d5bbee7c27"
+    },
+    "password_reset.md": {
+      "source_id": "project_service_password_reset",
+      "version": "2026-10-30.1",
+      "sha256": "c6439d84f307acc51d1042ae9b096a5dee4f2dc5cec2e473f9331ada5592335e",
+      "review_basis": {
+        "app/api/auth.py": "135a8f08b6344d26e35d9863dd95812c8dd20deacdccd0fc902607ce73c955f2",
+        "app/data/auth_store.py": "9fffbcbf5abc73cba94d26cbef640287558bb7720a1e0940b629210ac49152f6"
+      },
+      "metadata_sha256": "2bb1e9e8507c899976091ba7ca1e0328686a1cce0975bfbc89254c356a7a7af3"
+    },
+    "payment_failed.md": {
+      "source_id": "project_service_payment_failed",
+      "version": "2026-10-30.1",
+      "sha256": "2b796d581256d80394ce1a43cc830fb0b775747dc1a3b2cf452a5096515c993c",
+      "review_basis": {
+        "app/services/commerce/order_changes.py": "70d593a87942bca4284cd17d9000fce01e4c6680809281c847fa1caf60a49290",
+        "app/services/commerce/writes.py": "c6e12ab71b1df4bc302e17cb7c46a2a7dd46fe95086b494fc08ac662a3aab522",
+        "app/services/commerce/fulfillment.py": "86eaf109b9fae297d74d91c6db1b1b251f19ffffd761821f44f19f98499c81e1",
+        "app/tools/selection.py": "836d84a538931b129c2b9a8451008595b384be88d2c61845f25c34ea6a9d774b"
+      },
+      "metadata_sha256": "b1f07eaee9734a41f64c1911df2979253580ecd33e1d4c9dba101719ce83077d"
+    },
+    "payment_methods.md": {
+      "source_id": "project_service_payment_methods",
+      "version": "2026-10-30.1",
+      "sha256": "52f1e9b31aa32d0b5ec4016eb3579f54220fe47dafae3ca15ce543c2fc77eacc",
+      "review_basis": {
+        "app/services/commerce/order_changes.py": "70d593a87942bca4284cd17d9000fce01e4c6680809281c847fa1caf60a49290",
+        "app/services/commerce/writes.py": "c6e12ab71b1df4bc302e17cb7c46a2a7dd46fe95086b494fc08ac662a3aab522",
+        "app/services/commerce/fulfillment.py": "86eaf109b9fae297d74d91c6db1b1b251f19ffffd761821f44f19f98499c81e1",
+        "app/tools/selection.py": "836d84a538931b129c2b9a8451008595b384be88d2c61845f25c34ea6a9d774b"
+      },
+      "metadata_sha256": "7b60465e47a7a60d35e14302e777f828165bc9b9b7b92834f590c1d7d353e33c"
+    },
+    "points_rules.md": {
+      "source_id": "project_service_points_rules",
+      "version": "2026-10-30.1",
+      "sha256": "2996030654e436a8e436b5f3451cc6e9f2c3484ce883a2d7c0c882381fbd9287",
+      "review_basis": {
+        "app/data/membership_store.py": "e9d7df737eb1cbfe6ed8b055d9b288ccd119514d04ea28444bd15fa6cc9428ec",
+        "app/services/commerce/rules.py": "7a0b64bb3b0f38260c91274027e6131dc06d4b69cdd08f00f0d1cced3344e8ca",
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41",
+        "app/services/commerce/writes.py": "c6e12ab71b1df4bc302e17cb7c46a2a7dd46fe95086b494fc08ac662a3aab522"
+      },
+      "metadata_sha256": "ade4530224741e77e2bee1498f6741c8cb0879d4e19fa8418c5136442896c18a"
+    },
+    "price_protection.md": {
+      "source_id": "project_service_price_protection",
+      "version": "2026-10-30.1",
+      "sha256": "5fddb0be945fefde9c9e6bc842f1882ceac12064cb90f741e5e6813ddebc2cd2",
+      "review_basis": {
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41",
+        "app/services/commerce/extended_writes.py": "f3552372cf648252ebabaa3437390ef3765aec33f6976f9fa054b9b1bc8adc77",
+        "app/services/commerce/providers.py": "0f2b68c7b05ffb9d78a396ddb5c4defa20b8e843b44578020a4f3797100a07b7",
+        "app/services/commerce/standard_fulfillment.py": "10ae28d9518590c6f782115c9f37b186c1c3d4113225df2249f1cf27fbd33d2c"
+      },
+      "metadata_sha256": "0d81a3c52ceea87c3c31d86505ea487c981d75fbfb98350e33173a81cb25905c"
+    },
+    "quality_issue.md": {
+      "source_id": "project_service_quality_issue",
+      "version": "2026-10-30.1",
+      "sha256": "92517fb9ae95f8de34e90ef908bc1124e973a8de80fb5afdf0062ff220f03405",
+      "review_basis": {
+        "app/services/commerce/rules.py": "7a0b64bb3b0f38260c91274027e6131dc06d4b69cdd08f00f0d1cced3344e8ca",
+        "app/services/commerce/standard_fulfillment.py": "10ae28d9518590c6f782115c9f37b186c1c3d4113225df2249f1cf27fbd33d2c",
+        "app/services/commerce/writes.py": "c6e12ab71b1df4bc302e17cb7c46a2a7dd46fe95086b494fc08ac662a3aab522"
+      },
+      "metadata_sha256": "aab3f6f3d184ac37c965f35510e852e0b0762f40fb268198108fc2d49dfe74dd"
+    },
+    "refund_timeline.md": {
+      "source_id": "project_service_refund_timeline",
+      "version": "2026-10-30.1",
+      "sha256": "c709c741fd5b493124c515155db60aea76c973a7cb78ad224aff66280afa3ecb",
+      "review_basis": {
+        "app/services/commerce/rules.py": "7a0b64bb3b0f38260c91274027e6131dc06d4b69cdd08f00f0d1cced3344e8ca",
+        "app/services/commerce/standard_fulfillment.py": "10ae28d9518590c6f782115c9f37b186c1c3d4113225df2249f1cf27fbd33d2c",
+        "app/services/commerce/writes.py": "c6e12ab71b1df4bc302e17cb7c46a2a7dd46fe95086b494fc08ac662a3aab522"
+      },
+      "metadata_sha256": "5b5c1f1698429f69e4ff961dd01a854dd1f9b95aa450c36c298cffecc458f575"
+    },
+    "register.md": {
+      "source_id": "project_service_register",
+      "version": "2026-10-30.1",
+      "sha256": "9a3bfa45edaaa4fd5431c12aeb6236ea1faffb182e5274f473c0558edd82e3b1",
+      "review_basis": {
+        "app/api/auth.py": "135a8f08b6344d26e35d9863dd95812c8dd20deacdccd0fc902607ce73c955f2",
+        "app/data/auth_store.py": "9fffbcbf5abc73cba94d26cbef640287558bb7720a1e0940b629210ac49152f6"
+      },
+      "metadata_sha256": "3012d06b95e6a470bcde9d1fbc755e365f513d1c7574f24ec6dbe92e40357dee"
+    },
+    "return_process.md": {
+      "source_id": "project_service_return_process",
+      "version": "2026-10-30.1",
+      "sha256": "a52f62c76e15b541e1a075c95cee5fb260526b228e684c00c58770703c3c449e",
+      "review_basis": {
+        "app/services/commerce/rules.py": "7a0b64bb3b0f38260c91274027e6131dc06d4b69cdd08f00f0d1cced3344e8ca",
+        "app/services/commerce/standard_fulfillment.py": "10ae28d9518590c6f782115c9f37b186c1c3d4113225df2249f1cf27fbd33d2c",
+        "app/services/commerce/writes.py": "c6e12ab71b1df4bc302e17cb7c46a2a7dd46fe95086b494fc08ac662a3aab522"
+      },
+      "metadata_sha256": "dd2bdd6d53eebcffed6ed90e8d43c45c976218ac66d6cd9bed38ae19a905df5e"
+    },
+    "seven_day_return.md": {
+      "source_id": "project_service_seven_day_return",
+      "version": "2026-10-30.1",
+      "sha256": "200225ef3d14b3084cfdd5384e2853b4e25ca677a9eca1c9049de67afd1a9916",
+      "review_basis": {
+        "app/services/commerce/rules.py": "7a0b64bb3b0f38260c91274027e6131dc06d4b69cdd08f00f0d1cced3344e8ca",
+        "app/services/commerce/standard_fulfillment.py": "10ae28d9518590c6f782115c9f37b186c1c3d4113225df2249f1cf27fbd33d2c",
+        "app/services/commerce/writes.py": "c6e12ab71b1df4bc302e17cb7c46a2a7dd46fe95086b494fc08ac662a3aab522"
+      },
+      "metadata_sha256": "c2c952b8ec1a44b530c845dc98d5f783b9d2c5175760a1bb2461ebb29cb0cdbc"
+    },
+    "shipping_tracking.md": {
+      "source_id": "project_service_shipping_tracking",
+      "version": "2026-10-30.1",
+      "sha256": "cce3b35c57d3740a18cd57f2f7dbd5b9a7e005cde9c88f5ff0e888f7d29a0856",
+      "review_basis": {
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41",
+        "app/services/commerce/collection_queries.py": "81be070de7616e423a4f9cbc4a8a7c1ee9cc9676c1b012907c3c5d615c01ac63",
+        "app/services/commerce/providers.py": "0f2b68c7b05ffb9d78a396ddb5c4defa20b8e843b44578020a4f3797100a07b7"
+      },
+      "metadata_sha256": "62f3514aad5bc6dddea097cd55c9f5c084f1cc48a17fe4c5bf18a53e4f4ee6c2"
+    },
+    "shoe_size.md": {
+      "source_id": "project_service_shoe_size",
+      "version": "2026-10-30.1",
+      "sha256": "c869c8cd24155327b0c17bc837c82c12b2ee746f5f58622fa7004c5c179b6a6e",
+      "review_basis": {
+        "app/tools/catalog.py": "aa481d494ae1abd6000d6c6391ac8438cb19cd850565e9ccf2ef119c0d57c0eb",
+        "app/services/commerce/queries.py": "dbba2c8e8e267c7da0097343bbf1109ddf89fca71749c3b6ad16a06e6ba0d9bc",
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41"
+      },
+      "metadata_sha256": "a09732be7c61ff2ef4cb99bdda3fbd195b54840e179b5ff152ccc19d70f1b105"
+    },
+    "standard_shipping.md": {
+      "source_id": "project_service_standard_shipping",
+      "version": "2026-10-30.1",
+      "sha256": "6b9bf2cebcb0a997f4245bde906ac345f65cb926a27076b646a797aff578ae20",
+      "review_basis": {
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41",
+        "app/services/commerce/collection_queries.py": "81be070de7616e423a4f9cbc4a8a7c1ee9cc9676c1b012907c3c5d615c01ac63",
+        "app/services/commerce/providers.py": "0f2b68c7b05ffb9d78a396ddb5c4defa20b8e843b44578020a4f3797100a07b7"
+      },
+      "metadata_sha256": "1da474b2b6421990536c0ce6a749e2060111c3f468e44f831f08472ea5a378e8"
+    },
+    "warranty.md": {
+      "source_id": "project_service_warranty",
+      "version": "2026-10-30.1",
+      "sha256": "38cc252b5c924dd850d3234fb1cddc3a109cc5bf3d493efcb45e28c16cedeecb",
+      "review_basis": {
+        "app/services/commerce/extensions.py": "bb60770b45098c8b4d7778fb3caf7c53cb2755a193f7c7c1db0e80987bcc5b41",
+        "app/services/commerce/extended_writes.py": "f3552372cf648252ebabaa3437390ef3765aec33f6976f9fa054b9b1bc8adc77",
+        "app/services/commerce/providers.py": "0f2b68c7b05ffb9d78a396ddb5c4defa20b8e843b44578020a4f3797100a07b7",
+        "app/services/commerce/standard_fulfillment.py": "10ae28d9518590c6f782115c9f37b186c1c3d4113225df2249f1cf27fbd33d2c"
+      },
+      "metadata_sha256": "48b9801f253436958f4949d71d88092a192a4cba527916b66df013bf76c98282"
+    }
+  },
+  "digest_format": "utf8-lf-sha256"
+}

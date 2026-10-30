@@ -1,3 +1,4 @@
+# 文件说明：提供固定消息截止点的记忆归档申请与归档状态查询接口。
 """Authenticated archive/checkpoint API; no model call on the request thread."""
 import asyncio
 from uuid import UUID

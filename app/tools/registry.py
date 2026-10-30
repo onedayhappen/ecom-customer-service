@@ -1,3 +1,4 @@
+# 文件说明：提供显式工具注册和执行入口，拒绝未登记或不允许的调用。
 """Explicit registry for the customer-service tools."""
 import importlib
 from app.tools.catalog import TOOLS

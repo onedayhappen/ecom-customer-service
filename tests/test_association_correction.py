@@ -1,3 +1,4 @@
+# 文件说明：测试错误事项关联的字段补偿、来源迁移和旧执行资格失效。
 from concurrent.futures import ThreadPoolExecutor
 import json
 from uuid import uuid4

@@ -1,3 +1,4 @@
+# 文件说明：原子调整演示用户标识，并重新绑定受身份加密保护的地址。
 """Rekey the ten imported demo identities and rebind encrypted addresses atomically.
 
 Default performs all validation then rolls back. --apply commits the data migration.

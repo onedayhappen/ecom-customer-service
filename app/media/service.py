@@ -1,3 +1,4 @@
+# 文件说明：管理私有图片资产生命周期、有效关联与按问题保存的视觉观察。
 """Asset lifecycle and immutable, question-scoped observations."""
 import hashlib
 import io

@@ -1,3 +1,4 @@
+# 文件说明：用固定记忆候选离线回归提取、合并和检索算法。
 """固定候选的长期记忆离线回归，不调用 LLM、embedding 服务或生产存储。
 
 Usage: python scripts/eval_memory_algorithms.py [--fixture PATH] [--output PATH]

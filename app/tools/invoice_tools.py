@@ -1,3 +1,4 @@
+# 文件说明：绑定发票查询与办理准备工具，复用统一参数和业务分发。
 """Typed tool adapters; business logic lives in commerce services."""
 from app.tools.dispatch import bind
 

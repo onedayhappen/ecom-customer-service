@@ -1,3 +1,4 @@
+# 文件说明：汇总有效运行、记忆标注核验和同快照开关对照的配对差异。
 """Explicit denominators, paired deltas and independently annotated memory facts."""
 from .contracts import DIMENSIONS, collections_for
 

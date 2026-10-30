@@ -1,3 +1,4 @@
+# 文件说明：回放关联失败案例，测试重试预算与证据校验约束。
 """Production-wired retry regressions and recorded evaluation replays."""
 from copy import deepcopy
 import json

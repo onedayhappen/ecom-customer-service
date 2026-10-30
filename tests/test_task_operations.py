@@ -1,3 +1,4 @@
+# 文件说明：测试固定业务确认、并发输入、操作竞争和未知业务结果。
 """Task confirmation contracts, including races and uncertain business outcomes."""
 from concurrent.futures import ThreadPoolExecutor
 import json

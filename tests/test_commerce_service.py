@@ -1,3 +1,4 @@
+# 文件说明：测试业务读取回执、缺项收集和请求级服务替换的恢复。
 """Read envelopes and request-local service overrides need no business database."""
 
 import asyncio

@@ -1,3 +1,4 @@
+# 文件说明：封装 MySQL 业务事务、连接管理和有界查询，不自动回退模拟数据。
 """MySQL-only production business transactions; no fixture fallback."""
 from contextlib import contextmanager, suppress
 import re

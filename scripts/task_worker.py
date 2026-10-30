@@ -1,3 +1,4 @@
+# 文件说明：装配并启动事项 Worker，持续完成关联、调度、执行和回复。
 """Single Agent worker: associate input, advance matters and coordinate replies."""
 import logging
 import signal

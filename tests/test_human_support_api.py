@@ -1,3 +1,4 @@
+# 文件说明：测试人工服务接口鉴权、控制权流转及客户与客服数据隔离。
 """End-to-end API authorization and bot/human routing with isolated storage."""
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4

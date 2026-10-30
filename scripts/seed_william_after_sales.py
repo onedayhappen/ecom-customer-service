@@ -1,3 +1,4 @@
+# 文件说明：应用售后迁移并幂等初始化指定演示用户的多商品订单。
 """Apply migration 008 and seed two recent William multi-product demo orders once.
 
 No provider calls, inventory deductions, password changes, or historical deletions.

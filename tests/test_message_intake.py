@@ -1,3 +1,4 @@
+# 文件说明：测试连续消息幂等接收、固定批次确认、并发领取和崩溃恢复。
 """Continuous intake, exact batch acknowledgements and crash recovery."""
 import os
 from concurrent.futures import ThreadPoolExecutor

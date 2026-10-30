@@ -1,3 +1,4 @@
+# 文件说明：管理事项绑定的固定确认、资源占用、业务提交与未知结果核实。
 """Durable, task-bound confirmations; no model ever invokes a write directly."""
 import json
 from types import SimpleNamespace

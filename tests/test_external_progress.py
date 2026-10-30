@@ -1,3 +1,4 @@
+# 文件说明：测试外部业务进度的范围证据、重启恢复、去重及有限轮询。
 """External progress must be supported by scope-specific business evidence."""
 import json
 from uuid import uuid4

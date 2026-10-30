@@ -1,3 +1,4 @@
+# 文件说明：提供单一客服 Agent 的改写、关联、事项执行与回复组织入口。
 """One Agent for message association and scoped task execution."""
 from __future__ import annotations
 

@@ -1,3 +1,4 @@
+# 文件说明：持久接收连续消息，管理幂等去重、固定批次和关联租约恢复。
 """Continuous message intake; association workers consume the existing DB outbox.
 
 No model/tool call runs inside these transactions. A lease claims an immutable

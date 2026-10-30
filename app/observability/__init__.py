@@ -1,3 +1,4 @@
+# 文件说明：声明可观测性包，组织追踪、审计、交互日志与指标采集。
 """业务链可观测性（第11期 + 第12期）：全链路 trace / span 埋点体系。
 
 - 第11期：BusinessTracer（阶段事件）+ patch_client（LLM 插桩）+ query CLI。

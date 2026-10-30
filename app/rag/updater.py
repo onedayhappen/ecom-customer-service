@@ -1,3 +1,4 @@
+# 文件说明：根据正文内容哈希同步新增、修改和删除的知识片段。
 """基于内容哈希的 RAG 文档增量更新。"""
 
 from __future__ import annotations

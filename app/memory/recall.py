@@ -1,3 +1,4 @@
+# 文件说明：为当前已认证用户提供请求范围内的长期记忆召回和上下文可见性控制。
 """Request-scoped access to the authenticated user's long-term facts."""
 from __future__ import annotations
 

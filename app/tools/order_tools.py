@@ -1,3 +1,4 @@
+# 文件说明：绑定订单查询和变更准备工具，将调用交给统一业务服务。
 """Typed tool adapters; business logic lives in commerce services."""
 from app.tools.dispatch import bind
 

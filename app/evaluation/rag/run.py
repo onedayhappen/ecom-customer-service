@@ -1,3 +1,4 @@
+# 文件说明：提供 RAG 评测命令行，读取题集并选择回放或实时采集模式。
 """python -m app.evaluation.rag.run --help (offline replay by default)."""
 import argparse
 from datetime import datetime, timezone

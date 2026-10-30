@@ -1,3 +1,4 @@
+# 文件说明：统一检查原话及派生证据的版本和有效性，保护执行、确认与发布。
 """Freshness checks shared by execution, confirmation, replies and derived data.
 
 These server-generated stamps are dependency metadata, never authorization.

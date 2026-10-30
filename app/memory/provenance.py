@@ -1,3 +1,4 @@
+# 文件说明：定义派生记忆、摘要和检索缓存所携带的来源依赖信息。
 """Dependency envelopes for new-path memory, summaries and retrieval caches."""
 from copy import deepcopy
 

@@ -1,3 +1,4 @@
+# 文件说明：实现持久本地模拟处理方，按配置推进退款、退货和演示票据。
 """Persistent development provider. Outcomes are selected by server configuration only."""
 from datetime import timedelta
 from hashlib import sha256

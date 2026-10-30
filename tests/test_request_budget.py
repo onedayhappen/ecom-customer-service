@@ -1,3 +1,4 @@
+# 文件说明：测试完整提供商请求预算、工具协议和保留关键事实的上下文处理。
 """Provider-boundary context budgets: real client paths with fake providers."""
 from __future__ import annotations
 

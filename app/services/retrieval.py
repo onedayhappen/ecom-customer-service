@@ -1,3 +1,4 @@
+# 文件说明：提供独立检索 HTTP 服务，执行服务鉴权、工作限额及证据校验。
 """Independent retrieval HTTP service: bounded work, authenticated access."""
 import asyncio
 import hmac

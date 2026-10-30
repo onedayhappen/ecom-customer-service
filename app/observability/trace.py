@@ -1,3 +1,4 @@
+# 文件说明：定义 Trace、Span 及上下文管理，关联模型、工具和事项阶段。
 """Trace/Span records for model calls, tools and task stages.
 
 ContextVar isolates concurrent execution; finish serializes the collected spans.

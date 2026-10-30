@@ -1,3 +1,4 @@
+# 文件说明：按当前用户召回事项、问题和业务线索，构造有界候选上下文。
 """Bounded, user-scoped candidate context. Retrieval never chooses a task."""
 from copy import deepcopy
 from dataclasses import dataclass, field

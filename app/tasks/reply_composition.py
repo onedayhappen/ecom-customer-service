@@ -1,3 +1,4 @@
+# 文件说明：定义不可变回复输入与发布快照，用于检查生成期间的状态变化。
 """Immutable reply inputs and their publication fence; no model or DB writes."""
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone

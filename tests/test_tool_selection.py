@@ -1,3 +1,4 @@
+# 文件说明：测试事项目标工具筛选、全局白名单及动态目标变化后的暴露范围。
 """Tool exposure, dispatch boundaries and live goal changes with no provider IO."""
 import asyncio
 import json
@@ -31,6 +32,13 @@ def isolated_selection(monkeypatch):
     ('耳机维修', {'prepare_repair', 'get_order_items'}, {'prepare_purchase'}),
     ('查询价保资格', {'get_price_history', 'assess_price_protection', 'prepare_price_protection'}, {'claim_coupon'}),
     ('申请发票', {'find_orders', 'get_invoices', 'prepare_invoice'}, {'prepare_after_sale'}),
+    ('修改未付款订单的发票抬头', {'prepare_order_update', 'get_order', 'get_invoices'}, {'prepare_purchase'}),
+    ('把税号改成新的', {'prepare_order_update', 'get_invoices'}, {'prepare_purchase'}),
+    ('发票抬头需要修改', {'prepare_order_update', 'prepare_invoice_reissue'}, {'prepare_exchange'}),
+    ('update billing details for my unpaid order', {'prepare_order_update', 'get_order'}, {'prepare_purchase'}),
+    ('change invoice title and query delivery', {'prepare_order_update', 'get_logistics'}, {'prepare_purchase'}),
+    ('申请发票重开', {'prepare_invoice_reissue'}, {'prepare_order_update'}),
+    ('查询发票状态', {'get_invoices'}, {'prepare_order_update'}),
     ('修改收货地址', {'list_addresses', 'assess_order_action', 'prepare_order_address_change'}, {'prepare_exchange'}),
     ('这单催一下发货', {'request_dispatch', 'get_logistics'}, {'prepare_after_sale'}),
     ('购买两件耳机', {'search_products', 'quote_checkout', 'prepare_purchase'}, {'prepare_invoice'}),
@@ -74,6 +82,11 @@ def test_environment_configuration_is_validated(monkeypatch):
         monkeypatch.setenv('TOOL_ALLOWLIST', value)
         with pytest.raises(ValidationError, match='TOOL_ALLOWLIST'):
             Settings(_env_file=None)
+
+
+def test_invoice_edit_cannot_bypass_global_allowlist(monkeypatch):
+    monkeypatch.setattr(settings, 'tool_allowlist', 'get_order,get_invoices')
+    assert for_task('others', '修改未付款订单发票抬头') == {'get_order', 'get_invoices'}
 
 
 def test_global_ceiling_applies_to_registry_manager_and_mcp(monkeypatch):

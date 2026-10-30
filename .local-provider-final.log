@@ -1,0 +1,10 @@
+.................ss...............ssssssssssssss..ss.s.s..ss..ss.s.....s [ 51%]
+ssss...sss.s.s....ss...............................ssss..ss.........     [100%]
+============================== warnings summary ===============================
+tests/test_local_provider.py::test_refund_worker_idempotence_restart_and_notifications
+tests/test_external_query_progress.py::test_real_query_refund_wait_uses_no_operation_id_and_only_full_channel_receipt_completes[sqlite-get_after_sale_status]
+  D:\GitHub\ecom-customer-service\app\data\order_dao.py:127: DeprecationWarning: The 'reconnect' argument is deprecated. Create a new connection if you want to reconnect.
+    conn.ping(reconnect=True)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+97 passed, 43 skipped, 2 warnings in 107.58s (0:01:47)

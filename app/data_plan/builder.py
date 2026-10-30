@@ -1,3 +1,4 @@
+# 文件说明：根据服务端明确白名单构建单次 ReAct 执行的工具边界。
 """Build the ReAct tool boundary from an explicit server-owned task whitelist."""
 from dataclasses import dataclass
 from typing import Collection

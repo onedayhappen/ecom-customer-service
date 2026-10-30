@@ -1,3 +1,4 @@
+# 文件说明：核验并原子应用普通退款、退货与首次开票的渠道回执。
 """Ordinary refunds and first invoices: checked, transactional provider outcomes."""
 from decimal import Decimal
 from uuid import uuid4

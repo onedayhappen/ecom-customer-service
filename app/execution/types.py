@@ -1,3 +1,4 @@
+# 文件说明：定义工具步骤和事项执行结果等执行层共享数据结构。
 """Task execution results and tool evidence used by the Harness."""
 
 from __future__ import annotations

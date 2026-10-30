@@ -1,3 +1,4 @@
+# 文件说明：从已核验回执生成程序拥有的允许结论，供回复模型选择。
 """Code-owned conclusions from receipts, before any final model composition.
 
 Missing records are observations, never negative real-world facts. Every claim

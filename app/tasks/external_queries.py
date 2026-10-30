@@ -1,3 +1,4 @@
+# 文件说明：将有效业务查询回执绑定为明确的持久轮询目标。
 """Bind current business query receipts to explicit, durable polling targets."""
 import json
 import math

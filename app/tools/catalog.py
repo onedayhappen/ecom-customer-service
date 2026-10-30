@@ -1,3 +1,4 @@
+# 文件说明：集中登记工具名称、参数模型及副作用，供本地和 MCP 共同使用。
 """Explicit tool metadata, shared by local execution and MCP."""
 from dataclasses import dataclass
 from app.tools import contracts as c
@@ -77,7 +78,7 @@ TOOLS = (
     Tool('prepare_invoice_reissue','校验本人正式原票与新抬头信息，保存待确认更正／重开申请。需实际原票关系及作废／红冲处理流程；不能生成虚构票据或直接覆盖原票。',c.InvoiceReissue,'invoice','prepare'),
     Tool('get_invoice_document','读取本人正式发票号码、文件元数据和经服务端授权的下载入口；无真实文件返回未就绪，不接收任意下载地址。',c.IssuedInvoice,'invoice','read'),
     Tool('search_policies','检索经审核且适用范围可核实的完整条款片段，返回原文、来源、版本、生效区间和缺少的适用条件。工具不生成政策总结、推荐处理方式或审批结论，由 LLM 结合业务事实解释。',c.Policies,'policy','read'),
-    Tool('read_task_context','读取当前授权事项中的原话、已绑定对象、已明确选择、待补字段和历史回执／交接记录，保留来源与时间。通常首轮由执行器注入；工具不生成处理计划，历史回执不充当当前状态。',c.Empty,'flow','read'),
+    Tool('read_task_context','读取当前授权事项工作记忆的变化，初始内容已由执行器注入。changes 仅含变化字段，空值表示清空，未列出字段沿用已有内容；回执引用指向已提供的工具结果。已有信息足够时不必调用；历史回执不充当当前状态。',c.Empty,'flow','read'),
     Tool('ask_user','保存 LLM 已拟定的澄清问题和候选，更新事项为待答并结束本轮。工具不自行决定问什么；用户回答不等于业务确认。',c.Question,'flow','question'),
     Tool('handoff_to_human','创建或复用当前事项的真实人工交接并返回工单编号／状态，服务端附带已有事实和原话。转交决定由明确用户请求或既定升级规则支持；不能自动承诺处理结果。',c.Handoff,'flow','handoff'),
 )

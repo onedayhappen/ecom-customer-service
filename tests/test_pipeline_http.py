@@ -1,3 +1,4 @@
+# 文件说明：跨真实 API 与 Worker 进程测试持续输入、启停和租约恢复。
 """Actual API/worker processes, database controls, restart and continued input."""
 import os
 import subprocess

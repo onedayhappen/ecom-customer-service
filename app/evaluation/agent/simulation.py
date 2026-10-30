@@ -1,3 +1,4 @@
+# 文件说明：编排动态多会话、共享预算、记忆预热和同快照双分支运行。
 """Dynamic session orchestration and paired runs from one verified SQLite snapshot."""
 from copy import deepcopy
 from pathlib import Path

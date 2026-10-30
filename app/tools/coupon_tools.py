@@ -1,3 +1,4 @@
+# 文件说明：绑定优惠券领域工具入口，将已校验参数交给统一业务分发。
 """Typed tool adapters; business logic lives in commerce services."""
 from app.tools.dispatch import bind
 

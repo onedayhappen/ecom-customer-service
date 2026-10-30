@@ -1,3 +1,4 @@
+# 文件说明：在一次性 MySQL 中测试核心工具契约、归属、规则与事务行为。
 """Real MySQL tests in a disposable, uniquely named database (never the application DB)."""
 import base64
 import json

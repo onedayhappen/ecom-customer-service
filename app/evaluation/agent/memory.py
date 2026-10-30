@@ -1,3 +1,4 @@
+# 文件说明：在隔离存储中观察真实 v3 记忆处理、归档、读取与完整快照复制。
 """Real v3 memory processing and read-path observation inside disposable stores."""
 from contextlib import contextmanager, ExitStack
 from copy import deepcopy
@@ -68,8 +69,8 @@ class MemoryObserver:
                         raise
                 stack.enter_context(patch.object(LongTermMemoryManager, method, wrapper))
             original_history = task_context.task_history
-            def history(runs, record):
-                result = original_history(runs, record)
+            def history(runs, record, **kwargs):
+                result = original_history(runs, record, **kwargs)
                 self.add("task_history", task_id=record.task_id, result=result)
                 return result
             stack.enter_context(patch.object(task_context, "task_history", history))

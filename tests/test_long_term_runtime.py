@@ -1,3 +1,4 @@
+# 文件说明：测试公开用户事件的增量提取、任务恢复与事务外模型调用。
 """Durable long-term extraction runs offline and grounds every persisted fact."""
 import json
 from types import SimpleNamespace

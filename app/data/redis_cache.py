@@ -1,3 +1,4 @@
+# 文件说明：封装带有效期的 Redis JSON 缓存，并处理缓存不可用的情况。
 """fail-safe 的 Redis JSON 缓存（订单查询 cache-aside 用）。
 
 - Redis 不可用（未配置 URL / 连接失败）时降级为「永不命中、写入丢弃」，

@@ -1,3 +1,4 @@
+# 文件说明：测试核心工具与事项状态、确认卡片及 MCP 暴露范围的集成。
 """Integration of the new tools with task state, confirmation and MCP boundaries."""
 import asyncio
 import json

@@ -1,3 +1,4 @@
+# 文件说明：定义历史业务回执及内部确认字段的校验结构。
 """Validation of historical business receipts and internal confirmation fields; no tools."""
 from datetime import datetime
 from typing import Annotated, Literal

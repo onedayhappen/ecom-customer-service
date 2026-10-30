@@ -1,3 +1,4 @@
+# 文件说明：按当前演示商品和用户生成 mall 示例优惠券规则及导入计划。
 """Adapt five pinned mall coupon rules to current demo catalog and ten users.
 
 Default previews. --apply installs required existing 003 business tables and

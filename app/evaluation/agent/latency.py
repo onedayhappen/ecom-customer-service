@@ -1,3 +1,4 @@
+# 文件说明：记录服务入口的回复与稳定状态耗时，汇总延迟和三维度质量结果。
 """Service-entry observed latency, independent of simulator and judge wall time."""
 from copy import deepcopy
 from math import ceil, isfinite

@@ -1,3 +1,4 @@
+# 文件说明：测试全部记忆版本、证据归属、来源偏移及事务持久性。
 """All-version persistence, evidence ownership and transactional durability."""
 from contextvars import ContextVar
 from copy import deepcopy

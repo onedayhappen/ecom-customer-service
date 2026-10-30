@@ -1,3 +1,4 @@
+# 文件说明：测试查询改写回退、新输入重规划和迟到工具结果的来源边界。
 """Real storage/association boundaries with deterministic model/tool responses."""
 from concurrent.futures import ThreadPoolExecutor
 import json

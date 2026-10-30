@@ -1,3 +1,4 @@
+# 文件说明：提供账号注册、密码登录、退出及可撤销登录会话的接口。
 """Account registration, password login and revocable sessions."""
 
 from __future__ import annotations

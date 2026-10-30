@@ -1,3 +1,4 @@
+# 文件说明：限制 SSE 发送时长和用户连接数，管理订阅租约及连接收尾。
 """SSE send deadlines and per-user connection leases without per-client threads."""
 import asyncio
 from contextlib import asynccontextmanager

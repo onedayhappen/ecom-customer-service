@@ -1,3 +1,4 @@
+# 文件说明：测试会员身份、注册初始化、订阅有效性与会员券周期额度。
 """Membership identities and demo migration in disposable databases."""
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor

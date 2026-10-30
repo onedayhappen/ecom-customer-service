@@ -1,3 +1,4 @@
+# 文件说明：管理不可变政策索引、原子发布指针、版本核验及来源撤回。
 """Immutable Chroma collections with an atomic, cross-process release pointer."""
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -9,7 +10,7 @@ import sqlite3
 from uuid import uuid4
 
 from app.rag.backends.chroma_backend import ChromaBackend
-from app.rag.policy import PolicyError, PolicyMetadata, digest
+from app.rag.policy import PolicyError, PolicyMetadata, digest, safe_clause
 
 
 class PolicyIndex:
@@ -131,6 +132,33 @@ class PolicyIndex:
             db.execute('BEGIN IMMEDIATE')
             if db.execute('INSERT OR IGNORE INTO revoked_sources VALUES (?,?)', (source_id, version)).rowcount:
                 db.execute('UPDATE active_release SET revision=revision+1 WHERE singleton=1')
+
+    def verify_corpus(self, chunks, model):
+        """Verify disk texts/metadata and stored bodies against the active release."""
+        head = self.head()
+        if head['model'] != model:
+            raise PolicyError('policy_model_mismatch')
+        expected = {c.chunk_id: dict(doc=c.doc, section=c.section, policy=c.policy,
+                                    text_digest=digest(c.text)) for c in chunks}
+        if not expected or len(expected) != len(chunks) or expected != head['manifest']:
+            raise PolicyError('policy_corpus_out_of_date')
+        for chunk in chunks:
+            source = chunk.policy['source_id']
+            if (source, '*') in head['revoked'] or (source, chunk.policy['version']) in head['revoked']:
+                raise PolicyError('policy_source_revoked')
+            if not safe_clause(chunk.text) or not safe_clause(json.dumps(chunk.policy, ensure_ascii=False)):
+                raise PolicyError('policy_untrusted_instructions')
+        backend = self.backend(head['generation'])
+        backend.load()
+        if backend.expected_embedding_model() != model:
+            raise PolicyError('policy_model_mismatch')
+        if backend.size() != len(expected):
+            raise PolicyError('policy_index_incomplete')
+        self.verify_bodies(backend.fetch(list(expected)), expected)
+        token = self.token(head)
+        if not self.current(token):
+            raise PolicyError('policy_publication_conflict')
+        return dict(token, documents=len({c.doc for c in chunks}), chunks=len(chunks))
 
     def current(self, token):
         try:

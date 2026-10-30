@@ -1,3 +1,4 @@
+# 文件说明：实现请求、模型和工具的分层额度预留、限流与资源租约。
 """Atomic hierarchical quotas and separate resource leases.
 
 Tenant membership is server configuration, never a body/header selected by the

@@ -1,3 +1,4 @@
+# 文件说明：测试记忆写入的原话证据、置信度和临时信息准入规则。
 """长期记忆 Validator 准入规则测试。"""
 
 from __future__ import annotations

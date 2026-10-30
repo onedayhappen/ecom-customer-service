@@ -1,3 +1,4 @@
+# 文件说明：装配单事项执行上下文，管理 ReAct、预算、控制版本和进度回执。
 """Single-task harness around the existing Agent/ReAct loop."""
 from contextlib import nullcontext
 import json
@@ -25,6 +26,7 @@ from app.tasks.runtime import task_scope
 from app.tools.request_context import reset_current_user_id, set_current_user_id
 from app.observability.interactions import observed_execution, observed_tool, call_model, record
 from app.prompts.context import PROGRESS_NOTE, TASK_CONTEXT_NOTE
+from app.memory.working_context import WorkingContext, evidence_refs
 
 
 class ExecutionStopped(RuntimeError):
@@ -83,6 +85,8 @@ class _TaskContext:
         self.operation_id = None
         from app.memory.task_context import TaskMemory
         self.memory = TaskMemory(runs.store, runs.user)
+        self.working = WorkingContext()
+        self.dialogue = []
         self.allowed_tools = frozenset()
 
     def checkpoint(self):
@@ -111,6 +115,8 @@ class _TaskContext:
             self.receipts = []
             from app.memory.task_context import TaskMemory
             self.memory = TaskMemory(self.runs.store, self.runs.user)
+            self.working = WorkingContext()
+            self.dialogue = []
             raise ReplanExecution()
 
     def persist_usage(self):
@@ -142,14 +148,27 @@ class _TaskContext:
         if estimate_request_tokens(params) > min(self.request.budget.input_tokens, request_input_limit(params)):
             raise ExecutionStopped("context_budget")
 
-    def messages(self):
+    def working_view(self):
         from app.memory.task_context import task_history
         from app.memory.source_policy import safe_context
-        history = task_history(self.runs, self.record)
+        history = task_history(self.runs, self.record, recent_sources=self.dialogue)
         self.memory.watch_sources(history['sources'] + history['historical_sources'])
-        return [{"role": "user", "content": json.dumps({
+        return {
             "task": safe_context(self.record.model_dump(exclude={"user_id", "created_at", "updated_at", "storage_mode"})),
             **history, "recent_tool_evidence": safe_context(self.historical),
+            "current_evidence_refs": evidence_refs(self.receipts),
+        }
+
+    def messages(self):
+        from app.session.short_term import ContextService
+        from app.memory.source_policy import safe_context
+        self.dialogue = safe_context(ContextService(self.runs.store).recent_dialogue(
+            self.request.session_id, self.runs.user))
+        self.memory.watch_sources([dict(session_id=m['session_id'], sequence=m['sequence'],
+                                       role=m['role'], text=m['content']) for m in self.dialogue])
+        view = self.working.initial(self.working_view())
+        return [{"role": "user", "content": json.dumps({
+            **view, "recent_dialogue": self.dialogue,
             "instruction": TASK_CONTEXT_NOTE,
         }, ensure_ascii=False)}]
 
@@ -183,15 +202,9 @@ class _TaskContext:
         self.check()
         if query.order_id and query.order_id != self.record.details.get("order_id"):
             return _failure("order_outside_task")
-        from app.memory.task_context import task_history
-        from app.memory.source_policy import safe_context
-        history = task_history(self.runs, self.record)
-        self.memory.watch_sources(history['sources'] + history['historical_sources'])
-        return {"success": True, "task": safe_context(self.record.model_dump()),
-                **history,
-                "recent_tool_evidence": safe_context(self.historical),
-                "evidence": [e for e in self.receipts if e["result"].get("success")],
-                "note": PROGRESS_NOTE}
+        changes = self.working.changes(self.working_view())
+        return {"success": True, "changes": changes, "unchanged": not changes,
+                "note": PROGRESS_NOTE + "仅返回初始工作记忆或上次读取后的变化；未列出的字段沿用已有内容，空值表示清空。工具证据引用对应已有回执。"}
 
     def save_progress(self, arguments):
         try:
@@ -282,6 +295,7 @@ class TaskExecutor:
             system_prompt=TASK_PROMPT,
             execute=context.tool,
             checkpoint=context.checkpoint,
+            reference_cached_results=True,
             convergence_detector=ConvergenceDetector(max_steps=request.budget.model_calls + 1, max_same_tool_calls=3))
         identity = set_current_user_id(self.runs.user)
         result, stop_reason = None, None

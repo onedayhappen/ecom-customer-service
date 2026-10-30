@@ -1,3 +1,4 @@
+# 文件说明：测试动态用户、多会话记忆、行为复核和真实确认的隔离评测流程。
 """Offline dynamic trajectories through actual intake, worker, memory and confirmation APIs."""
 from copy import deepcopy
 import json

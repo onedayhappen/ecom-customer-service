@@ -1,3 +1,4 @@
+# 文件说明：通过有界 Redis 队列发送事项唤醒提示，持久状态仍由数据库管理。
 """Optional, bounded Redis wake-ups; no task arguments or execution locks here."""
 import re
 

@@ -1,3 +1,4 @@
+# 文件说明：通过真实消息和确认入口驱动评测，采集事项、模型、工具及公开回复。
 """Service-entry driver. Only run in a disposable process (tests may supply a fake SDK)."""
 from contextlib import ExitStack, nullcontext
 from copy import deepcopy

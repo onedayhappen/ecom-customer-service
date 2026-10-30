@@ -1,3 +1,4 @@
+# 文件说明：提供当前用户资料、订单、持券及发票进度和文件的鉴权接口。
 """Authenticated customer lists and invoice files with ownership checks."""
 
 from contextlib import contextmanager

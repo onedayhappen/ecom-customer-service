@@ -1,3 +1,4 @@
+# 文件说明：声明可选技能加载包，组织技能发现、关键词匹配和正文读取。
 """Agent 技能模块（第8期）。
 
 基于 Anthropic Agent Skills 开放标准（agentskills.io/specification），

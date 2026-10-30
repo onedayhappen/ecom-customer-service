@@ -1,3 +1,4 @@
+# 文件说明：测试长期记忆查询路由，区分业务查询、原话承诺与偏好请求。
 """长期记忆 query 路由测试。"""
 
 from __future__ import annotations

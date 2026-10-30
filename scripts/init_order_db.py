@@ -1,3 +1,4 @@
+# 文件说明：提供兼容命令入口，转入当前 MySQL 业务结构迁移。
 """Compatibility entry point: apply the current MySQL business schema.
 
 Historical demo orders and logistics are no longer seeded.

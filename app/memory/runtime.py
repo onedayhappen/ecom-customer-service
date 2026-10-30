@@ -1,3 +1,4 @@
+# 文件说明：从持久公开用户事件增量提取记忆，管理任务租约和处理进度。
 """Durable incremental extraction from authenticated public user events.
 
 Conversation jobs and their checkpoints live in the support database. Memory

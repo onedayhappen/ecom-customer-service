@@ -1,3 +1,4 @@
+# 文件说明：按需调用模型评价回答忠实度和质量，保留错误与未评分状态。
 """Opt-in model judging; errors remain unscored and never become a passing score."""
 import json
 import time

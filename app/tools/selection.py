@@ -1,3 +1,4 @@
+# 文件说明：取全局白名单与事项目标工具组的交集，保留必要查询依赖。
 """Global tool allowlist intersected with task profiles, never business authority."""
 import re
 
@@ -88,7 +89,7 @@ GOAL_RULES = {
     'exchange': r'换货|更换|换.{0,6}(码|色)|exchange|replace',
     'repair': r'维修|保修|修理|故障|repair|warranty',
     'price_protection': r'价保|价格保护|补差|price protection',
-    'invoice': r'发票|开票|重开|红冲|invoice',
+    'invoice': r'发票|开票|重开|红冲|抬头|税号|invoice|billing',
     'account': r'账号|账户|会员|积分|地址簿|account|membership|points',
 }
 
@@ -97,6 +98,12 @@ def task_profiles(intent=None, goal=''):
     """Prefer the current goal so a changed task cannot retain a stale intent."""
     text = goal.casefold()
     profiles = {key for key, pattern in GOAL_RULES.items() if re.search(pattern, text)}
+    # Editing saved billing details is an order update, distinct from issuing
+    # or correcting an issued invoice. Ambiguous edits retain both paths;
+    # the owned order/invoice state determines which can actually execute.
+    if 'invoice' in profiles and re.search(
+            r'修改|更改|更新|变更|改成|改为|改一下|改下|\b(?:change|update|edit|modify)\b', text):
+        profiles.add('order_update')
     # Status-only requests need no refund-preparation schemas.
     if 'after_sale' in profiles and re.search(r'进度|状态|到账|status', text) and not re.search(r'申请|办理|撤销|撤回|退货', text):
         profiles.remove('after_sale')

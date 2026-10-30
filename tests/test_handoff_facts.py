@@ -1,3 +1,4 @@
+# 文件说明：测试工单交接事实的对象范围、限定语、有界投影和敏感字段隔离。
 """RUN-03: current receipts retain their scope and caveats in real ticket views."""
 import json
 

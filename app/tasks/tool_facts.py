@@ -1,3 +1,4 @@
+# 文件说明：把核心工具回执投影为有界客户文案，保留事实和限制。
 """Bounded customer-facing projections of the core tool contract."""
 from app.tasks.reply_facts import label
 

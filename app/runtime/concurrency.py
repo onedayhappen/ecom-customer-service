@@ -1,3 +1,4 @@
+# 文件说明：提供本地与 Redis 并发控制、分布式租约及执行资格保护。
 """Redis coordination is fail-closed; an empty URL explicitly selects local mode."""
 from __future__ import annotations
 

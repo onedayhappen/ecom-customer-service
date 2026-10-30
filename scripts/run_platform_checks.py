@@ -1,3 +1,4 @@
+# 文件说明：隔离本机业务连接配置后启动测试，避免误用正式环境资源。
 """Run tests without inheriting business connections from the local .env.
 
 Default: full offline regression. --integration: dedicated real infrastructure,

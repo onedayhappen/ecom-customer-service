@@ -1,3 +1,4 @@
+# 文件说明：升级事项、消息接收和流程切换表结构，维护历史记录兼容性。
 """Version 10: extend the existing task table, without migrating live workflows."""
 import json
 

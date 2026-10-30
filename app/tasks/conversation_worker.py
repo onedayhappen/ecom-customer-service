@@ -1,3 +1,4 @@
+# 文件说明：组织消息改写、事项关联、执行调度及回复发布的后台循环。
 """Compose the existing association and execution harnesses; no extra Agent."""
 from concurrent.futures import ThreadPoolExecutor
 import logging

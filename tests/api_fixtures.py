@@ -1,3 +1,4 @@
+# 文件说明：提供已认证 API 测试夹具，隔离消息接收与真实模型或业务写入。
 """Authenticated API fixture; no model or business write runs during admission."""
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4

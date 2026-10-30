@@ -1,3 +1,4 @@
+# 文件说明：测试鉴权后的人工交接更新接口与客户显式恢复流程。
 from uuid import uuid4
 
 from app.config.settings import settings

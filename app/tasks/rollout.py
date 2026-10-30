@@ -1,3 +1,4 @@
+# 文件说明：通过数据库控制自动流程的启停、用户放量和历史事项导入。
 """Database-owned rollout controls and conservative historical task imports.
 
 No business write is replayed here. Administrative transitions hold the exclusive

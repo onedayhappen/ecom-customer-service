@@ -1,3 +1,4 @@
+# 文件说明：测试跨会话人工接管、版本化交接、权限与显式恢复。
 """Human ownership, explicit handover updates and fresh task resumption."""
 import json
 from uuid import uuid4

@@ -1,3 +1,4 @@
+# 文件说明：用多样化留出业务回执测试最终答复及无关元数据的影响。
 """Held-out business receipts at the customer publication boundary.
 
 Twelve archived receipts exclude the original phone/pan cases; six contract

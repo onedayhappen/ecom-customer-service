@@ -1,3 +1,4 @@
+# 文件说明：构建有界会话上下文，后台生成并校验带原话引用的持久摘要。
 """Bounded support context and durable, evidence checked conversation summaries.
 
 Raw events are never changed. Task membership comes from support_task_messages,
@@ -231,6 +232,13 @@ def _task_state(row):
 class ContextService:
     def __init__(self, store):
         self.store = store
+
+    def recent_dialogue(self, sid, user):
+        """Shared session context, with source IDs and whole exchanges retained."""
+        with self.store.transaction(read_only=True) as tx:
+            control = self.store._control(tx, sid, user)
+            messages = _recent(_messages(tx, sid, None, ceiling=control['sequence'], descending=True))
+            return [dict(session_id=sid, **message) for message in messages]
 
     def build(self, sid, user, task_id=None, query=''):
         from app.support.store import SupportError

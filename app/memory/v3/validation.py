@@ -1,3 +1,4 @@
+# 文件说明：验证跨消息逐字证据、用户归属与来源时序，拒绝拼接或失效引用。
 """Validate exact, authenticated multi-message evidence without splicing quotes."""
 from dataclasses import dataclass
 from hashlib import sha256

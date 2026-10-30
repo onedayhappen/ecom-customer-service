@@ -1,3 +1,4 @@
+# 文件说明：按持久依赖、资源范围和并发额度调度事项，数据库授予执行资格。
 """Durable read-only scheduling. Redis carries hints; the database grants work."""
 from __future__ import annotations
 

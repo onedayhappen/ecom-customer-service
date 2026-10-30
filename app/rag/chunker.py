@@ -1,3 +1,4 @@
+# 文件说明：切分 Markdown 章节，结合审核侧文件生成保留条件的政策片段。
 """按 Markdown 二级标题切分知识库文档。
 
 切分策略：
@@ -49,7 +50,8 @@ def policy_chunks(kb_dir: Path) -> list[Chunk]:
     """Reviewed sidecars are required; complete sections keep exceptions intact.
 
     A sidecar is `name.policy.json` next to `name.md`. It is authored by the
-    knowledge operator, never extracted from a customer upload or by a model.
+    repository's reviewed publishing workflow, never inferred at runtime or
+    extracted from a customer upload.
     """
     import json
     from app.rag.policy import PolicyMetadata, PolicyError, digest
@@ -63,6 +65,8 @@ def policy_chunks(kb_dir: Path) -> list[Chunk]:
         if not sidecar.is_file() or sidecar.resolve().parent != root:
             raise PolicyError('policy_metadata_missing')
         metadata = PolicyMetadata.model_validate_json(sidecar.read_text(encoding='utf-8'))
+        if metadata.source_uri.startswith('repo:') and metadata.source_uri != 'repo:app/rag/knowledge/' + path.name:
+            raise PolicyError('policy_source_mismatch')
         identity = (metadata.source_id, metadata.version)
         if identity in identities:
             raise PolicyError('duplicate_policy_version')

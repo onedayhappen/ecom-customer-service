@@ -1,3 +1,4 @@
+# 文件说明：按字段白名单投影人工交接事实，保留回执范围和必要限制。
 """Bounded, field-allowlisted handover facts, preserving receipt object structure.
 
 This is a historical projection for staff, not evidence authorizing another write.

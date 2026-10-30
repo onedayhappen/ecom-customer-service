@@ -1,3 +1,4 @@
+# 文件说明：运行后台维护，归档终态任务并推进摘要、进度等维护工作。
 """Compact old terminal job bodies outside the API/dispatcher hot paths."""
 import argparse
 import logging

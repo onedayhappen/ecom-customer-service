@@ -1,3 +1,4 @@
+# 文件说明：在隔离 MySQL 中测试大集合 SQL 分页、全量汇总与用户隔离。
 """Real MySQL scale, isolation and aggregate regressions for collection reads."""
 from datetime import timedelta
 from decimal import Decimal

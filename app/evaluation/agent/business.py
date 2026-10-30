@@ -1,3 +1,4 @@
+# 文件说明：为 Agent 评测提供有状态业务替身，按配置查询和变更隔离对象。
 """Stateful external-service substitute; production confirmation remains in charge."""
 from copy import deepcopy
 from contextlib import contextmanager

@@ -1,3 +1,4 @@
+# 文件说明：按用户迁移状态选择 v3 记忆路径，防止回退到旧遗忘前快照。
 """A migrated user cannot fall back to a stale pre-forgetting snapshot."""
 from app.config.settings import settings
 

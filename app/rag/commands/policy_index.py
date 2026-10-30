@@ -1,4 +1,5 @@
-"""Publish, roll back or revoke reviewed policy indexes; never edits a live collection."""
+# 文件说明：提供审核政策索引的发布、核验、回退与来源撤回命令。
+"""Publish, verify, roll back or revoke reviewed policy indexes."""
 import argparse
 import json
 from pathlib import Path
@@ -17,6 +18,7 @@ def main():
     parser.add_argument('--collection', default=settings.chroma_collection)
     sub = parser.add_subparsers(dest='action', required=True)
     sub.add_parser('publish')
+    sub.add_parser('verify')
     rollback = sub.add_parser('rollback')
     rollback.add_argument('generation')
     revoke = sub.add_parser('revoke')
@@ -32,6 +34,11 @@ def main():
             provider=settings.embedding_provider, local_model_path=root / settings.local_embedding_model_path)
         if args.action == 'rollback':
             index.activate(args.generation, expected_revision=index.revision(), model=embedder.index_identity)
+        elif args.action == 'verify':
+            from app.rag.chunker import policy_chunks
+            result = index.verify_corpus(policy_chunks(args.kb_dir), embedder.index_identity)
+            print(json.dumps(result, ensure_ascii=False))
+            return
         else:
             updater = KnowledgeBaseUpdater(args.kb_dir, root / settings.kb_manifest_path, embedder, backend=None)
             updater.publish_policies(index)

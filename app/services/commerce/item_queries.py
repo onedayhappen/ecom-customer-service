@@ -1,3 +1,4 @@
+# 文件说明：为资源摘要提供完整商品行查询，逐页校验归属和查询范围。
 """Complete, owner-checked item collections behind compact resource summaries."""
 from app.services.commerce.common import BusinessError, decoded, ref, unref
 

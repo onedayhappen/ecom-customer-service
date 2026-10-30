@@ -1,3 +1,4 @@
+# 文件说明：定义静态与动态评测题包、预算、证据、评分及采集记录的严格契约。
 """Version 4 dynamic scenarios; version 3 static scenarios remain supported."""
 from hashlib import sha256
 import json

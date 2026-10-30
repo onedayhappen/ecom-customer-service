@@ -1,3 +1,4 @@
+# 文件说明：测试澄清问题发布、版本匹配、来源保留和回答消费。
 """Exercise the real publisher/association boundary, including legacy menus."""
 import json
 from concurrent.futures import ThreadPoolExecutor

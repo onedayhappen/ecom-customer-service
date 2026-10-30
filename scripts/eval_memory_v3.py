@@ -1,3 +1,4 @@
+# 文件说明：在隔离会话和存储中调用真实模型，评测 v3 记忆归档与提取。
 """Isolated live-model memory evaluation: 10 archives, 10 user turns per archive.
 
 This exercises extraction and durable memory, not commerce/task-agent replies.

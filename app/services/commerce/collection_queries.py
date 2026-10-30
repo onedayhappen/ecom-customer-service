@@ -1,3 +1,4 @@
+# 文件说明：实现订单、持券及售后等集合的 SQL 分页、批量关联和完整汇总。
 """Bounded collection reads; aggregates always cover the full matching collection."""
 from decimal import Decimal
 

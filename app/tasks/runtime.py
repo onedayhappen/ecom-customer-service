@@ -1,3 +1,4 @@
+# 文件说明：绑定当前执行事项的请求级上下文，校验工具调用的事项范围。
 """Request-local binding to the single task currently being executed."""
 from contextlib import contextmanager
 from contextvars import ContextVar

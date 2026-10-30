@@ -1,3 +1,4 @@
+# 文件说明：在隔离 PostgreSQL 和 Redis 多进程中测试共享限流的原子性。
 """Opt-in REAL PostgreSQL/Redis process tests; no FLUSHDB or business DB.
 
 Use deploy/compose.integration.yml and ECOM_INTEGRATION=1. Each Redis test uses

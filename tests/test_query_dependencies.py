@@ -1,3 +1,4 @@
+# 文件说明：测试业务读取回执作为持久事项依赖的校验和释放条件。
 """Current read contracts must survive durable dependency scheduling."""
 import json
 

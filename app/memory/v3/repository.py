@@ -1,3 +1,4 @@
+# 文件说明：在用户级版本约束下原子提交记忆、回执和处理检查点。
 """User-serialized commits; receipts, checkpoints and facts share one transaction."""
 from dataclasses import asdict
 from copy import deepcopy

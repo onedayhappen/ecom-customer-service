@@ -1,3 +1,4 @@
+# 文件说明：测试流程放量与切换对旧执行、确认凭据和业务回执的隔离。
 """Cutover must fence old work without losing accepted input or business facts."""
 from concurrent.futures import ThreadPoolExecutor
 import json

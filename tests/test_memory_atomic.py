@@ -1,3 +1,4 @@
+# 文件说明：测试原子偏好规范化、语义范围、否定和逐字证据约束。
 """Atomic preferences: conservative semantics, source binding and segmentation."""
 import json
 from types import SimpleNamespace

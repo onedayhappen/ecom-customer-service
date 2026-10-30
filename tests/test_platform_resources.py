@@ -1,3 +1,4 @@
+# 文件说明：测试分层额度、资源租约、通知合并和远程检索服务契约。
 """Resource isolation and remote retrieval contracts."""
 from tests.intake_fixtures import receive_message
 import asyncio

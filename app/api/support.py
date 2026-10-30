@@ -1,3 +1,4 @@
+# 文件说明：提供人工工单、会话历史、控制权切换及 SSE 事件订阅接口。
 """Human support API. Identity comes from AuthMiddleware; roles from the DB."""
 import asyncio
 import json

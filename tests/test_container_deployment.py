@@ -1,3 +1,4 @@
+# 文件说明：测试容器验收脚本的数据隔离、挂载限制与迁移退出状态。
 """Guard the acceptance runner's isolation from real deployment data."""
 import json
 import sys

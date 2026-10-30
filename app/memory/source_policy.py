@@ -1,3 +1,4 @@
+# 文件说明：验证派生记忆对应的原始消息归属、公开范围及来源有效性。
 """Validate derived memory against owned, still visible original messages.
 
 The memory store and vector/cache layers are hints. This check always reads the

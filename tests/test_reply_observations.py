@@ -1,3 +1,4 @@
+# 文件说明：回放已记录失败答复，测试发布屏障与回执范围内的结论选择。
 """Actual recorded failures, publication fences, and typed evidence boundaries."""
 import json
 from pathlib import Path

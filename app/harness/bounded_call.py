@@ -1,3 +1,4 @@
+# 文件说明：限制阻塞模型及只读调用的数量和等待时间，保留在途资源占用。
 """Bound blocking read/model calls without releasing occupied resources early."""
 from concurrent.futures import Future, TimeoutError
 from contextvars import copy_context

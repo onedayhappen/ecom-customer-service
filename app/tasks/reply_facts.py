@@ -1,3 +1,4 @@
+# 文件说明：将工具回执压缩为带类型的答复事实和待补问题。
 """Small, typed projections of tool receipts; model prose is never a receipt."""
 from decimal import Decimal, InvalidOperation
 import re

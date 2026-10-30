@@ -1,3 +1,4 @@
+# 文件说明：并行预备有界查询改写，并在批次或状态改变时丢弃旧结果。
 """Bounded, disposable look-ahead for raw-dialogue rewriting.
 
 Only association owns/acknowledges messages. This cache cannot commit decisions;

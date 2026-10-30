@@ -1,3 +1,4 @@
+# 文件说明：绑定售后、退款及服务申请相关工具，复用业务规则和确认流程。
 """Typed tool adapters; business logic lives in commerce services."""
 from app.tools.dispatch import bind
 

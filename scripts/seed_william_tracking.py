@@ -1,3 +1,4 @@
+# 文件说明：按已登记业务进度补充指定演示用户的包裹与物流事件。
 """Fill recent William demo parcel histories up to their recorded progress.
 
 Default previews; --apply inserts explicitly simulated events for orders created

@@ -1,3 +1,4 @@
+# 文件说明：应用会员相关结构并初始化演示身份、订阅和会员券权益。
 """Install membership-only migration and seed ten explicit demo identities.
 
 Preview by default. --apply is atomic for data and refuses partially populated

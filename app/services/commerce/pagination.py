@@ -1,3 +1,4 @@
+# 文件说明：实现签名快照游标和 SQL 键集分页，绑定身份与查询参数。
 """Signed snapshot and SQL keyset pagination with a shared cursor contract."""
 
 import base64

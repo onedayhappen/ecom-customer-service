@@ -1,3 +1,4 @@
+# 文件说明：保留旧业务 DAO 的兼容读写封装，并限制退役表结构的使用。
 """Legacy commerce DAO retained temporarily for tool refactoring.
 
 Its former ``commerce_*`` tables have been dropped; schema creation is disabled.

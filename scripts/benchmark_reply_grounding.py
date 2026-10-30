@@ -1,3 +1,4 @@
+# 文件说明：离线回放答复证据检查用例，测量本地校验开销。
 """Offline replay and local overhead measurement; no model or business DB calls.
 
 Run from the repository root:

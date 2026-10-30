@@ -1,3 +1,4 @@
+# 文件说明：定义意图、执行结果和能力分类等共享枚举标签。
 """Stable labels for execution results and stored records; labels grant no authority."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# 文件说明：将当前原话改写为召回查询，并在输出无效时保留原始请求。
 """Plain-text query rewriting; original messages remain authoritative."""
 import json
 

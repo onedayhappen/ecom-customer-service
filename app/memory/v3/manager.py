@@ -1,3 +1,4 @@
+# 文件说明：以兼容读取接口封装 v3 记忆管理与检索，供客服调用链使用。
 """Compatibility facade: customer-service callers keep their existing read API."""
 from app.config.settings import settings
 from app.memory.ltm_manager import LongTermMemoryManager

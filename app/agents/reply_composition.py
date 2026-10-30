@@ -1,3 +1,4 @@
+# 文件说明：让模型从程序提供的有效结论中选择答复内容，并校验选择格式。
 """One bounded, tool-free call to select code-owned evidence conclusions."""
 from copy import deepcopy
 import json

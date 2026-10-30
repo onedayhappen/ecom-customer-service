@@ -1,3 +1,4 @@
+# 文件说明：在隔离 MySQL 中测试新人券、领取额度、库存和活动叠加约束。
 """Coupon entitlement and stock checks against disposable MySQL only."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta

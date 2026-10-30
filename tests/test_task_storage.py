@@ -1,3 +1,4 @@
+# 文件说明：测试多事项和跨会话持久化、用户权限与版本约束。
 """Storage contracts against SQLite and opt-in, isolated real PostgreSQL."""
 from tests.intake_fixtures import receive_message
 from tests.legacy_fixtures import create_legacy_task

@@ -1,3 +1,4 @@
+# 文件说明：回放真实用户原话和已记录提取响应，测试记忆语义回归。
 """Replay recorded user messages AND original extraction responses, without an LLM."""
 from copy import deepcopy
 from pathlib import Path

@@ -1,3 +1,4 @@
+# 文件说明：测试长期事实的相关性召回与偏好过期行为。
 """长期事实记忆检索与过期的无网络测试。"""
 
 from datetime import datetime, timedelta

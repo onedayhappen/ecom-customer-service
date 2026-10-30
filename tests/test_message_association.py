@@ -1,3 +1,4 @@
+# 文件说明：测试消息到事项的结构化关联、原话来源与候选校验。
 import json
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace

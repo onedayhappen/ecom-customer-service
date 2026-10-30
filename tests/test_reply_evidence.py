@@ -1,3 +1,4 @@
+# 文件说明：回放业务案例，测试公开回复不能夸大空结果或不完整证据。
 """Semantic publication regressions, including two unmodified evaluation cases."""
 from copy import deepcopy
 import json

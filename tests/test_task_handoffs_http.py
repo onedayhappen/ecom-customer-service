@@ -1,3 +1,4 @@
+# 文件说明：通过真实 API 进程和隔离 PostgreSQL 测试跨实例交接及恢复。
 """Handover lifecycle through real API processes and isolated PostgreSQL."""
 import os
 from types import SimpleNamespace

@@ -1,3 +1,4 @@
+# 文件说明：转换 mall 示例地址和历史订单，默认预览并按参数执行导入。
 """Import mall example addresses and non-deleted historical orders; dry run by default."""
 from __future__ import annotations
 

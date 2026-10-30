@@ -1,3 +1,4 @@
+# 文件说明：测试售后分包、商品数量、渠道回执及完成状态的数据库一致性。
 """After-sale parcel and completion regressions in disposable MySQL."""
 from datetime import timedelta
 import pytest

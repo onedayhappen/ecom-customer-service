@@ -1,3 +1,4 @@
+# 文件说明：校验工具输入并注入服务端身份，分发业务查询、准备和事项流程。
 """Schema validation and service dispatch shared by domain entry points."""
 import json
 import re
@@ -52,12 +53,7 @@ def flow(name,args,ctx):
     if name=='inspect_image':
         return ok(ctx.inspect_image(**args))
     if name=='read_task_context':
-        result=ctx.read_progress({})
-        with ctx.runs.store.transaction(read_only=True) as tx:
-            result['handoffs']=tx.all('''SELECT t.ticket_id,t.status,t.assignee,t.created_at,t.resolved_at
-                FROM task_handoffs h JOIN support_tickets t ON t.ticket_id=h.ticket_id
-                WHERE h.user_id=? AND h.task_id=? ORDER BY t.created_at DESC LIMIT 20''',(ctx.runs.user,ctx.record.task_id))
-        return ok(result)
+        return ok(ctx.read_progress({}))
     if name=='ask_user':
         if re.search(r'密码|验证码|银行卡号|密钥|\btoken\b|api.?key',args['question'],re.I):
             raise BusinessError('invalid_arguments','不能索要登录或支付凭证')

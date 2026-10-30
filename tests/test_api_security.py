@@ -1,3 +1,4 @@
+# 文件说明：测试 API 登录鉴权、令牌校验和用户订单访问隔离。
 """FastAPI 认证与订单归属隔离测试，不调用 LLM。"""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# 文件说明：定义证据、作用范围、记忆变更及冲突等严格数据契约。
 """Wire contracts contain no caller-controlled identity or timestamps."""
 from typing import Any, Literal
 

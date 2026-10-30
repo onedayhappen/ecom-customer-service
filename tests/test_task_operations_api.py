@@ -1,3 +1,4 @@
+# 文件说明：测试操作接口的鉴权、固定参数、回执重读及取消控制。
 from app.config.settings import settings
 from app.support.runtime import get_store
 from app.tasks.operations import TaskOperations

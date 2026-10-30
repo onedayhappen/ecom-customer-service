@@ -1,3 +1,4 @@
+# 文件说明：装配 FastAPI 应用、中间件、路由、异常处理与健康检查。
 """API admission, authenticated history and health; execution belongs to Workers."""
 from contextlib import asynccontextmanager
 import asyncio

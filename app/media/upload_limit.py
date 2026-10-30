@@ -1,3 +1,4 @@
+# 文件说明：在 multipart 上传落盘前限制请求体大小，保护图片接收资源。
 """Bound the multipart body before Starlette spools uploaded files to disk."""
 from fastapi import HTTPException
 from starlette.responses import JSONResponse

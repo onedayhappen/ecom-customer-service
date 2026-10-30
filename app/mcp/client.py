@@ -1,3 +1,4 @@
+# 文件说明：在受控后台事件循环中发现并调用 MCP 只读工具，处理超时与关闭。
 """Synchronous MCP reads with an owned background loop and bounded cleanup."""
 import asyncio
 import json

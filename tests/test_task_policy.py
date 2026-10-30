@@ -1,3 +1,4 @@
+# 文件说明：测试政策适用上下文的可信时间、业务范围和商品行证据。
 """Historical policy evidence keeps its trusted scope after tool retirement."""
 from types import SimpleNamespace
 

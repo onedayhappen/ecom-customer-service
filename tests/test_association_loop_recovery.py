@@ -1,3 +1,4 @@
+# 文件说明：测试关联失败后的有限恢复，防止无依据历史选择循环。
 """Provider/validation failures must not manufacture historical choice loops."""
 from copy import deepcopy
 import json

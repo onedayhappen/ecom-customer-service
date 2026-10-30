@@ -1,3 +1,4 @@
+# 文件说明：规范化原子用户偏好，校验语义、作用范围和原话来源。
 """Strict atomic user preferences, deterministic normalization and source checks."""
 from __future__ import annotations
 

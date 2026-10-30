@@ -1,3 +1,4 @@
+# 文件说明：生成并校验绑定固定事项操作的确认凭据摘要。
 """Credentials bound to immutable task operations; authorization stays in TaskOperations."""
 import hashlib
 import hmac

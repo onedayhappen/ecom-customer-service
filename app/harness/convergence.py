@@ -1,3 +1,4 @@
+# 文件说明：按模型步数与重复工具调用检测 ReAct 循环是否需要停止。
 """Bound ReAct loops by model steps and repeated tool calls."""
 
 from __future__ import annotations

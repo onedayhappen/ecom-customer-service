@@ -1,3 +1,4 @@
+# 文件说明：测试回复实体提取、工具证据匹配和无依据陈述的保守替换。
 """Evidence Pack 校验：实体提取、证据比对与保守替换。"""
 
 from __future__ import annotations

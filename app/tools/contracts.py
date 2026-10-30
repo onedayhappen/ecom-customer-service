@@ -1,3 +1,4 @@
+# 文件说明：定义公开工具的严格输入，限制额外字段、对象引用和参数组合。
 """Typed public inputs. Identity, prices, authority and request IDs are never model inputs."""
 from datetime import datetime
 from decimal import Decimal

@@ -1,3 +1,4 @@
+# 文件说明：将本人业务查询结果转换为有限范围的外部进度证据。
 """Translate owned business reads into narrowly scoped progress, never writes.
 
 Only adapters called by the server produce observations. There is deliberately

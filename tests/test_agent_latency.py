@@ -1,3 +1,4 @@
+# 文件说明：测试回复计时边界、异常样本处理与质量及延迟汇总。
 """Latency boundaries and reporting with deterministic clocks and real Agent execution."""
 from copy import deepcopy
 from types import SimpleNamespace

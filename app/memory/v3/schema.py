@@ -1,3 +1,4 @@
+# 文件说明：定义与支持库共享的 v3 记忆事实、版本、任务及归档表结构。
 """Shared support database: SQLite tests and PostgreSQL deployment."""
 SCHEMA = (
     '''CREATE TABLE IF NOT EXISTS memory_v3_users (

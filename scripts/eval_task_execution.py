@@ -1,3 +1,4 @@
+# 文件说明：以本地业务替身评测真实模型的事项执行和工具使用。
 """Opt-in real-model smoke test; every business tool is a local fixture."""
 import argparse
 from datetime import datetime, timezone

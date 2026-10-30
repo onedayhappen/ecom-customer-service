@@ -1,3 +1,4 @@
+# 文件说明：定义供应商回执契约与渠道网关，使用服务端配置管理外部调用。
 """Configured provider gateway. Never accept endpoints or credentials from model arguments."""
 from contextlib import contextmanager
 from contextvars import ContextVar

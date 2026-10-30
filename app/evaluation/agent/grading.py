@@ -1,3 +1,4 @@
+# 文件说明：执行事实检查与 rubric 汇总，校验评分证据并区分失败和未评分。
 """Fail-closed scenario grading. No production claim renderer is used as an oracle."""
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation

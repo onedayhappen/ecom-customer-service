@@ -1,3 +1,4 @@
+# 文件说明：将业务事实投影为客户页面所需的资料、订单与优惠券视图。
 """Customer-facing read models, independent of HTTP and tool result envelopes."""
 
 from app.data.membership_store import membership_facts

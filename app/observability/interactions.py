@@ -1,3 +1,4 @@
+# 文件说明：将持久诊断事件投影为每次交互一条的脱敏 JSONL 日志。
 """Durable diagnostic journal projected into one JSONL row per interaction.
 
 The support event transaction defines message/reply boundaries. Model and tool

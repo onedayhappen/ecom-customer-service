@@ -1,3 +1,4 @@
+# 文件说明：测试长期记忆的跨进程合并、用户隔离、来源顺序与崩溃安全。
 """Durable user isolation, source ordering and crash-safe memory merging."""
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy

@@ -1,3 +1,4 @@
+# 文件说明：持久管理用户事项、跨会话关系、版本更新和来源记录。
 """User-owned matters and their provenance, independent of a chat session.
 
 Construct with the authenticated identity, never a user_id from model output or

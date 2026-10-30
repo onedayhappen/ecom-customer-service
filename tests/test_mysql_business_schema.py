@@ -1,3 +1,4 @@
+# 文件说明：在隔离 MySQL 中测试当前业务迁移的幂等性和订单归属。
 """Opt-in integration check for the current MySQL business schema."""
 
 from __future__ import annotations

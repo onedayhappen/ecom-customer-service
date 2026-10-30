@@ -1,3 +1,4 @@
+# 文件说明：构造历史数据库结构与记录，供兼容迁移测试使用。
 """Historical database fixtures; never exposed as an application execution path."""
 from uuid import uuid4
 from app.support.store import now

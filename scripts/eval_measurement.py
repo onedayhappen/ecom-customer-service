@@ -1,3 +1,4 @@
+# 文件说明：记录合成评测的调用与耗时统计，避免写入提示词或凭据。
 """Measure synthetic evaluations without recording prompts or credentials."""
 import time
 

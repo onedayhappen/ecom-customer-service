@@ -1,3 +1,4 @@
+# 文件说明：根据事实版本引用构建可重建的热点画像与主题摘要视图。
 """Rebuildable hot profiles and topic summaries backed by fact/version refs."""
 from __future__ import annotations
 

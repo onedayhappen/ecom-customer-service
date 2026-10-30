@@ -1,3 +1,4 @@
+# 文件说明：测试商品搜索结论与查询范围，阻止把无命中扩大为商品不存在。
 """Archived query receipts plus deliberately bad final-model outputs.
 
 The two original conversations expose query spelling mismatches; they did not

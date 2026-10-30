@@ -1,3 +1,4 @@
+# 文件说明：测试当前查询回执驱动的持久等待、来源失效和生产读取适配。
 """Query-based waits through current receipts and the production MySQL reader."""
 import json
 

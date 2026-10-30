@@ -1,3 +1,4 @@
+# 文件说明：提供正常、阻塞、异常和资源消耗等子进程测试入口。
 """ForkRunner 示例子进程入口（跨平台安全：spawn 模式可被独立导入）。
 
 这些函数是 :class:`~app.harness.fork_runner.ForkRunner` 的 ``entry``

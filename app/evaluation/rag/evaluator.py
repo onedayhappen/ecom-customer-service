@@ -1,3 +1,4 @@
+# 文件说明：采集当前政策检索结果或回放轨迹，分别执行检索与回答评测。
 """Collect current policy results or replay captured traces, then grade separately."""
 import time
 

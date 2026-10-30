@@ -1,3 +1,4 @@
+# 文件说明：按明确需求读取订单候选，为事项关联补充合法业务线索。
 """Lazy read adapter for explicitly requested order candidate enrichment."""
 
 

@@ -1,3 +1,4 @@
+# 文件说明：定义单事项执行输入、调用预算及进度更新的严格契约。
 """The bounded input and progress contracts for single-task execution."""
 import re
 import json

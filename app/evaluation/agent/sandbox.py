@@ -1,3 +1,4 @@
+# 文件说明：创建一次性 SQLite 支持库和评测消息，隔离正式业务数据。
 """Sequential, temporary SQLite scenarios. Never use a configured business store."""
 from contextlib import ExitStack, contextmanager
 from pathlib import Path

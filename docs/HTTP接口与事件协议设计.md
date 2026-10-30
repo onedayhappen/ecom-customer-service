@@ -30,6 +30,44 @@ API 负责认证、接收、查询、控制、确认及事件传输。模型执�
 
 `action=cancel` 控制客服事项，不等于取消订单；订单取消须走业务确认。明确转人工可走控制入口，模糊的自然语言停止要求不能直接撤销任意事项。
 
+### 请求与回执示例
+
+以下使用示例 UUID。在已登录并满足 CSRF 校验的客户端中发送：
+
+```http
+POST /api/v1/task-messages
+Content-Type: application/json
+
+{
+  "session_id": "11111111-1111-4111-8111-111111111111",
+  "request_id": "22222222-2222-4222-8222-222222222222",
+  "message": "查询订单的物流进度",
+  "attachment_ids": []
+}
+```
+
+接收成功返回 HTTP 202。以下假设该消息对应事件序号为 7：
+
+```json
+{
+  "session_id": "11111111-1111-4111-8111-111111111111",
+  "request_id": "22222222-2222-4222-8222-222222222222",
+  "sequence": 7,
+  "status": "accepted"
+}
+```
+
+`GET /api/v1/task-messages/{session_id}?after=0` 查询接收与关联位置，返回 `received_sequence`、`associated_sequence`、`messages`、`automatic_processing` 和 `processing` 等字段。两个序号分别是已接收位置和已完成关联的位置；关联完成后仍可能存在执行或待发布回复。
+
+| `processing` | 服务端判断 |
+| --- | --- |
+| `processing` | 有未关联输入或活跃执行；或者没有人工/用户等待，但仍有待消费执行结果 |
+| `waiting_human` | 没有未关联输入及活跃执行，且事项仍由人工接管 |
+| `waiting_user` | 没有未关联输入、活跃执行或人工接管，且存在待用户回答的事项或关联澄清 |
+| `idle` | 当前没有上述工作或等待 |
+
+这些值是查询时的流程视图，不是单向状态机；新增消息或人工控制可以改变下一次读取结果。
+
 ## 历史快照与 SSE
 
 1. 客户端读取 `transcript`，取得可见历史、分页信息及一致的事件游标。
@@ -42,11 +80,40 @@ Redis 通知只唤醒查询，不携带唯一的消息事实。定时数据库�
 
 客服读取携带 `staff` 与 `ticket_id` 时仍由服务端检查角色、负责范围和工单历史上限。内部事件不会因为共用连接协议而变成客户可见内容。
 
+### 事件字段与推送示例
+
+事件行以 `session_id + sequence` 标识，包含 `event_key`、`kind`、`actor`、`visibility`、`payload` 和 `created_at`。`payload` 在 API 返回时已解析为对象；客户端按 `kind` 解释，按会话和序号去重。
+
+| `kind` 示例 | 载荷含义 | 产生位置 |
+| --- | --- | --- |
+| `message` | `role/content` 及请求、附件或事项等关联字段 | 消息接收、回复发布、人工回复 |
+| `support_state` | 控制模式、工单状态及相应控制信息 | 转人工、领取与恢复 |
+| `operation_prepared` | `operation_id/task_id/task_version`，内部事件 | 准备业务操作 |
+| `operation_started/operation_receipt` | 操作开始及提交结果，内部事件 | 用户确认与业务提交 |
+| `task_operation_result` | 操作回执及对应事项版本，内部事件 | 业务回执落库 |
+
+上表也列出存储层的内部事件，客户 SSE 会过滤它们。确认卡片通过已鉴权的操作查询接口读取，不从内部事件载荷提取确认令牌。
+
+以下表示客户端已读取到序号 6，随后收到一批包含序号 7 的更新；示例仅投影 `message.payload` 的核心字段，真实载荷还带请求及控制关联字段：
+
+```text
+retry: 3000
+
+id: 7
+event: update
+data: {"events":[{"session_id":"11111111-1111-4111-8111-111111111111","sequence":7,"event_key":"intake:22222222-2222-4222-8222-222222222222","kind":"message","actor":"example-user","visibility":"public","payload":{"role":"user","content":"查询订单的物流进度"},"created_at":"2026-10-30T08:00:00+00:00"}],"cursor":7,"state":{"session_id":"11111111-1111-4111-8111-111111111111","mode":"bot","control_version":1,"cursor":7,"ticket":null}}
+
+: heartbeat
+
+```
+
+SSE `event` 是传输类型，JSON 内的 `kind` 是业务事件类型。即使这一批没有客户可见事件，游标也可能跨过内部事件而推进。`transcript` 的 `next_before` 用于向前读取旧消息，`cursor` 用于从快照位置继续订阅，两者不能互换。前端合并实现见 [conversationState.js](../frontend/src/conversationState.js)。
+
 ## 开票进度与文件
 
 `GET /api/commerce/invoice-requests/{invoice_id}` 核验登录用户及申请归属，返回申请状态和已开票据摘要，包含演示来源及文件可用性。确认卡片据此轮询后续开票进度；原业务操作提交成功不表示票据已经生成。
 
-文件下载按 `issued_invoice_id` 再核验本人申请、文件状态、私有路径范围及摘要。接口不接受任意文件 URL，模拟 PDF 明确标为演示票据；文件生成与恢复见 [本地演示闭环方案](售后与开票本地演示闭环方案.md)。
+文件下载按 `issued_invoice_id` 再核验本人申请、文件状态、私有路径范围及摘要。接口不接受任意文件 URL，模拟 PDF 明确标为演示票据；文件生成与恢复见 [本地模拟渠道设计](本地模拟渠道设计.md)。
 
 ## 错误、健康与兼容边界
 

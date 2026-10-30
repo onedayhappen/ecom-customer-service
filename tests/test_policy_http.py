@@ -1,3 +1,4 @@
+# 文件说明：通过独立检索进程测试政策鉴权、范围、撤回与远端失败处理。
 """Real HTTP and separate retrieval processes with offline Chroma fixtures."""
 from contextlib import ExitStack
 from multiprocessing import get_context

@@ -1,3 +1,4 @@
+# 文件说明：测试人工工单的领取、转派、私有备注和并发控制不变量。
 """Human support invariants against a real transactional database, no LLM."""
 from tests.intake_fixtures import receive_message
 from concurrent.futures import ThreadPoolExecutor

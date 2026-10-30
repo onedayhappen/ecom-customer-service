@@ -1,3 +1,4 @@
+# 文件说明：测试图片上传、发送、预览、重试与撤回接口及权限限制。
 from uuid import uuid4
 
 import pytest

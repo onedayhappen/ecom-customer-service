@@ -1,3 +1,4 @@
+# 文件说明：构造可核验的固定办理参数，检查金额、订单范围与准备条件。
 """Prepare only operations the business adapter can verify and submit exactly."""
 from decimal import Decimal, InvalidOperation
 import json

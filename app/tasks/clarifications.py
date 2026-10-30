@@ -1,3 +1,4 @@
+# 文件说明：维护事项关联澄清的版本、发布状态与用户回答匹配规则。
 """One version contract for publishing and answering association questions."""
 from dataclasses import dataclass
 import json

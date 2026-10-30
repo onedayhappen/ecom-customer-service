@@ -1,3 +1,4 @@
+# 文件说明：定义图片资产、消息绑定、识别任务及视觉观察相关表结构。
 SCHEMA = (
     """CREATE TABLE IF NOT EXISTS media_assets (
         attachment_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, origin_session_id TEXT NOT NULL,

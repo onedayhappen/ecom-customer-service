@@ -1,3 +1,4 @@
+# 文件说明：测试原子事实更新顺序、同槽作用范围、撤回和历史版本保留。
 """Atomic version updates preserve event order, constraints and cold facts."""
 from datetime import datetime, timedelta, timezone
 

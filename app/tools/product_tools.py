@@ -1,3 +1,4 @@
+# 文件说明：绑定商品、规格与库存等查询工具，复用统一参数校验和分发。
 """Typed tool adapters; business logic lives in commerce services."""
 from app.tools.dispatch import bind
 

@@ -1,3 +1,4 @@
+# 文件说明：在提供商调用前校验完整上下文预算和工具协议，按场景裁剪或停止。
 """Bound provider requests without changing the persisted conversation/evidence.
 
 Fixed instructions, the latest user request and current task state are pinned.

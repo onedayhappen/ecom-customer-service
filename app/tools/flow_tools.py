@@ -1,3 +1,4 @@
+# 文件说明：绑定补问、人工交接、记忆和图片等事项流程工具入口。
 """Typed tool adapters; business logic lives in commerce services."""
 from app.tools.dispatch import bind
 

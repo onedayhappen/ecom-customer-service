@@ -1,3 +1,4 @@
+# 文件说明：测试持续消息接口的功能开关、鉴权接收与数据库失败响应。
 from uuid import uuid4
 
 from app.config.settings import settings

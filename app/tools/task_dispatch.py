@@ -1,3 +1,4 @@
+# 文件说明：将事项工具分流至受控 MCP 读取或本地流程，维护来源与失败边界。
 """Default task dispatch: scoped MCP reads, local task/confirmation workflows."""
 from app.config.settings import settings
 from app.runtime.concurrency import check_execution_lease

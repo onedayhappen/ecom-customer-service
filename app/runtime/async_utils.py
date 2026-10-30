@@ -1,3 +1,4 @@
+# 文件说明：在异步取消时安全收尾线程操作，避免提前释放在途资源。
 """Cancellation-safe finalization of bounded threaded resource operations."""
 import asyncio
 

@@ -1,3 +1,4 @@
+# 文件说明：从退款和履约回执构造限定范围的陈述，不发起外部调用。
 """Receipt-scoped statements for fulfillment and refunds, without I/O or an LLM.
 
 Absence in a partial read is an observation, not a negative real-world fact.

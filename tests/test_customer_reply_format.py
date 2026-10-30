@@ -1,3 +1,4 @@
+# 文件说明：测试客户回复简洁性、字段投影及原始业务证据完整保留。
 """Customer-visible replies stay concise while original evidence stays intact."""
 from copy import deepcopy
 import json

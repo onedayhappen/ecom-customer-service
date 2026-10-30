@@ -1,4 +1,5 @@
-"""Operator-supplied applicability; no model may invent these fields."""
+# 文件说明：定义审核元数据和查询范围，校验政策内容、安全性及适用条件。
+"""Reviewed publication metadata; runtime models never infer applicability."""
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
@@ -35,9 +36,15 @@ class PolicyMetadata(BaseModel):
     @field_validator('source_uri')
     @classmethod
     def safe_uri(cls, value):
+        # A repository reference identifies reviewed project guidance, not a
+        # remote website. It is never fetched or treated as an arbitrary path.
+        if value.startswith('repo:'):
+            if not re.fullmatch(r'repo:app/rag/knowledge/[a-z0-9][a-z0-9_-]*\.md', value):
+                raise ValueError('Invalid repository policy reference')
+            return value
         parsed = urlparse(value)
         if parsed.scheme not in {'https', 'http'} or not parsed.hostname or parsed.username or parsed.password:
-            raise ValueError('Source must be a public HTTP(S) reference without credentials')
+            raise ValueError('Source must be a repository policy reference or credential-free HTTP(S) URL')
         return value
 
     @field_validator('effective_from', 'effective_until')
@@ -78,13 +85,26 @@ SCOPE_FIELDS = ('platform_code', 'store_id', 'channel', 'category')
 _INJECTION = re.compile(
     r'忽略.{0,20}(?:指令|规则|提示)|系统提示词|开发者指令|你现在是.{0,12}(?:管理员|系统)|'
     r'(?:跳过|无需|绕过).{0,12}确认|(?:调用|执行).{0,12}(?:工具|SQL|shell)|'
+    r'免确认|不用[^，。；！？,;!?\n]{0,8}确认|永久.{0,8}授权|以后.{0,8}直接.{0,8}(?:退款|支付|提交)|'
     r'ignore.{0,20}(?:instructions|prompt)|system\s*prompt|developer\s*message|'
+    r'skip.{0,12}confirmation|without.{0,12}confirm|'
     r'<\|(?:system|im_start)\|>|(?:api[_ -]?key|password)\s*[:=]', re.I)
 
 
+# Policy prose legitimately describes passwords and verification codes. Do not
+# reuse the intentionally broad user-memory filter: reject credential values
+# and instruction patterns here, not ordinary security terminology.
+_CREDENTIAL = re.compile(
+    r'''(?:密码|口令|验证码|令牌|密钥|私钥|password|passwd|api[_ -]?key|access[_ -]?token|secret)\s*["']?\s*[:=：]\s*["']?\S+|'''
+    r'''(?:密码|口令|验证码|密钥)(?:为|是)\s*["']?[A-Za-z0-9+/_=-]{4,}|'''
+    r'\bbearer\s+[A-Za-z0-9._~+/=-]+|sk-[A-Za-z0-9_-]{12,}|'
+    r'-----BEGIN [A-Z ]*PRIVATE KEY-----|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+',
+    re.I,
+)
+
+
 def safe_clause(text):
-    from app.memory.source_policy import memory_safe
-    return isinstance(text, str) and memory_safe(text) and not _INJECTION.search(text)
+    return isinstance(text, str) and not _CREDENTIAL.search(text) and not _INJECTION.search(text)
 
 
 def digest(value):

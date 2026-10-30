@@ -1,3 +1,4 @@
+# 文件说明：通过离线 SQL 回归测试工具工作流、查询分页与公开字段范围。
 """Offline regressions for tool workflows; SQLite exercises portable read SQL only."""
 from contextlib import contextmanager
 import json

@@ -1,3 +1,4 @@
+# 文件说明：测试本地模拟渠道的持久事务、重复请求、故障恢复与私有票据。
 """The real MySQL application/provider transactions, files, and worker recovery."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta

@@ -1,3 +1,4 @@
+# 文件说明：按租约推进持久渠道请求，并关闭到期的本地未付款订单。
 """Lease-based provider processing and expiration of locally created unpaid orders."""
 from datetime import timedelta
 from decimal import Decimal

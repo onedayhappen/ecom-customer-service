@@ -1,3 +1,4 @@
+# 文件说明：以独立数据卷构建并检查真实 Compose 服务及部署恢复行为。
 """Build and verify the real Compose services with disposable data and offline keys.
 
 Never reads .env values, binds existing data, or exposes host ports. Only this

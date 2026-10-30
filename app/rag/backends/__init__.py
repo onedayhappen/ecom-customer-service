@@ -1,3 +1,4 @@
+# 文件说明：提供向量后端创建入口，组织抽象契约和 Chroma 实现。
 """向量后端：Chroma 向量数据库实现。"""
 
 from app.rag.backends.base import RetrievedChunk, VectorBackend

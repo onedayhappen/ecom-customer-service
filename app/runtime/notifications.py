@@ -1,3 +1,4 @@
+# 文件说明：持久登记并发布会话通知，在 API 进程中合并订阅唤醒。
 """Coalesced durable notifications; one Redis subscription per API process.
 
 Notifications carry no message content. They are hints: consumers always read

@@ -1,3 +1,4 @@
+# 文件说明：将真实 PostgreSQL 备份恢复到新隔离库，验证消息和业务回执。
 """Restore a real PostgreSQL dump into a new disposable database, never in place."""
 import os
 import subprocess

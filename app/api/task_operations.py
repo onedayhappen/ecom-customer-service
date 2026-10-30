@@ -1,3 +1,4 @@
+# 文件说明：提供固定业务操作的卡片查询、确认、取消和结果核实接口。
 """Fixed operation confirmation, never a client-selected business tool call."""
 import asyncio
 from uuid import UUID

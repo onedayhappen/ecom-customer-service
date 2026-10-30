@@ -1,3 +1,4 @@
+# 文件说明：测试长期记忆存储门面的缓存读取、版本一致性和仓储替换。
 """长期记忆 PostgreSQL/Redis 存储门面的无外部依赖测试。"""
 
 from __future__ import annotations

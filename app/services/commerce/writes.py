@@ -1,3 +1,4 @@
+# 文件说明：准备固定业务变更，并在事务内提交幂等操作、资源占用与回执。
 """Prepared mutations and transactional, request-bound business receipts."""
 import base64
 from datetime import timedelta

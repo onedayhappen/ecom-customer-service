@@ -1,3 +1,4 @@
+# 文件说明：构造并解析结构化事项关联提案，校验原话引用和待更新细节。
 """Structured association capability of the single customer-service Agent."""
 import json
 from typing import Literal

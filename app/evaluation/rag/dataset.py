@@ -1,3 +1,4 @@
+# 文件说明：定义 RAG 题集、相关性标注、政策回执及采集轨迹的数据契约。
 """Human-authored relevance labels and captured current-policy receipts."""
 from pathlib import Path
 from typing import Literal

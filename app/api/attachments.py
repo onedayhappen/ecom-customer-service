@@ -1,3 +1,4 @@
+# 文件说明：提供图片上传、鉴权读取、撤回及识别重试的 HTTP 接口。
 """Authenticated image uploads. Files are never exposed as a static directory."""
 import asyncio
 from typing import Literal

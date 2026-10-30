@@ -1,3 +1,4 @@
+# 文件说明：管理数据库中的持久任务接收、投递、租约执行和状态流转。
 """Durable admission, delivery and execution state in the conversation database.
 
 Worker reservations are database-owned. The retired chat broker is not used.

@@ -1,3 +1,4 @@
+# 文件说明：在最终发布前以有效回执核验关键业务陈述、金额与对象。
 """Local checks for critical claims in composed replies, using validated receipts.
 
 This is deliberately a bounded business guard, not a general semantic judge.

@@ -1,3 +1,4 @@
+# 文件说明：在一次性 SQLite 中回放已记录提案，验证真实关联重试逻辑。
 """Replay recorded proposals through real association code, with disposable SQLite.
 
 Loads only the pre-fix retry and order-read methods from --baseline for comparison.

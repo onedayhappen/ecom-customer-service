@@ -1,3 +1,4 @@
+# 文件说明：测试真实发布事务中的结论选择、状态变化、去重和失败回退。
 """Real publication transactions with deterministic reply models."""
 from concurrent.futures import ThreadPoolExecutor
 import json

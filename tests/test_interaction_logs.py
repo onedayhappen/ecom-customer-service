@@ -1,3 +1,4 @@
+# 文件说明：测试连续输入、执行结果、回复与异常在持久交互日志中的关联。
 import json
 import asyncio
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor

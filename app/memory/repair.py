@@ -1,3 +1,4 @@
+# 文件说明：提供旧预算偏好作用范围的显式幂等修复命令。
 """Explicit, idempotent maintenance for pre-fix unscoped budget versions.
 
 No model calls and no online-read migration. The default is a dry run; original

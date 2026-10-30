@@ -1,3 +1,4 @@
+# 文件说明：测试任务归档后关联进度、已接收输入和执行去重依据的保留。
 """Archival preserves current association jobs and their execution tombstones."""
 import json
 import pytest

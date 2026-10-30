@@ -1,3 +1,4 @@
+# 文件说明：在隔离 MySQL 中测试扩展业务的规则、优惠和确认重验。
 """Extended workflows against disposable MySQL; no external provider calls."""
 from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor

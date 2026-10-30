@@ -1,3 +1,4 @@
+# 文件说明：以追加记录方式纠正错误关联，并补偿受影响字段和来源关系。
 """Append-only correction of an association, with field-level compensation."""
 from copy import deepcopy
 import json

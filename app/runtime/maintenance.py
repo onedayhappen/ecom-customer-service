@@ -1,3 +1,4 @@
+# 文件说明：归档终态任务并补齐工单快照，保留幂等和执行停止依据。
 """Bounded background compaction; execution and idempotency tombstones survive."""
 import json
 

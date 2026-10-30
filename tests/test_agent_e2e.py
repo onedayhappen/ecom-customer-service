@@ -1,3 +1,4 @@
+# 文件说明：测试真实服务入口驱动、业务确认与故障情况下的评测判定。
 """Technical fixtures, not a benchmark dataset or a model-quality measurement."""
 import json
 from types import SimpleNamespace

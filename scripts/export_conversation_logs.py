@@ -1,3 +1,4 @@
+# 文件说明：从持久诊断事件重新导出按交互组织的 JSONL 日志。
 """Rebuild interaction JSONL snapshots from the durable diagnostic journal."""
 import argparse
 

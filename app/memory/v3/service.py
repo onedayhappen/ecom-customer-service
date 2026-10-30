@@ -1,3 +1,4 @@
+# 文件说明：分组校验提取计划和证据，准备可选向量后原子提交有效变更。
 """Validate independent groups then commit a bounded plan atomically."""
 from app.memory.v3.models import Plan, EvidenceRejected
 from app.memory.v3.repository import Repository

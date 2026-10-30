@@ -1,3 +1,4 @@
+# 文件说明：推进持久记忆提取任务及归档屏障，保存重试和错误状态。
 """Durable user-event extraction and archive barriers; never silently skip failures."""
 from time import time
 from uuid import uuid4

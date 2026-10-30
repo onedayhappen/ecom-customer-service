@@ -1,3 +1,4 @@
+# 文件说明：测试基于实际上下文和来源引用的记忆去重及预算移除后的恢复。
 """Source-aware prompt deduplication follows the actual post-budget context."""
 from copy import deepcopy
 from dataclasses import replace

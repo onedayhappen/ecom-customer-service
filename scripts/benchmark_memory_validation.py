@@ -1,3 +1,4 @@
+# 文件说明：离线比较当前与 Git 基线的记忆提取校验结果和执行耗时。
 """Compare deterministic extraction/grounding with a Git baseline; no network.
 
 Run: python scripts/benchmark_memory_validation.py --baseline-ref <commit> --output report.json

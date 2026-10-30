@@ -1,3 +1,4 @@
+# 文件说明：将 litemall 示例商品转换为模拟商家目录并按参数导入。
 """Append litemall example goods to three simulated shops per top-level category.
 
 Default: inspect only. --apply: insert once, without overwriting existing data.

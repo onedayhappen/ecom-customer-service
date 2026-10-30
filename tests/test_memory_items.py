@@ -1,3 +1,4 @@
+# 文件说明：测试单条记忆模型的持久化、旧快照兼容和冷数据归档。
 """Memory Item 持久化模型回归测试。"""
 
 from __future__ import annotations

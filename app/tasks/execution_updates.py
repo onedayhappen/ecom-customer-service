@@ -1,3 +1,4 @@
+# 文件说明：在 ReAct 边界消费新输入和事项更新，保存预算并触发重新规划。
 """Consume committed association updates at ReAct boundaries, never inside tools.
 
 The existing job owns the execution and its budget. Association decisions are
