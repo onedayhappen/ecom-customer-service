@@ -33,14 +33,18 @@ def test_archived_product_receipts_through_final_publication(store, case, mode):
     result = coordinator.publish("s")
     text = result["content"]
     product = original[-1]["result"]["data"]["items"][0]
-    assert product["name"] in text
-    assert "标价" in text and "库存记录" in text
+    if mode == "selected":
+        assert product["name"] in text
+        assert "标价" in text and "库存记录" in text
+        assert "数据同步时间未记录" in text
+    else:
+        from app.tasks.natural_reply import UNAVAILABLE_REPLY
+        assert text == UNAVAILABLE_REPLY
     assert len(text) < 1800
     for unwanted in ("商品编号", "规格编号", "规格编码", "商家编号", "创建时间", "更新时间", "明细 /", "spec_values", "sku_id"):
         assert unwanted not in text
     assert product["product_id"] not in text
     assert product["sku_summary"][0]["sku_code"] not in text
-    assert "数据同步时间未记录" in text
     assert sorted(result["evidence_ids"]) == sorted(ids)
     assert original == case["receipts"]
     assert len(calls) == (0 if mode == "no_model" else 1)

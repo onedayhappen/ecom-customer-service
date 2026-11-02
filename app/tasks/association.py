@@ -46,7 +46,7 @@ def _option(text, options):
         index = int(value) if value.isdigit() else numbers.get(value, 0)
         if 1 <= index <= len(options):
             return options[index - 1].get("value")
-    exact = [o.get("value") for o in options if str(o.get("value", "")) == stripped]
+    exact = [o.get("value") for o in options if str(o.get("value", "")) == stripped or o.get('label') == stripped]
     return exact[0] if len(exact) == 1 else None
 
 
@@ -378,6 +378,20 @@ class AssociationService:
                     else:
                         current = current_records[tid]
                         patch = {"details": {**current.details, **details}}
+                        selected_field = []
+                        if decision.effect == 'amend' or any(k in details for k in ('order_id', 'item_id', 'sku_id', 'product_id')):
+                            if 'selected_candidate' in patch['details']:
+                                patch['details']['selected_candidate'] = None
+                                selected_field = ['details.selected_candidate']
+                        if decision.effect == 'answer' and decision.question_id and isinstance(current.waiting_for, dict):
+                            text = '\n'.join(m['content'] for m in batch.messages if m['sequence'] in decision.sequences)
+                            options = current.waiting_for.get('options', [])
+                            selection = _option(text, options)
+                            selected = next((o for o in options if o.get('ref') and o.get('value') == selection), None)
+                            if selected:
+                                patch['details']['selected_candidate'] = dict(ref=selected['ref'], label=selected['label'],
+                                    question_id=decision.question_id)
+                                selected_field = ['details.selected_candidate']
                         if decision.goal:
                             patch["goal"] = decision.goal
                         if decision.effect in {"pause", "cancel", "resume", "answer"}:
@@ -398,7 +412,7 @@ class AssociationService:
                         else:
                             record = self.repo.update(tid, batch.session_id, expected_version=current.version,
                                                       change_id=did, source=source, patch=patch, tx=tx,
-                                                      written_fields=["details." + d.field for d in decision.details])
+                                                      written_fields=["details." + d.field for d in decision.details] + selected_field)
                     tid, version = record.task_id, record.version
                     current_records[tid] = record
                     # The repository allocates provenance events in this same

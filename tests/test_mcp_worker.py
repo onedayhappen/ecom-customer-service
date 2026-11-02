@@ -155,7 +155,7 @@ class Remote:
         self.claims, self.closed = verify_mcp_claims(token), False
         self.calls = []
         self.instances.append(self)
-    def connect(self): return [BY_NAME['get_order'].definition(), BY_NAME['ask_user'].definition()]
+    def connect(self): return [BY_NAME['get_order'].definition(), BY_NAME['read_task_context'].definition()]
     def call_tool(self, name, args):
         self.calls.append(name)
         return json.dumps(ok({'status': 'paid'}))
@@ -209,9 +209,9 @@ def test_sent_remote_read_never_replays_locally_when_retry_discovery_fails(store
 def test_task_only_flow_stays_local_with_mcp_enabled(store, monkeypatch, mcp_settings):
     monkeypatch.setattr('app.mcp.MCPClient', lambda *a: pytest.fail('flow must not open MCP'))
     current, source = task(store, 's', goal='查询订单')
-    result = engine(Client(response(calls=[('ask_user', {'question': '需要查询哪一笔订单？'})]))).execute_task(
+    result = engine(Client(response(json.dumps(dict(status='needs_input', missing_information='需要确定具体订单', candidate_refs=[]))))).execute_task(
         store, 'alice', request(current, source))
-    assert result['state'] == 'waiting_user'
+    assert result['state'] == 'needs_input' and result['tool_calls'] == 0
 
 
 def test_confirmation_preparation_stays_local_with_mcp_enabled(store, business, standard_provider, monkeypatch, mcp_settings):

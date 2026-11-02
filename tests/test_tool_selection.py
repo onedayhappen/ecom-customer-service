@@ -48,7 +48,7 @@ def isolated_selection(monkeypatch):
     ('查询订单和会员积分', {'get_order', 'get_membership', 'list_points'}, {'prepare_purchase'}),
     ('查询会员权益并对比商品材质', {'get_membership', 'search_products', 'get_product_details'}, {'prepare_purchase'}),
     ('查询上次催单是否受理', {'find_orders', 'get_dispatch_status'}, {'prepare_purchase'}),
-    ('帮我处理一下', {'find_orders', 'ask_user'}, {'prepare_purchase', 'prepare_after_sale'}),
+    ('帮我处理一下', {'find_orders'}, {'ask_user', 'prepare_purchase', 'prepare_after_sale'}),
 ])
 def test_goals_keep_dependencies_and_reduce_schemas(goal, required, excluded):
     selected = for_task(Intent.OTHERS, goal)
@@ -93,10 +93,10 @@ def test_global_ceiling_applies_to_registry_manager_and_mcp(monkeypatch):
     from app.mcp.server import list_business_tools, call_business_tool
     from app.tools.manager import ToolManager
     from app.tools.registry import _TOOL_MAP
-    monkeypatch.setattr(settings, 'tool_allowlist', 'get_order,ask_user')
+    monkeypatch.setattr(settings, 'tool_allowlist', 'get_order,read_task_context')
     monkeypatch.setitem(_TOOL_MAP, 'get_logistics', lambda **kw: pytest.fail('disabled tool executed'))
-    manager = ToolManager(allowed_tools={'get_order', 'get_logistics', 'ask_user'})
-    assert manager.tool_names == {'get_order', 'ask_user'}
+    manager = ToolManager(allowed_tools={'get_order', 'get_logistics', 'read_task_context'})
+    assert manager.tool_names == {'get_order', 'read_task_context'}
     assert not json.loads(execute_tool('get_logistics', {}))['success']
     assert not json.loads(manager.execute_tool('get_logistics', {}))['success']
     assert {t.name for t in asyncio.run(list_business_tools())} == {'get_order'}

@@ -31,6 +31,37 @@ def monitor(monkeypatch):
     return calls
 
 
+def test_order_keywords_match_same_item_specs_and_show_matching_item_first(svc):
+    title = '耐克 NIKE ROSHE RUN 511881（男鞋）'
+    with svc.store.transaction(write=True) as tx:
+        for order, color in [('paid', '红色'), ('unpaid', '蓝色'), ('other', '红色')]:
+            tx.execute('UPDATE order_items SET title_snapshot=%s,spec_snapshot=%s WHERE order_id=%s',
+                       (title, dumps({'颜色': color, '尺寸': '38'}), order))
+        # The target item sorts after the first three unrelated items.
+        for number in range(3):
+            tx.execute('''INSERT INTO order_items(order_item_id,platform_code,order_id,sku_id,product_id,
+                title_snapshot,spec_snapshot,quantity,unit_price,discount_amount,payable_amount)
+                VALUES (%s,'shop','paid','s1','p','T恤','{}',1,10,0,10)''', (f'a-{number}',))
+        # A different item supplies red, but must not turn the blue shoe into a match.
+        tx.execute('''INSERT INTO order_items(order_item_id,platform_code,order_id,sku_id,product_id,
+            title_snapshot,spec_snapshot,quantity,unit_price,discount_amount,payable_amount)
+            VALUES ('red-shirt','shop','unpaid','s1','p','T恤',%s,1,10,0,10)''',
+            (dumps({'颜色': '红色', '尺寸': '38'}),))
+    for query in ('耐克 红色 38', '38 红色 roshe run', 'NIKE 红色'):
+        result = read(svc, 'find_orders', query=query)
+        assert result['data']['total'] == 1
+        order = result['data']['items'][0]
+        assert order['order_id'] == 'paid'  # Neither cross-item match nor another user's order.
+        assert order['item_count'] == 4 and order['items_truncated']
+        assert order['matching_item_count'] == 1
+        match = order['purchase_summary'][0]
+        assert match['order_item_id'] == 'i-paid' and match['query_match']
+        assert match['specs'] == {'颜色': '红色', '尺寸': '38'}
+    assert read(svc, 'find_orders', query='耐克 黑色')['data']['total'] == 0
+    assert read(svc, 'find_orders', query='%')['data']['total'] == 0
+    assert read(svc, 'find_orders', query='paid')['data']['total'] == 2  # Order ID matching retained.
+
+
 def test_history_over_ten_thousand_is_filtered_and_paged_in_sql(svc, monkeypatch):
     now = utcnow(); count = 10005
     with svc.store.transaction(write=True) as tx:

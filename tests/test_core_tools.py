@@ -83,7 +83,8 @@ def standard_provider(svc,monkeypatch):
     return svc
 
 def test_catalog_and_strict_validation():
-    assert len(TOOLS)==56
+    assert len(TOOLS)==55
+    assert 'ask_user' not in {tool.name for tool in TOOLS}
     token=set_current_user_id('alice')
     try:
         for t in TOOLS:

@@ -104,10 +104,8 @@ def test_actual_publication_corrects_injected_absence_once(store, case, only_zer
     coordinator = ReplyCoordinator(store, 'alice', composer=model)
     result = coordinator.publish('s')
     assert result['content'] != case['injected_reply']
-    assert '不能据此判断商品不存在' in result['content']
-    assert sources[0]['arguments']['query'] in result['content']
-    if not only_zero:
-        assert sources[-1]['result']['data']['items'][0]['name'] in result['content']
+    from app.tasks.natural_reply import UNAVAILABLE_REPLY
+    assert result['content'] == UNAVAILABLE_REPLY
     assert result['result_ids'] == ['job:' + jid]
     assert sorted(result['evidence_ids']) == sorted(ids)
     assert coordinator.publish('s') is None

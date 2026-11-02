@@ -106,24 +106,31 @@ def test_model_failure_uses_qualified_evidence_fallback(store, output):
             raise output
         return output
     result = ReplyCoordinator(store, 'alice', composer=model).publish('s')
-    assert 'ORD-A' in result['content'] and '已发货' in result['content']
-    assert '数据同步时间未记录' in result['content']
+    from app.tasks.natural_reply import UNAVAILABLE_REPLY
+    assert result['content'] == UNAVAILABLE_REPLY
 
 
-def test_timed_out_model_cannot_publish_late(store, monkeypatch):
+def test_slow_model_publishes_after_former_fifteen_second_deadline(store):
     a, source = task(store, 's')
     ready(store, a, source)
-    monkeypatch.setattr(settings, 'reply_composition_timeout_seconds', .05)
-    release, finished = threading.Event(), threading.Event()
-    def model(_):
+    from app.tasks.natural_reply import VerifiedReply, fingerprint
+    started, release = threading.Event(), threading.Event()
+    def model(context):
+        started.set()
+        assert release.wait(30)
+        return VerifiedReply('记录显示已发货。', fingerprint(context))
+    with ThreadPoolExecutor(1) as pool:
+        future = pool.submit(ReplyCoordinator(store, 'alice', composer=model).publish, 's')
         try:
-            release.wait(5)
-            return '迟到的回答'
+            assert started.wait(5)
+            time.sleep(16)
+            assert not future.done()
+            assert not replies(store)
         finally:
-            finished.set()
-    result = ReplyCoordinator(store, 'alice', composer=model).publish('s')
-    release.set(); assert finished.wait(5)
-    assert '迟到' not in result['content'] and len(replies(store)) == 1
+            release.set()
+        result = future.result(5)
+    assert result['content'] == '记录显示已发货。'
+    assert len(replies(store)) == 1
 
 
 def test_question_options_remain_code_owned_when_combined_with_facts(store):
@@ -159,6 +166,7 @@ def test_composition_model_receives_no_tools_and_uses_separate_scene():
     assert compose(Model(), 'test', context) == '{"claim_ids":["c1"]}'
     assert captured['scene'] == 'reply_composition'
     assert 'tools' not in captured and captured['response_format'] == {'type': 'json_object'}
+    assert captured['timeout'] is None
 
 
 def test_worker_does_not_block_on_reply_model_and_journals_result(store, monkeypatch):

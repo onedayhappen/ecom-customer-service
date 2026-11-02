@@ -458,7 +458,7 @@ def test_provider_repeated_receipt_does_not_invalidate_return_confirmation(exten
 def test_all_tools_schema_and_provider_validation():
     from app.tools.catalog import TOOLS,BY_NAME
     from app.tools.selection import for_task
-    from app.tools.contracts import Question,CheckCoupon,CancelOrder
+    from app.tools.contracts import CheckCoupon,CancelOrder
     from app.services.commerce.providers import HttpGateway,ProviderResponse
     from pydantic import ValidationError
     selected = for_task('refund_service', '申请退款')
@@ -467,7 +467,7 @@ def test_all_tools_schema_and_provider_validation():
     schema=BY_NAME['prepare_invoice_reissue'].definition()['function']['parameters']
     assert 'title' in schema['properties'] and 'title' in schema['required']
     assert CancelOrder(order_ref='ref').reason is None
-    assert Question(question='哪一件？',choices=[{'label':'第一件','ref':'a'},{'label':'第二件','ref':'b'}])
+    assert 'ask_user' not in BY_NAME
     with pytest.raises(ValidationError): CheckCoupon(coupon_ref='c',target={'order_ref':'o','items':[{'sku_id':'s','quantity':1}]})
     with pytest.raises(ValidationError): ProviderResponse(status='completed',reference='r',refund={'amount':'-1.00'})
     with pytest.raises(BusinessError): HttpGateway({'url':'http://insecure.example','token':'test'})

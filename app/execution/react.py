@@ -66,6 +66,7 @@ class ReactExecutor:
         convergence_detector=None,
         checkpoint=None,
         reference_cached_results: bool = False,
+        structured_handoff: bool = False,
     ):
         self.client = client
         self.model = model
@@ -79,6 +80,7 @@ class ReactExecutor:
         self.checkpoint = checkpoint
         # Only opt in when the provider keeps prior tool messages intact.
         self.reference_cached_results = reference_cached_results
+        self.structured_handoff = structured_handoff
         # 第12期：若传入 LlmClient，绑定 react 场景（与查询改写/主生成分开统计 token）
         if hasattr(client, "bind_scene"):
             from app.observability.llm_client import SCENE_REACT
@@ -224,6 +226,12 @@ class ReactExecutor:
 
             # 无工具调用 → 直接回复
             if not assistant_msg.tool_calls:
+                if self.structured_handoff and (assistant_msg.content or '').lstrip().startswith('{'):
+                    from app.execution.handoff import ExecutionHandoff
+                    handoff = ExecutionHandoff.model_validate_json(assistant_msg.content)
+                    return make_result('', handoff=handoff.model_dump())
+                # Compatibility for existing integrations returning plain text.
+                # It remains an internal draft, never a persisted question.
                 return make_result(assistant_msg.content or "暂时未能形成有效答复，请补充您的问题或稍后再试。")
 
             working.append({
@@ -333,11 +341,9 @@ class ReactExecutor:
                 result_messages[result_key] = tc.id
 
                 from app.services.commerce.writes import PREPARES
-                if result.get("success") and name in PREPARES | {"ask_user", "handoff_to_human"}:
+                if result.get("success") and name in PREPARES | {"handoff_to_human"}:
                     data = result.get("data", {})
                     state = data.get("next_state")
-                    if state == "waiting_user":
-                        return make_result(data["question"])
                     if state == "needs_human":
                         return make_result(data["reply"], needs_human=True)
                     if state == "needs_confirmation":

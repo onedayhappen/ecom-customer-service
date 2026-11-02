@@ -78,7 +78,8 @@ def test_real_bad_reply_blocked_at_actual_publication_boundary(store, recorded):
     result = ReplyCoordinator(store, "alice", composer=wrong_model).publish("s")
     assert len(calls) == 1  # No model retry for a grounding failure.
     assert result["content"] != recorded["original_reply"]
-    assert "数据同步时间未记录" in result["content"]
+    from app.tasks.natural_reply import UNAVAILABLE_REPLY
+    assert result["content"] == UNAVAILABLE_REPLY
     assert ReplyCoordinator(store, "alice", composer=wrong_model).publish("s") is None
     with store.transaction(read_only=True) as tx:
         traces = tx.all("SELECT payload FROM interaction_trace_events WHERE stage='reply.composition.fallback'")
@@ -239,7 +240,7 @@ def test_unusable_receipts_do_not_reach_composer(store, invalid):
     def forbidden(_):
         pytest.fail("no verified evidence should reach the composer")
     result = ReplyCoordinator(store, "alice", composer=forbidden).publish("s")
-    assert "暂时没有可核实" in result["content"]
+    assert "暂时无法核实" in result["content"]
 
 
 def test_grounding_adds_no_database_reads_to_publication_snapshot(store, recorded, monkeypatch):

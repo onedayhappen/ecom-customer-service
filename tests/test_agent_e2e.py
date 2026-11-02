@@ -66,7 +66,8 @@ class ScriptedClient:
             return response(data["current_messages"][-1]["content"])
         if self.scene == "reply_composition":
             data = json.loads(kwargs["messages"][-1]["content"])
-            return response(json.dumps(dict(claim_ids=[c["claim_id"] for m in data["matters"] for c in m.get("claims", [])])))
+            return response(json.dumps(dict(reply='暂未查到物流记录，实际进展仍需核实。', question=None,
+                claim_ids=[c["claim_id"] for m in data["matters"] for c in m.get("claims", [])])))
         if "AssociationProposal" in kwargs["messages"][0]["content"]:
             data = json.loads(kwargs["messages"][-1]["content"])
             message = data["current_messages"][-1]
@@ -279,7 +280,13 @@ class ClarifyClient(ScriptedClient):
                         dict(session_id=data["session_id"], sequence=message["sequence"], quote=message["content"])])])))
         if self.scene == "task_execution" and self.owner.used == 0:
             self.owner.used += 1
-            return response(calls=[("ask_user", dict(question="您要查询物流吗？"))])
+            return response(json.dumps(dict(status='needs_input', missing_information='是否查询物流', candidate_refs=[])))
+        if self.scene == 'reply_composition':
+            data = json.loads(kwargs['messages'][-1]['content'])
+            pending = next((m for m in data['matters'] if m.get('clarification')), None)
+            if pending:
+                return response(json.dumps(dict(reply='', claim_ids=[], question=dict(
+                    task_id=pending['task_id'], prompt='您要查询物流吗？', options=[]))))
         if self.scene == "task_execution" and self.owner.used == 1:
             self.owner.used += 1
             return response(calls=[(self.tool, self.args)])

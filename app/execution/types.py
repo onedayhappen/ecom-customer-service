@@ -55,6 +55,8 @@ class ExecutionResult:
     human_handoff_created: bool = False
     # Explicit waiting state; never infer a pending task from punctuation in a reply.
     question: dict[str, Any] | None = None
+    # Execution decision only; publication owns the actual question and wait.
+    handoff: dict[str, Any] | None = None
 
     def add_step(self, name: str, arguments: dict, result: dict, blocked: bool = False) -> "ExecutionResult":
         """链式追加一个工具步骤（保持调用方代码简洁）。"""
