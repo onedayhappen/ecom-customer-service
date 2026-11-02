@@ -41,14 +41,15 @@ class ReplyCoordinator:
             WHERE task_reply_items.disposition='deferred'""",
             (self.user, key, sid, sequence, disposition, now(), clock(tx)))
 
-    def _receipts(self, tx, record, result, policy_checks, source):
+    def _receipts(self, tx, record, result, policy_checks, source, *, for_clarification=False):
         receipts = []
         for eid in result.get("evidence_ids", [])[:30]:
             row = tx.one("""SELECT e.payload FROM support_events e JOIN support_conversations c
                 ON c.session_id=e.session_id WHERE c.user_id=? AND e.event_key=?
                 AND e.kind='task_tool_result'""", (self.user, "task-tool:" + eid))
             evidence = json.loads(row["payload"]) if row else {}
-            if not self._valid_receipt(tx, record, evidence):
+            age = 1800 if for_clarification and evidence.get('tool') in {'find_orders', 'get_order', 'get_order_items'} else 60
+            if not self._valid_receipt(tx, record, evidence, max_age=age):
                 continue
             if evidence.get('tool') in {'search_knowledge','search_policies'}:
                 if eid not in policy_checks:
@@ -60,7 +61,7 @@ class ReplyCoordinator:
             receipts.append(evidence)
         return receipts
 
-    def _valid_receipt(self, tx, record, evidence):
+    def _valid_receipt(self, tx, record, evidence, *, max_age=60):
         from app.media.context import dependency_stamp
         return (evidence.get('task_id') == record.task_id and evidence.get('object') == object_key(record)
             and evidence.get('provenance', {}).get('media', []) == dependency_stamp(tx, self.user, [record.task_id])
@@ -69,7 +70,7 @@ class ReplyCoordinator:
             and (evidence.get('tool') != 'recall_user_memory'
                  or evidence['result'].get('data', {}).get('available') is not True
                  or bool(evidence.get('provenance', {}).get('memory')))
-            and evidence.get('observed_epoch', 0) >= clock(tx) - 60
+            and evidence.get('observed_epoch', 0) >= clock(tx) - max_age
             and self.runs.control_versions_valid(tx, evidence.get('controls'))
             and ('memory' not in evidence.get('provenance', {})
                  or self.runs._memory_current(tx, evidence['provenance']['memory']))
@@ -172,32 +173,38 @@ class ReplyCoordinator:
 
     def publish(self, sid):
         from app.tasks.reply_claims import render_plan
-        from app.config.settings import settings
-        from app.harness.bounded_call import bounded_calls
+        from app.tasks.natural_reply import UNAVAILABLE_REPLY, VerifiedReply
         from app.observability.interactions import bind, record, span
         from app.tasks.reply_composition import ReplyDraft
         with bind(self.store, sid):
             draft = self._prepare(sid, self._check_policy_results(sid))
             if not isinstance(draft, ReplyDraft):
                 return draft
-            # Fixed questions/options and confirmation notices remain code-owned.
-            if not any(m.get("claims") for m in draft.context["matters"]):
+            question = None
+            if not any(m.get("claims") or m.get('clarification') for m in draft.context["matters"]):
                 text = draft.fallback
             else:
                 try:
                     with span("reply.composition", context=draft.context) as observation:
-                        plan = bounded_calls.run(
-                            lambda: self.composer(deepcopy(draft.context)), settings.reply_composition_timeout_seconds)
-                        text = render_plan(plan, draft.context)
+                        # The worker already runs composition in its reply pool.
+                        # Wait for the result; elapsed time alone must not discard it.
+                        plan = self.composer(deepcopy(draft.context))
+                        if any(m.get('clarification') for m in draft.context['matters']) and not isinstance(plan, VerifiedReply):
+                            raise ValueError('clarification_requires_structured_reply')
+                        text = plan.render(draft.context) if isinstance(plan, VerifiedReply) else render_plan(plan, draft.context)
+                        question = deepcopy(plan.question) if isinstance(plan, VerifiedReply) else None
                         text = "\n\n".join([text, *draft.context["required_notices"]])
                         observation["output"] = text
                 except Exception as exc:
+                    question = None
                     record("reply.composition.fallback", status="fallback",
                            reason="ungrounded_composed_reply" if isinstance(exc, ValueError) else type(exc).__name__)
-                    text = draft.fallback
-            return self._prepare(sid, self._check_policy_results(sid), draft=draft, composed=text)
+                    # Failed generation must not publish the verbose internal
+                    # evidence projection as a customer answer.
+                    text = "\n\n".join([UNAVAILABLE_REPLY, *draft.context["required_notices"]])
+            return self._prepare(sid, self._check_policy_results(sid), draft=draft, composed=text, composed_question=question)
 
-    def _prepare(self, sid, policy_checks, *, draft=None, composed=None):
+    def _prepare(self, sid, policy_checks, *, draft=None, composed=None, composed_question=None):
         from app.tasks.reply_composition import snapshot
         from app.observability.interactions import record as observe
         with self.store.transaction() as tx:
@@ -338,6 +345,31 @@ class ReplyCoordinator:
                 metadata = dict(key=key, task_versions={tid: record.version},
                                 decision_ids=stamp["decisions"], evidence_ids=[],
                                 execution_state=result.get("state"))
+                if result.get('state') == 'needs_input' and record.status == 'in_progress':
+                    if question:
+                        self._mark(tx, sid, key, disposition='deferred')
+                        continue
+                    from app.execution.handoff import ExecutionHandoff
+                    from app.tasks.reply_questions import clarification_material
+                    from app.tasks.natural_reply import UNAVAILABLE_REPLY
+                    source = payload.get('execution_source', payload['request']['source'])
+                    receipts = self._receipts(tx, record, result, policy_checks, source, for_clarification=True)
+                    if receipts is None:
+                        self._mark(tx, sid, key, disposition='deferred')
+                        continue
+                    try:
+                        handoff = ExecutionHandoff.model_validate(result['handoff'])
+                        if handoff.status != 'needs_input':
+                            raise ValueError('invalid_clarification_handoff')
+                        metadata['clarification'] = clarification_material(receipts, handoff.model_dump())
+                    except (ValueError, KeyError):
+                        metadata['content'] = UNAVAILABLE_REPLY
+                    else:
+                        metadata.update(content=UNAVAILABLE_REPLY, source=source,
+                                        evidence_ids=[r['event_id'] for r in receipts])
+                        question = 'proposed'
+                    pieces.append(metadata)
+                    continue
                 if record.status == "waiting_user":
                     if question:
                         self._mark(tx, sid, key, disposition="deferred")
@@ -373,6 +405,7 @@ class ReplyCoordinator:
                         continue
                     from app.tasks.reply_claims import build_claims, fallback_text
                     metadata["claims"] = build_claims(record, receipts)
+                    metadata["receipts"] = receipts
                     from app.media.context import image_claims
                     visual_claims = image_claims(tx, self.user, record.task_id)
                     metadata['claims'] += visual_claims
@@ -384,8 +417,8 @@ class ReplyCoordinator:
                     metadata["evidence_ids"] = [r["event_id"] for r in receipts]
                     metadata['evidence_ids'] += [c['evidence_id'] for c in visual_claims]
                     if not text:
-                        subject = "订单 " + label(record.details["order_id"]) if record.details.get("order_id") else label(record.goal)
-                        text = subject + "：暂时没有可核实的查询结果，可补充信息后重试，或转人工客服核实。"
+                        from app.tasks.natural_reply import UNAVAILABLE_REPLY
+                        text = UNAVAILABLE_REPLY
                     metadata["fallback"] = text
                 metadata["content"] = text
                 pieces.append(metadata)
@@ -396,6 +429,12 @@ class ReplyCoordinator:
                 return None
             event_id = _id(sid, json.dumps(sorted(p["key"] for p in pieces)))
             content = "\n\n".join(p["content"] for p in pieces)
+            if self.composer is None:
+                from app.tasks.natural_reply import UNAVAILABLE_REPLY
+                # No model/disabled composition is not permission to expose
+                # internal fact paragraphs. Fixed confirmation questions stay.
+                content = "\n\n".join(dict.fromkeys(
+                    UNAVAILABLE_REPLY if p.get("claims") else p["content"] for p in pieces))
             if self.composer is not None:
                 current = snapshot(self, tx, control, pieces, received)
                 if draft is None:
@@ -405,6 +444,24 @@ class ReplyCoordinator:
                             reason="snapshot_changed", session_id=sid)
                     return None
                 content = composed
+                if composed_question is not None:
+                    # The snapshot was revalidated under the same locks used to
+                    # commit the wait, public question and publication ledger.
+                    from app.tasks.reply_questions import validate_question, question_text as render_question
+                    value = validate_question(composed_question, current.context)
+                    piece = next(p for p in pieces if value['task_id'] in p['task_versions'] and p.get('clarification'))
+                    tid = value['task_id']
+                    saved = self.runs.repo.ask(tid, sid, expected_version=piece['task_versions'][tid],
+                        change_id=_id(event_id, 'question:' + tid), source=piece['source'], tx=tx,
+                        question=dict(prompt=value['prompt'], field='details', options=[
+                            dict(label=o['label'], value=o['ref'] or o['label'], **({'ref': o['ref']} if o['ref'] else {}))
+                            for o in value['options']]))
+                    piece.update(content=render_question(value), task_id=tid, task_version=saved.version,
+                                 question_id=saved.waiting_for['question_id'])
+                    piece['task_versions'][tid] = saved.version
+                    # Asking is publication, not a new reason to run the Agent.
+                    tx.execute('UPDATE task_execution_wakes SET version=? WHERE task_id=?', (saved.version, tid))
+                    control = self.store._control(tx, sid, self.user)
             return self._publish(tx, control, pieces, content, received, event_id)
 
     def _publish(self, tx, control, pieces, content, received, event_id):

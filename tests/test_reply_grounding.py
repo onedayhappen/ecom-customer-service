@@ -154,12 +154,12 @@ def test_captured_failures_are_corrected_at_actual_publication_boundary(store, c
     reply = ReplyCoordinator(store, 'alice', composer=model).publish('s')
     expected, reasons = check_reply(case['original_reply'], [evidence_index(case['receipts'], record.details)])
     assert case['expected_reason'] in reasons
-    from app.tasks.reply_claims import fallback_text
-    assert reply['content'] == fallback_text(calls[0]['matters'][0]['claims'])
+    from app.tasks.natural_reply import UNAVAILABLE_REPLY
+    assert reply['content'] == UNAVAILABLE_REPLY
     assert reply['content'] != case['original_reply']
     assert '可以判断它还没有发货' not in reply['content']
     assert '应该不是它' not in reply['content']
-    assert '数据同步时间未记录' in reply['content']
+    assert len(reply['content']) <= 20
     assert reply['result_ids'] == ['job:' + jid]
     assert sorted(reply['evidence_ids']) == sorted(ids)
     assert len(calls) == 1

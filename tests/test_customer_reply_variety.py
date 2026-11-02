@@ -61,14 +61,18 @@ def test_varied_final_replies(tmp_path, monkeypatch, case, mode):
     monkeypatch.setattr(settings, "memory_enabled", False)
     monkeypatch.setattr(settings, "short_term_memory_enabled", False)
     text = publish_case(tmp_path / "support.db", case, mode)
-    assert not errors(case, text), (errors(case, text), text)
+    if mode == "selected":
+        assert not errors(case, text), (errors(case, text), text)
+    else:
+        from app.tasks.natural_reply import UNAVAILABLE_REPLY
+        assert text == UNAVAILABLE_REPLY
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c["id"])
 def test_irrelevant_nested_metadata_does_not_change_reply(tmp_path, monkeypatch, case):
     monkeypatch.setattr(settings, "memory_enabled", False)
     monkeypatch.setattr(settings, "short_term_memory_enabled", False)
-    original = publish_case(tmp_path / "before.db", case)
+    original = publish_case(tmp_path / "before.db", case, mode="selected")
 
     def inject(value):
         if isinstance(value, list):
@@ -82,4 +86,4 @@ def test_irrelevant_nested_metadata_does_not_change_reply(tmp_path, monkeypatch,
     changed = deepcopy(case["receipts"])
     for receipt in changed:
         receipt["result"]["data"] = inject(receipt["result"]["data"])
-    assert publish_case(tmp_path / "after.db", case, receipts=changed) == original
+    assert publish_case(tmp_path / "after.db", case, mode="selected", receipts=changed) == original

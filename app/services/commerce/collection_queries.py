@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from app.services.commerce.common import BusinessError, at, decoded, money, ref, unref, utcnow
 from app.services.commerce.reads import ORDER_STATES, SALE_STATES, masked, state
+from app.services.commerce.order_search import item_predicate, order_predicates, ranked_query
 
 
 def placeholders(values):
@@ -134,35 +135,50 @@ class CollectionQueryService:
 
     def find_orders(self, tx, **args):
         clauses, values = self.owned_collection()
-        query = args.get('query') or args.get('keyword')
-        if query:
-            clauses.append("""(o.order_id LIKE %s ESCAPE '!' OR EXISTS (
-                SELECT 1 FROM order_items i WHERE i.platform_code=o.platform_code
-                AND i.order_id=o.order_id AND i.title_snapshot LIKE %s ESCAPE '!'))""")
-            values += [pattern(query)] * 2
-        if args.get('created_range'):
-            clauses += ['o.created_at>=%s', 'o.created_at<%s']
-            values += [at(args['created_range']['from']), at(args['created_range']['to'])]
+        clues = dict(args, query=args.get('query') or args.get('keyword'))
+        item_match, item_values = item_predicate(clues)
+        hint_item, hint_values = item_predicate(args.get('hints') or {})
+        if item_values and hint_values:
+            hint_item = '(' + item_match + ') AND (' + hint_item + ')'
+            hint_values = item_values + hint_values
+        for _, sql, params in order_predicates(clues, legacy_id=True):
+            clauses.append(sql)
+            values.extend(params)
+        if args.get('order_id'):
+            clauses.append('o.order_id=%s')
+            values.append(args['order_id'])
         status_filter(clauses, values, 'o.status', args.get('status'), ORDER_STATES)
-        result = self.sql_page(tx, 'SELECT o.* FROM orders o WHERE ' + ' AND '.join(clauses), values,
-            'find_orders', args, keys=('created_at', 'platform_code', 'order_id'), descending=('created_at',), size=10)
+        sql, values, hint_names = ranked_query('FROM orders o WHERE ' + ' AND '.join(clauses), values, args.get('hints'), required_item=clues)
+        keys, descending = ('created_at', 'platform_code', 'order_id'), ('created_at',)
+        if hint_names:
+            keys, descending = ('hint_score', *keys), ('hint_score', *descending)
+        result = self.sql_page(tx, sql, values, 'find_orders', args, keys=keys, descending=descending, size=10)
         rows = result['data']['items']
         summaries = {}
         if rows:
             pairs = ' OR '.join(['(platform_code=%s AND order_id=%s)'] * len(rows))
             params = tuple(value for row in rows for value in (row['platform_code'], row['order_id']))
-            items = tx.all('''SELECT * FROM (SELECT platform_code,order_id,title_snapshot,spec_snapshot,quantity,
-                ROW_NUMBER() OVER (PARTITION BY platform_code,order_id ORDER BY order_item_id) rn,
-                COUNT(*) OVER (PARTITION BY platform_code,order_id) item_count
-                FROM order_items WHERE ''' + pairs + ') ranked WHERE rn<=3 ORDER BY platform_code,order_id,rn', params)
+            items = tx.all('''SELECT * FROM (SELECT platform_code,order_id,order_item_id,title_snapshot,spec_snapshot,quantity,query_match,hint_match,
+                ROW_NUMBER() OVER (PARTITION BY platform_code,order_id ORDER BY query_match DESC,hint_match DESC,order_item_id) rn,
+                COUNT(*) OVER (PARTITION BY platform_code,order_id) item_count,
+                SUM(query_match) OVER (PARTITION BY platform_code,order_id) matching_item_count
+                FROM (SELECT i.*,CASE WHEN ''' + item_match + ''' THEN 1 ELSE 0 END query_match,
+                    CASE WHEN ''' + hint_item + ''' THEN 1 ELSE 0 END hint_match
+                    FROM order_items i WHERE ''' + pairs + ''') matched
+                ) ranked WHERE rn<=3 ORDER BY platform_code,order_id,rn''', tuple(item_values + hint_values) + params)
             for item in items:
                 summaries.setdefault((item['platform_code'], item['order_id']), []).append(item)
         result['data']['items'] = []
         for row in rows:
+            if hint_names:
+                row['hint_matches'] = {name: bool(row.pop('hint_' + name)) for name in hint_names}
+                row['unmatched_hints'] = [name for name, matched in row['hint_matches'].items() if not matched]
             items = summaries.get((row['platform_code'], row['order_id']), [])
             result['data']['items'].append(dict(state(masked(row), ORDER_STATES),
                 order_ref=ref('order', row['platform_code'], row['order_id']),
-                purchase_summary=[dict(name=i['title_snapshot'], specs=decoded(i['spec_snapshot']), quantity=i['quantity']) for i in items],
+                purchase_summary=[dict(name=i['title_snapshot'], specs=decoded(i['spec_snapshot']), quantity=i['quantity'],
+                    order_item_id=i['order_item_id'], query_match=bool(i['query_match']), hint_match=bool(i['hint_match'])) for i in items],
+                matching_item_count=int(items[0]['matching_item_count']) if items else 0,
                 items_truncated=bool(items and items[0]['item_count']>3),
                 items_query={'tool':'get_order_items','arguments':{'order_ref':ref('order',row['platform_code'],row['order_id'])}},
                 item_count=items[0]['item_count'] if items else 0))
@@ -171,6 +187,8 @@ class CollectionQueryService:
     def find_after_sales(self, tx, **args):
         clauses, values = self.owned_collection()
         clauses.append('a.user_id=%s'); values.append(self.user)
+        if args.get('after_sale_id'):
+            clauses.append('a.after_sale_id=%s'); values.append(args['after_sale_id'])
         if args.get('order_ref'):
             order = self.owned_order(tx, args['order_ref'])
             clauses += ['a.platform_code=%s', 'a.order_id=%s']
@@ -178,12 +196,16 @@ class CollectionQueryService:
         if args.get('created_range'):
             clauses += ['a.created_at>=%s', 'a.created_at<%s']
             values += [at(args['created_range']['from']), at(args['created_range']['to'])]
-        if args.get('query'):
-            clauses.append("""(a.after_sale_id LIKE %s ESCAPE '!' OR a.order_id LIKE %s ESCAPE '!' OR EXISTS (
+        item_sql, item_values = item_predicate(args)
+        if item_values:
+            item_sql = """EXISTS (
                 SELECT 1 FROM after_sale_items s JOIN order_items i ON i.order_item_id=s.order_item_id
                 WHERE s.after_sale_id=a.after_sale_id AND i.platform_code=a.platform_code AND i.order_id=a.order_id
-                AND i.title_snapshot LIKE %s ESCAPE '!'))""")
-            values += [pattern(args['query'])] * 3
+                AND (""" + item_sql + '))'
+            if args.get('query') and not args.get('specs'):
+                item_sql = "(a.after_sale_id LIKE %s ESCAPE '!' OR a.order_id LIKE %s ESCAPE '!' OR " + item_sql + ')'
+                item_values = [pattern(args['query']), pattern(args['query']), *item_values]
+            clauses.append(item_sql); values.extend(item_values)
         status_filter(clauses, values, 'a.status', args.get('status'), SALE_STATES)
         result = self.sql_page(tx, '''SELECT a.*,o.currency FROM after_sale_requests a
             JOIN orders o ON o.platform_code=a.platform_code AND o.order_id=a.order_id WHERE ''' + ' AND '.join(clauses),

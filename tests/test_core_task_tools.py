@@ -54,12 +54,12 @@ def test_dispatch_task_confirmation_queues_once(store,business):
         assert operations.confirm('s',card['operation_id'],card['confirmation_token'])==result
         assert not provider.calls
 
-def test_question_stops_same_turn_before_further_calls(store):
+def test_missing_input_ends_execution_without_publishing_question(store):
     rec,source=task(store,'s',goal='帮我查询订单')
-    client=Client(response(calls=[('ask_user',{'question':'需要查询哪一笔订单？'}),('get_my_profile',{})]))
+    client=Client(response(json.dumps(dict(status='needs_input', missing_information='需要确定具体订单', candidate_refs=[]))))
     out=engine(client).execute_task(store,'alice',request(rec,source))
-    assert out['state']=='waiting_user' and out['tool_calls']==1
-    assert out['question']['prompt']=='需要查询哪一笔订单？'
+    assert out['state']=='needs_input' and out['tool_calls']==0
+    assert out['question'] is None and out['reply']==''
 
 def test_handoff_creates_real_ticket_and_stops(store):
     rec,source=task(store,'s',goal='订单需要人工核实')

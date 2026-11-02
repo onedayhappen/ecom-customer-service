@@ -155,5 +155,6 @@ def test_context_budget_failure_keeps_reason_and_publishes_fallback(store):
     assert result["state"] == "deferred" and result["reason"] == "context_budget"
     reply = ReplyCoordinator(store, "alice").publish("s")
     assert reply["result_ids"] == ["job:" + req["job_id"]]
-    assert "暂时没有可核实" in reply["content"]
+    from app.tasks.natural_reply import UNAVAILABLE_REPLY
+    assert reply["content"] == UNAVAILABLE_REPLY
     assert ReplyCoordinator(store, "alice").publish("s") is None

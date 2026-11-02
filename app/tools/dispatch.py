@@ -1,7 +1,6 @@
 # 文件说明：校验工具输入并注入服务端身份，分发业务查询、准备和事项流程。
 """Schema validation and service dispatch shared by domain entry points."""
 import json
-import re
 from pydantic import ValidationError
 from app.tools.catalog import BY_NAME
 from app.services.commerce import service
@@ -54,20 +53,6 @@ def flow(name,args,ctx):
         return ok(ctx.inspect_image(**args))
     if name=='read_task_context':
         return ok(ctx.read_progress({}))
-    if name=='ask_user':
-        if re.search(r'密码|验证码|银行卡号|密钥|\btoken\b|api.?key',args['question'],re.I):
-            raise BusinessError('invalid_arguments','不能索要登录或支付凭证')
-        def contains(value,needle):
-            if isinstance(value,dict): return any(contains(v,needle) for v in value.values())
-            if isinstance(value,list): return any(contains(v,needle) for v in value)
-            return value==needle
-        if any(v.get('ref') and not contains(ctx.receipts,v['ref']) for v in args.get('choices') or []):
-            raise BusinessError('invalid_arguments','选项引用必须来自已查询的结果')
-        options=[{'label':v['label'],'value':v.get('ref') or v['label']} for v in args.get('choices') or []]
-        result=ctx.save_progress({'expected_version':ctx.record.version,'state':'waiting_user',
-            'question':{'field':'details','prompt':args['question'],'options':options}})
-        if not result.get('success'): raise BusinessError('invalid_arguments','澄清问题不符合事项约束')
-        return ok({'next_state':'waiting_user','question':args['question']})
     result=ctx.runs.finish(ctx.request,ctx.payload,{'state':'needs_human','reply':'已进入人工队列，客服将继续核实处理。',
         'needs_human':True,'reason':args['reason'],'task_version':ctx.record.version,
         'model_calls':ctx.model_calls,'tool_calls':ctx.tool_calls,'evidence_ids':[r['event_id'] for r in ctx.receipts]})

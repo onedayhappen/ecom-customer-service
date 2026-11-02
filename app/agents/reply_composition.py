@@ -1,5 +1,5 @@
-# 文件说明：让模型从程序提供的有效结论中选择答复内容，并校验选择格式。
-"""One bounded, tool-free call to select code-owned evidence conclusions."""
+# 文件说明：一次生成自然短答复，通过本地校验后交给发布器。
+"""Single-call natural reply generation with local publication checks."""
 from copy import deepcopy
 import json
 
@@ -54,6 +54,8 @@ def selection_context(context):
 def compose(client, model, context):
     if hasattr(client, "bind_scene"):
         client = client.bind_scene("reply_composition")
+    if any(m.get("claims") or m.get('clarification') for m in context["matters"]):
+        return compose_natural(client, model, context)
     legacy = any("grounding" in m for m in context["matters"]) and not any("claims" in m for m in context["matters"])
     prompt = REPLY_COMPOSITION_PROMPT
     if legacy:
@@ -74,7 +76,7 @@ def compose(client, model, context):
     if data.get("current_messages_incomplete"):
         raise ContextBudgetExceeded(reason="reply_current_messages")
     params = {**settings.chat_completion_options, "model": model, "temperature": 0,
-              "max_tokens": 1500, "timeout": settings.reply_composition_timeout_seconds}
+              "max_tokens": 1500, "timeout": None}
     for key in ("response_format", "tools", "tool_choice"):
         params.pop(key, None)
     params["response_format"] = {"type": "json_object"}
@@ -97,3 +99,54 @@ def compose(client, model, context):
     # Validate against the publisher's immutable snapshot, also for custom
     # composers that do not use this model adapter.
     return validate_reply(choice.message.content, context=context) if legacy else choice.message.content
+
+
+def compose_natural(client, model, context):
+    from app.prompts.natural_reply import NATURAL_REPLY_PROMPT
+    from app.tasks.natural_reply import VerifiedReply, fingerprint, validate_draft
+    from app.tasks.reply_grounding import check_reply, evidence_index
+    data = deepcopy(context)
+    if data.get("current_messages_incomplete"):
+        raise ContextBudgetExceeded(reason="reply_current_messages")
+    for matter in data["matters"]:
+        receipt_ids = {r["event_id"] for r in matter.get("receipts", [])}
+        for claim in matter.get("claims", []):
+            if claim["evidence_id"] in receipt_ids:
+                # Business prose templates are not model input either. The
+                # model reads original facts plus their verified bindings.
+                claim.pop("text", None)
+                claim.pop("selection_hint", None)
+
+    def request(prompt, material):
+        params = {**settings.chat_completion_options, "model": model, "temperature": 0,
+                  "max_tokens": 1200, "timeout": None,
+                  "response_format": {"type": "json_object"}}
+        for key in ("tools", "tool_choice"):
+            params.pop(key, None)
+        while True:
+            params["messages"] = [dict(role="system", content=prompt),
+                                  dict(role="user", content=json.dumps(safe_context(material), ensure_ascii=False))]
+            estimated, limit = estimate_request_tokens(params), request_input_limit(params)
+            if estimated <= limit:
+                break
+            if not material.get("recent_messages"):
+                raise ContextBudgetExceeded(estimated, limit, reason="natural_reply")
+            material["recent_messages"].pop(0)
+            material["history_omitted"] = True
+        response = call_model(client, params)
+        choice = response.choices[0]
+        if getattr(choice, "finish_reason", None) not in (None, "stop") or getattr(choice.message, "tool_calls", None):
+            raise ValueError("incomplete_natural_reply")
+        return choice.message.content
+
+    draft = validate_draft(request(NATURAL_REPLY_PROMPT, data), context)
+    selected = set(draft["claim_ids"])
+    indexes = []
+    for matter in context["matters"]:
+        ids = {c["evidence_id"] for c in matter.get("claims", []) if c["claim_id"] in selected}
+        receipts = [r for r in matter.get("receipts", []) if r["event_id"] in ids]
+        indexes.append(evidence_index(receipts, {"order_id": matter.get("order_id")}))
+    _, issues = check_reply(draft["reply"], indexes)
+    if issues:
+        raise ValueError("unsupported_natural_reply:" + ",".join(issues))
+    return VerifiedReply(draft["reply"], fingerprint(context), draft['question'])

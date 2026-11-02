@@ -268,6 +268,27 @@ class TaskRuns:
                     and e.get('provenance', {}).get('media', []) == media
                     and not any(invalid(tx, self.user, "decision", did) for did in e["provenance"]["decisions"])]
 
+    def order_lookup_history(self, record):
+        """Keep identity clues beyond live-fact TTL, never current business status."""
+        lookups = {}
+        for evidence in self.evidence(record, seconds=1800):
+            tool = evidence['tool']
+            if tool not in {'find_orders', 'get_order', 'get_order_items'}:
+                continue
+            data = evidence['result'].get('data', {})
+            if not isinstance(data, dict):
+                continue
+            rows = [data] if tool == 'get_order' else data.get('items', [])
+            fields = ('order_ref', 'order_id', 'platform_code', 'created_at', 'paid_amount', 'currency',
+                      'item_count', 'items_truncated', 'matching_item_count', 'purchase_summary',
+                      'order_item_id', 'title_snapshot', 'spec_snapshot', 'quantity')
+            candidates = [{key: row[key] for key in fields if key in row} for row in rows if isinstance(row, dict)]
+            key = (tool, json.dumps(evidence['arguments'], sort_keys=True))
+            lookups[key] = dict(evidence_id=evidence['event_id'], tool=tool, arguments=evidence['arguments'], observed_at=evidence['observed_at'],
+                candidates=candidates, has_more=data.get('has_more'), total=data.get('total'),
+                note='历史定位线索，不是当前状态或办理授权；未命中只描述当时查询，当前更正优先。')
+        return list(lookups.values())
+
     def _memory_current(self, tx, snapshots):
         from app.memory.task_recall import dependencies_current
         return dependencies_current(tx, self.store, self.user, snapshots)

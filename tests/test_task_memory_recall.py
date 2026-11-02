@@ -8,6 +8,7 @@ import pytest
 from app.config.settings import settings
 from app.memory.runtime import process_memory_jobs
 from app.tasks.replies import ReplyCoordinator
+from tests.test_coordinated_replies import select_all
 from app.tools.registry import execute_tool
 from app.tools.selection import for_task
 from tests.test_memory_v3 import change, message
@@ -66,7 +67,7 @@ def test_real_tool_recalls_owned_v3_facts_and_publishes_a_grounded_reply(store):
     assert fact['source_event_id'].startswith('old:') and fact['qualifiers']['product_category'] == 'clothing'
     assert fact['version'] and fact['observed_at']
     assert result['provenance']['memory']
-    reply = ReplyCoordinator(store, 'alice').publish('s')
+    reply = ReplyCoordinator(store, 'alice', composer=select_all).publish('s')
     assert fact['content'] in reply['content'] and '红' not in reply['content']
     assert '本次明确要求优先' in reply['content'] and '办理授权' in reply['content']
 
@@ -83,7 +84,7 @@ def test_empty_recall_is_not_an_assertion_that_the_user_never_said_it(store):
     result, client = recall(store)
     assert tool_data(client)['long_term_facts'] == []
     assert result['provenance']['memory'][0]['facts'] == []
-    reply = ReplyCoordinator(store, 'alice').publish('s')
+    reply = ReplyCoordinator(store, 'alice', composer=select_all).publish('s')
     assert '本次没有查到' in reply['content'] and '不表示你从未说过' in reply['content']
 
 
@@ -92,7 +93,7 @@ def test_disabled_memory_degrades_without_claiming_empty_or_transfer(store, monk
     result, client = recall(store)
     assert result['state'] == 'ready' and tool_data(client)['available'] is False
     assert 'memory' not in result['provenance']
-    reply = ReplyCoordinator(store, 'alice').publish('s')
+    reply = ReplyCoordinator(store, 'alice', composer=select_all).publish('s')
     assert '暂时无法读取' in reply['content']
     assert '本次没有查到' not in reply['content'] and '人工队列' not in reply['content']
 
@@ -139,8 +140,8 @@ def test_change_during_final_composition_discards_the_old_reply(store):
 
 def test_question_progress_keeps_memory_dependencies(store):
     remember(store)
-    result, _ = recall(store, response(calls=[('ask_user', {'question': '这次想选什么颜色？'})]))
-    assert result['state'] == 'waiting_user' and result['provenance']['memory']
+    result, _ = recall(store, response(json.dumps(dict(status='needs_input', missing_information='本次想选的颜色', candidate_refs=[]))))
+    assert result['state'] == 'needs_input' and result['provenance']['memory']
     remember(store, '衣服蓝色偏好忘掉吧', sid='old2', action='FORGET')
     assert ReplyCoordinator(store, 'alice').publish('s') is None
 
@@ -215,7 +216,7 @@ def test_historical_recall_is_labeled_and_does_not_become_current_preference(sto
     result, client = recall(store, query='以前的衣服颜色偏好')
     assert result['state'] == 'ready'
     assert tool_data(client)['view'] == 'historical'
-    reply = ReplyCoordinator(store, 'alice').publish('s')
+    reply = ReplyCoordinator(store, 'alice', composer=select_all).publish('s')
     assert '不代表当前偏好' in reply['content']
 
 

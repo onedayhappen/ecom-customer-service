@@ -29,6 +29,11 @@ from app.tasks.correction import CorrectionService
 from app.tasks.provenance import context_event_valid
 
 
+def select_all(context):
+    """Deterministic evidence selector for publication ordering/binding tests."""
+    return json.dumps({"claim_ids": [c["claim_id"] for m in context["matters"] for c in m["claims"]]})
+
+
 def ready(store, record, source, *, total=12.50, reply="已经为您退款999元", result=None):
     runs = TaskRuns(store, record.user_id)
     req = TaskExecutionInput.model_validate(request(record, source))
@@ -50,13 +55,13 @@ def test_merges_ready_results_and_uses_each_tasks_structured_facts(store):
     a, sa = task(store, "s")
     b, sb = task(store, "s", details={"order_id": "ORD-B"})
     ids = [ready(store, a, sa, total=12.5), ready(store, b, sb, total=37)]
-    reply = ReplyCoordinator(store, "alice").publish("s")
+    reply = ReplyCoordinator(store, "alice", composer=select_all).publish("s")
     assert reply["result_ids"] == ["job:" + x for x in ids]
     assert "ORD-A；当前状态：已发货；订单金额：¥12.50" in reply["content"]
     assert "ORD-B；当前状态：已发货；订单金额：¥37.00" in reply["content"]
     assert "退款999" not in reply["content"]
     assert reply["task_versions"] == {a.task_id: 1, b.task_id: 1}
-    assert ReplyCoordinator(store, "alice").publish("s") is None
+    assert ReplyCoordinator(store, "alice", composer=select_all).publish("s") is None
     assert len(replies(store)) == 1
     with store.transaction(read_only=True) as tx:
         assert tx.one("SELECT COUNT(*) AS n FROM task_reply_items WHERE disposition='published'")["n"] == 2
@@ -79,12 +84,12 @@ def test_fast_result_published_while_other_task_still_running(store):
         worker.tick()
         assert started.wait(5)
         drain(worker, [ids[1]])
-        fast = ReplyCoordinator(store, "alice").publish("s")
+        fast = ReplyCoordinator(store, "alice", composer=select_all).publish("s")
         assert "ORD-B" in fast["content"] and "ORD-A" not in fast["content"]
-        assert ReplyCoordinator(store, "alice").publish("s") is None
+        assert ReplyCoordinator(store, "alice", composer=select_all).publish("s") is None
         release.set()
         drain(worker, [ids[0]])
-        slow = ReplyCoordinator(store, "alice").publish("s")
+        slow = ReplyCoordinator(store, "alice", composer=select_all).publish("s")
         assert "ORD-A" in slow["content"] and "ORD-B" not in slow["content"]
     finally:
         release.set()
@@ -96,10 +101,10 @@ def test_unassociated_new_input_in_any_session_blocks_facts_then_unrelated_relea
     a, sa = task(store, "s")
     ready(store, a, sa)
     batch = batch_for(store, "鞋子价格", sid="old")
-    assert ReplyCoordinator(store, "alice").publish("s") is None
+    assert ReplyCoordinator(store, "alice", composer=select_all).publish("s") is None
     svc = service(store)
     svc.commit(batch, svc.snapshot(batch), proposal(new(batch, goal="鞋子价格", details={"item_name": "鞋子"})))
-    assert "ORD-A" in ReplyCoordinator(store, "alice").publish("s")["content"]
+    assert "ORD-A" in ReplyCoordinator(store, "alice", composer=select_all).publish("s")["content"]
 
 
 def test_correction_before_publish_discards_old_result(store):
@@ -108,7 +113,7 @@ def test_correction_before_publish_discards_old_result(store):
         sa = tx.one("SELECT session_id,sequence FROM association_sources WHERE decision_id=?", (decision["decision_id"],))
     jid = ready(store, wrong, dict(kind="message", **sa))
     batch = batch_for(store, "不是 ORD-B，是 ORD-A")
-    first = ReplyCoordinator(store, "alice").publish("s")
+    first = ReplyCoordinator(store, "alice", composer=select_all).publish("s")
     assert first["result_ids"] == [] and not replies(store)
     source = dict(kind="message", session_id="s", sequence=batch.messages[0]["sequence"])
     correction = correction_request(store, wrong, target, decision)
@@ -116,10 +121,10 @@ def test_correction_before_publish_discards_old_result(store):
     fixed = CorrectionService(store, "alice").correct("s", correction)
     MessageIntake(store).complete(batch, [dict(sequence=source["sequence"], status="associated",
                                              decision_id=fixed["new_decision_id"])])
-    assert ReplyCoordinator(store, "alice").publish("s") is None
+    assert ReplyCoordinator(store, "alice", composer=select_all).publish("s") is None
     current = TaskRepository(store, "alice").get(target.task_id)
     ready(store, current, source)
-    public = ReplyCoordinator(store, "alice").publish("s")
+    public = ReplyCoordinator(store, "alice", composer=select_all).publish("s")
     assert "ORD-A" in public["content"] and "ORD-B" not in public["content"]
     with store.transaction(read_only=True) as tx:
         assert tx.one("SELECT disposition FROM task_reply_items WHERE item_key=?", ("job:" + jid,))["disposition"] == "stale"
@@ -132,7 +137,7 @@ def test_correction_after_combined_reply_invalidates_context_and_sends_one_notic
     ready(store, wrong, dict(kind="message", **source))
     other, source2 = task(store, "s", details={"order_id": "ORD-C"})
     ready(store, other, source2)
-    published = ReplyCoordinator(store, "alice").publish("s")
+    published = ReplyCoordinator(store, "alice", composer=select_all).publish("s")
     assert len(published["task_versions"]) == 2 and "task_id" not in published
     req = correction_request(store, wrong, target, decision)
     fixed = CorrectionService(store, "alice").correct("s", req)
@@ -150,7 +155,7 @@ def test_continuous_input_emits_one_processing_event_without_consuming_ready_res
     published = []
     for i in range(10):
         intake.receive("s", "alice", request_id=str(uuid4()), content=f"还要补充 {i}")
-        published.append(ReplyCoordinator(store, "alice").publish("s"))
+        published.append(ReplyCoordinator(store, "alice", composer=select_all).publish("s"))
     assert sum(p is not None for p in published) == 1
     assert not replies(store)
     with store.transaction(read_only=True) as tx:
@@ -164,16 +169,16 @@ def test_only_one_valid_question_and_answer_prevents_repeat(store):
     a, b = ask(store, a, sa, publish=False), ask(store, b, sb, publish=False)
     for t, s in [(a, sa), (b, sb)]:
         TaskSchedule(store, "alice").enqueue(request(t, s))
-    first = ReplyCoordinator(store, "alice").publish("s")
+    first = ReplyCoordinator(store, "alice", composer=select_all).publish("s")
     assert first["question_id"] in {a.waiting_for["question_id"], b.waiting_for["question_id"]}
     assert len(first["result_ids"]) == 1
-    assert ReplyCoordinator(store, "alice").publish("s") is None
+    assert ReplyCoordinator(store, "alice", composer=select_all).publish("s") is None
     answered = a if first["task_id"] == a.task_id else b
     batch = batch_for(store, "左耳没声音")
     svc = service(store)
     svc.commit(batch, svc.snapshot(batch), proposal(update(batch, answered, effect="answer",
         details={"reason": "左耳没声音"}, question_id=answered.waiting_for["question_id"])))
-    second = ReplyCoordinator(store, "alice").publish("s")
+    second = ReplyCoordinator(store, "alice", composer=select_all).publish("s")
     assert second["question_id"] != first["question_id"]
     assert len(replies(store)) == 2
 
@@ -182,7 +187,7 @@ def test_does_not_ask_for_reason_already_supplied(store):
     a, sa = task(store, "s", details={"order_id": "ORD-A", "reason": "损坏"})
     a = ask(store, a, sa, publish=False)
     TaskSchedule(store, "alice").enqueue(request(a, sa))
-    reply = ReplyCoordinator(store, "alice").publish("s")
+    reply = ReplyCoordinator(store, "alice", composer=select_all).publish("s")
     assert "请补充" not in reply["content"] and "question_id" not in reply
 
 
@@ -209,14 +214,14 @@ def test_unusable_evidence_cannot_become_facts(store, change):
             p["controls"] = {"s": 999}
         tx.execute("UPDATE support_events SET payload=? WHERE session_id=? AND sequence=?",
                    (json.dumps(p), row["session_id"], row["sequence"]))
-    content = ReplyCoordinator(store, "alice").publish("s")["content"]
+    content = ReplyCoordinator(store, "alice", composer=select_all).publish("s")["content"]
     assert "¥" not in content and "已发货" not in content and "SECRET" not in content
 
 
 def test_atomic_rollback_includes_reply_coverage_and_notification(store, monkeypatch):
     a, sa = task(store, "s")
     ready(store, a, sa)
-    coordinator = ReplyCoordinator(store, "alice")
+    coordinator = ReplyCoordinator(store, "alice", composer=select_all)
     real = coordinator._mark
     def fail(*args, **kwargs):
         real(*args, **kwargs)
@@ -225,7 +230,7 @@ def test_atomic_rollback_includes_reply_coverage_and_notification(store, monkeyp
     with pytest.raises(RuntimeError):
         coordinator.publish("s")
     assert not replies(store)
-    assert ReplyCoordinator(store, "alice").publish("s")
+    assert ReplyCoordinator(store, "alice", composer=select_all).publish("s")
     assert len(replies(store)) == 1
 
 
@@ -247,7 +252,7 @@ def test_ownership_and_handoff_fence_publication(store):
     with pytest.raises(SupportError):
         ReplyCoordinator(store, "bob").publish("s")
     store.handoff("s", "alice")
-    assert ReplyCoordinator(store, "alice").publish("s") is None and not replies(store)
+    assert ReplyCoordinator(store, "alice", composer=select_all).publish("s") is None and not replies(store)
 
 
 def test_reconcile_recovers_association_commit_gap_and_reuses_progress_version(store):
@@ -299,7 +304,7 @@ def test_question_result_is_saved_once_despite_its_own_progress_version_change(s
 def test_publisher_locks_input_position_until_message_and_coverage_commit(store, monkeypatch):
     a, sa = task(store, "s")
     ready(store, a, sa)
-    coordinator = ReplyCoordinator(store, "alice")
+    coordinator = ReplyCoordinator(store, "alice", composer=select_all)
     reached, release, sending = threading.Event(), threading.Event(), threading.Event()
     original = coordinator._publish
     def delayed(*args):
@@ -334,9 +339,9 @@ def test_clarification_takes_priority_over_previously_sent_task_question(store):
     svc.commit(batch, svc.snapshot(batch), proposal(dict(
         action="clarify", sequences=[batch.messages[0]["sequence"]], evidence=[quote(batch)],
         clarification="是哪笔？", candidate_task_ids=[a.task_id, b.task_id])))
-    reply = ReplyCoordinator(store, "alice").publish("s")
+    reply = ReplyCoordinator(store, "alice", composer=select_all).publish("s")
     assert "clarification_id" in reply and "1. ORD-A；2. ORD-B" in reply["content"]
-    assert ReplyCoordinator(store, "alice").publish("s") is None
+    assert ReplyCoordinator(store, "alice", composer=select_all).publish("s") is None
 
 
 def test_complete_worker_from_multiple_intake_messages_to_replies(store):
@@ -403,7 +408,7 @@ def test_v15_upgrade_preserves_pending_work_and_rolls_back_as_one_transaction(st
     SupportStore(store.dsn).initialize()
     with upgraded.transaction(read_only=True) as tx:
         assert tx.one("SELECT task_id FROM task_execution_wakes WHERE task_id=?", (a.task_id,))
-    assert "ORD-A" in ReplyCoordinator(upgraded, "alice").publish("s")["content"]
+    assert "ORD-A" in ReplyCoordinator(upgraded, "alice", composer=select_all).publish("s")["content"]
 
 
 def test_archived_old_job_does_not_crash_publisher_or_keep_processing_forever(store):
@@ -416,7 +421,7 @@ def test_archived_old_job_does_not_crash_publisher_or_keep_processing_forever(st
     with store.transaction() as tx:
         tx.execute("UPDATE runtime_jobs SET finished_at=0 WHERE job_id=?", (jid,))
     archive_jobs(store, retention_days=1)
-    assert ReplyCoordinator(store, "alice").publish("s") is None
+    assert ReplyCoordinator(store, "alice", composer=select_all).publish("s") is None
     assert MessageIntake(store).progress("s", "alice")["processing"] == "idle"
 
 
@@ -431,7 +436,7 @@ def test_deferred_questions_do_not_starve_later_ready_result(store):
     coordinator = ReplyCoordinator(store, "alice")
     coordinator.publish("s")
     second = coordinator.publish("s")
-    assert "ORD-FAST" in second["content"] and "question_id" not in second
+    assert fast.task_id in second["task_versions"] and "question_id" not in second
     assert coordinator.publish("s") is None
 
 
@@ -440,7 +445,7 @@ def test_other_human_session_does_not_block_an_unrelated_ready_task(store):
     ready(store, a, sa)
     store.handoff("old", "alice")
     MessageIntake(store).receive("old", "alice", request_id=str(uuid4()), content="给人工客服的补充")
-    assert "ORD-A" in ReplyCoordinator(store, "alice").publish("s")["content"]
+    assert "ORD-A" in ReplyCoordinator(store, "alice", composer=select_all).publish("s")["content"]
 
 
 def test_expired_queue_reports_failure_once_without_claiming_business_success(store):
@@ -451,8 +456,8 @@ def test_expired_queue_reports_failure_once_without_claiming_business_success(st
     worker = TaskWorker(store, engine(QueryClient()))
     try:
         worker.recover()
-        reply = ReplyCoordinator(store, "alice").publish("s")
-        assert "可核实" in reply["content"] and "已发货" not in reply["content"]
-        assert ReplyCoordinator(store, "alice").publish("s") is None
+        reply = ReplyCoordinator(store, "alice", composer=select_all).publish("s")
+        assert "无法核实" in reply["content"] and "已发货" not in reply["content"]
+        assert ReplyCoordinator(store, "alice", composer=select_all).publish("s") is None
     finally:
         worker.close()

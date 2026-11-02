@@ -79,7 +79,11 @@ def test_real_cases_through_publication(store, case, mode):
 
     result = ReplyCoordinator(store, "alice", composer=None if mode == "no_model" else model).publish("s")
     assert result is not None
-    assert_safe_case(result["content"], case)
+    if mode == "selection":
+        assert_safe_case(result["content"], case)
+    else:
+        from app.tasks.natural_reply import UNAVAILABLE_REPLY
+        assert result["content"] == UNAVAILABLE_REPLY
     assert len(calls) == (0 if mode == "no_model" else 1)  # Never retry/judge with another model call.
     assert len(replies(store)) == 1
     assert ReplyCoordinator(store, "alice", composer=model).publish("s") is None

@@ -82,6 +82,7 @@ class _TaskContext:
         self.receipts = []
         self.validation_errors = []
         self.historical = runs.evidence(self.record)
+        self.order_lookup_history = runs.order_lookup_history(self.record)
         self.operation_id = None
         from app.memory.task_context import TaskMemory
         self.memory = TaskMemory(runs.store, runs.user)
@@ -112,6 +113,7 @@ class _TaskContext:
                 "source": MessageSource.model_validate(payload["execution_source"])})
             self.operation_id = None
             self.historical = self.runs.evidence(current)
+            self.order_lookup_history = self.runs.order_lookup_history(current)
             self.receipts = []
             from app.memory.task_context import TaskMemory
             self.memory = TaskMemory(self.runs.store, self.runs.user)
@@ -156,6 +158,7 @@ class _TaskContext:
         return {
             "task": safe_context(self.record.model_dump(exclude={"user_id", "created_at", "updated_at", "storage_mode"})),
             **history, "recent_tool_evidence": safe_context(self.historical),
+            "order_lookup_history": safe_context(self.order_lookup_history),
             "current_evidence_refs": evidence_refs(self.receipts),
         }
 
@@ -248,7 +251,7 @@ class _TaskContext:
             result = json.loads(raw) if isinstance(raw, str) else raw
             if not isinstance(result, dict):
                 result = _failure("invalid_tool_result")
-            if name not in {"ask_user", "handoff_to_human"}:
+            if name != "handoff_to_human":
                 # Recall establishes its dependency during the call. All other
                 # reads retain the fence captured before they were admitted.
                 receipt_payload = (json.loads(json.dumps(self.payload))
@@ -296,6 +299,7 @@ class TaskExecutor:
             execute=context.tool,
             checkpoint=context.checkpoint,
             reference_cached_results=True,
+            structured_handoff=True,
             convergence_detector=ConvergenceDetector(max_steps=request.budget.model_calls + 1, max_same_tool_calls=3))
         identity = set_current_user_id(self.runs.user)
         result, stop_reason = None, None
@@ -323,6 +327,8 @@ class TaskExecutor:
                 state = context.record.status if context.record.status in {"waiting_user", "waiting_external"} else (
                     "needs_human" if result.needs_human else "needs_confirmation" if context.operation_id
                     else "deferred" if stop_reason else "ready")
+                if result.handoff and result.handoff['status'] == 'needs_input':
+                    state = 'needs_input'
                 record("react.result", output=result, stop_reason=stop_reason)
                 return self.runs.finish(request, context.payload, {
                     "state": state, "reply": result.reply, "task_version": context.record.version,
@@ -330,8 +336,11 @@ class TaskExecutor:
                     "waiting_for": context.record.waiting_for, "needs_human": result.needs_human,
                     "reason": stop_reason, "model_calls": context.model_calls, "tool_calls": context.tool_calls,
                     "validation_errors": context.validation_errors,
+                    "handoff": result.handoff,
                     **({"operation_id": context.operation_id} if context.operation_id else {}),
-                    "evidence_ids": list(dict.fromkeys(e["event_id"] for e in context.receipts + context.historical)),
+                    "evidence_ids": list(dict.fromkeys(
+                        [e["event_id"] for e in context.receipts + context.historical]
+                        + ([h['evidence_id'] for h in context.order_lookup_history] if state == 'needs_input' else []))),
                 })
         except (SupportError, ExecutionStopped):
             return self.runs.finish(request, context.payload, {"state": "interrupted", "reply": "",

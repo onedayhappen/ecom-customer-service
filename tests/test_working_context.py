@@ -86,6 +86,47 @@ def test_context_read_does_not_repeat_historical_receipt_or_persist_it_as_new_ev
     assert all(e['tool'] != 'read_task_context' for e in TaskRuns(store, 'alice').evidence(current))
 
 
+def test_order_identity_survives_fact_expiry_without_reusing_old_status(store):
+    current, source = task(store, 's', goal='查询红色鞋的物流')
+    candidate = dict(order_ref='order-ref', order_id='ORD-A', platform_code='shop', status='pending_receipt',
+                     purchase_summary=[dict(name='耐克', specs={'颜色': '红色'}, quantity=1)])
+    seed = Client(response(calls=[('find_orders', {'query': '耐克 红色'})]), response('已找到候选。'))
+    engine(seed).execute_task(store, 'alice', request(current, source), tools=lambda *args:
+        {'success': True, 'data': {'items': [candidate], 'total': 1, 'has_more': False}})
+    with store.transaction() as tx:
+        row = tx.one("SELECT sequence,payload FROM support_events WHERE kind='task_tool_result'")
+        evidence = json.loads(row['payload'])
+        evidence['observed_epoch'] -= 120
+        tx.execute('UPDATE support_events SET payload=? WHERE session_id=? AND sequence=?',
+                   (json.dumps(evidence), 's', row['sequence']))
+    runs = TaskRuns(store, 'alice')
+    assert runs.evidence(current) == []  # Live facts still expire after sixty seconds.
+    history = runs.order_lookup_history(current)
+    assert history[0]['candidates'][0]['order_ref'] == 'order-ref'
+    assert 'status' not in history[0]['candidates'][0]
+    assert TaskRuns(store, 'bob').order_lookup_history(current) == []
+    assert runs.order_lookup_history(current.model_copy(update={'details': {'order_id': 'OTHER'}})) == []
+    called = []
+    def followup(params):
+        view = json.loads(params['messages'][1]['content'])
+        assert view['recent_tool_evidence'] == []
+        assert view['order_lookup_history'] == history
+        return response(calls=[('get_logistics', {'target_ref': history[0]['candidates'][0]['order_ref']})])
+    def logistics(name, arguments):
+        called.append((name, arguments))
+        return {'success': True, 'data': {'items': [], 'total': 0}}
+    result = engine(Client(followup, response('暂无物流记录。'))).execute_task(
+        store, 'alice', request(current, source), tools=logistics)
+    assert result['state'] == 'ready'
+    assert called == [('get_logistics', {'target_ref': 'order-ref'})]
+    # Late or expired identity clues must not survive indefinitely.
+    with store.transaction() as tx:
+        evidence['late'] = True
+        tx.execute('UPDATE support_events SET payload=? WHERE session_id=? AND sequence=?',
+                   (json.dumps(evidence), 's', row['sequence']))
+    assert runs.order_lookup_history(current) == []
+
+
 def test_repeated_business_read_references_original_message_without_copying_body(store):
     current, source = task(store, 's', goal='查询订单', details={'order_id': 'ORD-A'})
     proof = 'BUSINESS-UNIQUE-' + 'z' * 1500

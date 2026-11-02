@@ -63,6 +63,13 @@ elif role == 'model':
                     'choices': [{'index': 0, 'finish_reason': 'tool_calls' if message.get('tool_calls') else 'stop', 'message': message}],
                     'usage': {'prompt_tokens': 10, 'completion_tokens': 10, 'total_tokens': 20}}
         context = json.loads(latest)
+        if 'matters' in context:
+            pending = next((m for m in context['matters'] if m.get('clarification')), None)
+            question = dict(task_id=pending['task_id'], prompt='您买的是什么商品？', options=[]) if pending else None
+            return output({'role': 'assistant', 'content': json.dumps(dict(
+                reply='' if question else '查询结果已记录。',
+                claim_ids=[c['claim_id'] for m in context['matters'] for c in m.get('claims', [])],
+                question=question), ensure_ascii=False)})
         if data.get('response_format', {}).get('type') == 'json_object':
             decisions = []
             for item in context['current_messages']:
@@ -71,7 +78,7 @@ elif role == 'model':
                 oid = found.group() if found else None
                 candidate = next((c for c in context['candidates'] if oid and c['details'].get('order_id') == oid), None)
                 if candidate is None and oid:
-                    waiting = [c for c in context['candidates'] if (c.get('waiting_for') or {}).get('field') == 'order_id']
+                    waiting = [c for c in context['candidates'] if (c.get('waiting_for') or {}).get('kind') == 'question']
                     candidate = waiting[0] if len(waiting) == 1 else None
                 detail = [dict(field='order_id', value=oid, evidence=quoted)] if oid else []
                 if candidate:
@@ -89,7 +96,8 @@ elif role == 'model':
         if oid:
             name, args = 'query_order', {'order_id': oid}
         else:
-            name, args = 'ask_user', {'field': 'order_id', 'prompt': '请提供订单号', 'options': []}
+            return output({'role': 'assistant', 'content': json.dumps(dict(
+                status='needs_input', missing_information='需要定位用户要查询的订单', candidate_refs=[]))})
         return output({'role': 'assistant', 'content': None, 'tool_calls': [
             {'id': 'call-fixture', 'type': 'function', 'function': {'name': name, 'arguments': json.dumps(args)}}]})
     uvicorn.run(app, host='127.0.0.1', port=port, log_level='warning')

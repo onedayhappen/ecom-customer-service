@@ -41,7 +41,7 @@ def snapshot(coordinator, tx, control, pieces, received):
     matters, notices, fallbacks = [], [], []
     for piece in pieces:
         fixed = any(piece.get(k) for k in ("question_id", "clarification_id", "operation_id"))
-        if fixed or not piece.get("claims"):
+        if fixed or not (piece.get("claims") or piece.get('clarification')):
             notices.append(piece["content"])
         for tid in piece["task_versions"]:
             record = coordinator.runs.repo._record(coordinator.runs.repo._row(tx, tid))
@@ -49,7 +49,9 @@ def snapshot(coordinator, tx, control, pieces, received):
                                 order_id=record.details.get("order_id"),
                                 execution_state=piece.get("execution_state"),
                                 claims=[] if fixed else piece.get("claims", []),
-                                evidence_ids=piece.get("evidence_ids", [])))
+                                receipts=[] if fixed else piece.get("receipts", []),
+                                evidence_ids=piece.get("evidence_ids", []),
+                                clarification=piece.get('clarification')))
         if not fixed and piece.get("claims"):
             fallbacks.append(piece.get("fallback", piece["content"]))
     selected = {tid for piece in pieces for tid in piece["task_versions"]}
